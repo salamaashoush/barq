@@ -145,8 +145,9 @@ export const layout = arc.create({
   minZero: { minWidth: "0px" },
   minZeroBlock: { minHeight: "0px" },
   fill: { width: "100%" },
-  /** One line, cut with an ellipsis. */
-  truncate: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  /** Cut at the box with an ellipsis, where text that does not wrap runs out. */
+  clip: { overflow: "hidden", textOverflow: "ellipsis" },
+  nowrap: { whiteSpace: "nowrap" },
   clamp2: {
     display: "-webkit-box",
     overflow: "hidden",
@@ -165,6 +166,9 @@ export const layout = arc.create({
   container: { containerType: "inline-size" },
   relative: { position: "relative" },
 });
+
+/** One line, cut with an ellipsis. */
+export const truncate = arc(layout.clip, layout.nowrap);
 
 /** An icon a part draws beside its text, sized and kept from shrinking. */
 export const glyph = arc.create({
@@ -386,7 +390,7 @@ export const focus = {
 };
 
 /** How a part answers a pointer and a selection. */
-export const state = arc.create({
+export const interaction = arc.create({
   /** A tint under a resting pointer, where one can rest. */
   hover: {
     "@media (hover: hover)": {

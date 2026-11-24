@@ -1,4 +1,6 @@
-import { type Child, Show, createMemo, createSignal, provide, untrack } from "@barqjs/core";
+import { type Child, Show, createMemo, provide, untrack } from "@barqjs/core";
+import { variants } from "@barqjs/css";
+import { controllable } from "@barqjs/aria/utils";
 import { RouterContext, type Router } from "@barqjs/aria/interactions";
 import type { Key } from "@barqjs/aria/collections";
 import {
@@ -44,7 +46,27 @@ import { Checkbox } from "@barqjs/ui/checkbox";
 import { Skeleton } from "@barqjs/ui/skeleton";
 import { Spinner } from "@barqjs/ui/spinner";
 
+import { type Breakpoint, breakpointQuery, on } from "@barqjs/ui/conditions";
+
 import { arcLayer as arc } from "../layer.ts";
+import { type Customisable, parts } from "../lib/parts.ts";
+import {
+  bg,
+  edge,
+  fg,
+  focus,
+  gap,
+  glyph,
+  layout,
+  motion,
+  rounded,
+  space,
+  interaction,
+  surface,
+  type,
+  zIndex,
+} from "../style/index.ts";
+import { useArcMessages } from "./messages.ts";
 import { EmptyState } from "./empty-state.tsx";
 import { maybeRouter } from "./link.ts";
 import { SelectionBar, type SelectionAction } from "./selection-bar.tsx";
@@ -61,16 +83,7 @@ const features = tableFeatures({
 /** The table-core features a `DataTable` registers: sorting, visibility and pages. */
 export type DataTableFeatures = typeof features;
 
-export type Breakpoint = "sm" | "md" | "lg" | "xl" | "2xl";
-
-/** The widths the breakpoints start at, as Tailwind's defaults put them. */
-const BREAKPOINTS: Record<Breakpoint, string> = {
-  sm: "(min-width: 40rem)",
-  md: "(min-width: 48rem)",
-  lg: "(min-width: 64rem)",
-  xl: "(min-width: 80rem)",
-  "2xl": "(min-width: 96rem)",
-};
+export type { Breakpoint };
 
 /** What arc adds to a TanStack column. */
 export interface DataTableColumnOptions {
@@ -124,7 +137,7 @@ export interface DataTableLabels {
   resize?: string;
 }
 
-export interface DataTableProps<T extends RowData> {
+export interface DataTableProps<T extends RowData> extends Customisable<Slots> {
   /** Names the table for a screen reader. */
   label: string;
   columns: readonly DataTableColumn<T>[];
@@ -186,7 +199,6 @@ export interface DataTableProps<T extends RowData> {
   height?: string;
 
   labels?: DataTableLabels;
-  class?: string;
 }
 
 const SELECT = "__arc-select";
@@ -210,212 +222,119 @@ type RowItem =
   | { id: string; kind: "skeleton" }
   | { id: string; kind: "loader" };
 
-const frame = arc({
-  position: "relative",
-  minWidth: "0px",
-  borderWidth: "1px",
-  borderStyle: "solid",
-  borderColor: "var(--border)",
-  borderRadius: "calc(var(--radius) * 1.4)",
-  backgroundColor: "var(--card)",
-  overflowX: "auto",
-  "@media (min-width: 48rem)": {
-    "&:not([data-scrolls])": {
-      overflowX: "clip",
-    },
-  },
-  "[data-scrolls]": {
-    overflow: "auto",
-    overscrollBehavior: "contain",
-  },
-});
+/** A cell's room, which the header's cells, the body's and the pager share. */
+const cellPad = arc({ paddingInline: space.x3, paddingBlock: space.x2 });
 
-const gridClass = arc({
-  display: "flex",
-  flexDirection: "column",
-  minWidth: "min-content",
-  fontSize: "var(--text-sm)",
-  lineHeight: "var(--text-sm--line-height)",
-  outline: "none",
-  "[data-focus-visible]": {
-    boxShadow: "inset 0 0 0 2px var(--ring)",
-  },
-});
+/** Numbers sit at the end, in the column and in its header alike. */
+const aligned = arc({ '[data-align="end"]': { justifyContent: "flex-end", textAlign: "end" } });
 
-const head = arc({
-  position: "sticky",
-  top: "var(--arc-data-table-sticky-top, 0px)",
-  zIndex: "var(--z-sticky, 10)",
-  backgroundColor: "var(--sunken, var(--muted))",
-  boxShadow: "inset 0 -1px 0 var(--border)",
-  '& > [role="row"]': {
-    display: "grid",
-    gridTemplateColumns: "var(--arc-data-table-columns)",
-    alignItems: "center",
-    minHeight: "calc(var(--spacing) * 9)",
-  },
-});
-
-const body = arc({
-  position: "relative",
-});
-
-const row = arc({
-  display: "grid",
-  gridTemplateColumns: "var(--arc-data-table-columns)",
-  alignItems: "center",
-  minHeight: "calc(var(--spacing) * 11)",
-  borderBlockEndWidth: "1px",
-  borderBlockEndStyle: "solid",
-  borderColor: "var(--border)",
-  outline: "none",
-  transitionProperty: "background-color",
-  transitionDuration: "var(--duration-fast, 100ms)",
-  "@media (hover: hover)": {
-    "[data-hovered]": {
-      backgroundColor: "color-mix(in oklab, var(--muted) 50%, transparent)",
-    },
-  },
-  "[data-href]": {
-    cursor: "pointer",
-  },
-  "[data-selected]": {
-    backgroundColor: "var(--muted)",
-  },
-  "[data-focus-visible-within]": {
-    backgroundColor: "color-mix(in oklab, var(--muted) 50%, transparent)",
-  },
-  "[data-focus-visible]": {
-    boxShadow: "inset 0 0 0 2px var(--ring)",
-  },
-  ":last-child": {
-    borderBlockEndWidth: "0px",
-  },
-});
-
-const columnHeader = arc({
-  position: "relative",
-  display: "flex",
-  minWidth: "0px",
-  alignItems: "center",
-  gap: "calc(var(--spacing) * 1)",
-  height: "100%",
-  paddingInline: "calc(var(--spacing) * 3)",
-  fontWeight: "var(--font-weight-medium)",
-  color: "var(--muted-foreground)",
-  whiteSpace: "nowrap",
-  outline: "none",
-  "[data-allows-sorting]": {
-    cursor: "pointer",
-    "@media (hover: hover)": {
-      ":hover": { color: "var(--foreground)" },
-    },
-  },
-  "[data-sort-direction]": {
-    color: "var(--foreground)",
-  },
-  "[data-focus-visible]": {
-    boxShadow: "inset 0 0 0 2px var(--ring)",
-  },
-  '[data-align="end"]': {
-    justifyContent: "flex-end",
-    textAlign: "end",
-  },
-  "& > svg": {
-    width: "calc(var(--spacing) * 3.5)",
-    height: "calc(var(--spacing) * 3.5)",
-    flexShrink: "0",
-  },
-});
-
-const cell = arc({
-  position: "relative",
-  display: "flex",
-  minWidth: "0px",
-  alignItems: "center",
-  paddingInline: "calc(var(--spacing) * 3)",
-  paddingBlock: "calc(var(--spacing) * 2)",
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-  outline: "none",
-  '[data-align="end"]': {
-    justifyContent: "flex-end",
-    textAlign: "end",
-    fontVariantNumeric: "tabular-nums",
-  },
-  "[data-focus-visible]": {
-    boxShadow: "inset 0 0 0 2px var(--ring)",
-  },
-  '[role="rowheader"]': {
-    fontWeight: "var(--font-weight-medium)",
-    color: "var(--foreground)",
-  },
-});
-
-const checkboxCell = arc({
-  paddingInlineEnd: "0px",
-});
-
-const resizer = arc({
-  position: "absolute",
-  insetBlock: "0px",
-  insetInlineEnd: "0px",
-  width: "calc(var(--spacing) * 2)",
-  cursor: "col-resize",
-  touchAction: "none",
-  "::after": {
-    content: '""',
-    position: "absolute",
-    insetBlock: "25%",
-    insetInlineEnd: "0px",
-    width: "1px",
-    backgroundColor: "var(--border)",
-  },
-  "[data-hovered], [data-resizing], [data-focus-visible]": {
-    "::after": {
+export const dataTableStyles = variants({
+  slots: {
+    root: arc({}),
+    frame: arc(layout.relative, layout.minZero, edge.all, rounded.lg, bg.card, {
+      overflowX: "auto",
+      [on.md]: { "&:not([data-scrolls])": { overflowX: "clip" } },
+      "[data-scrolls]": { overflow: "auto", overscrollBehavior: "contain" },
+    }),
+    grid: arc(layout.column, type.sm, focus.none, focus.inset, { minWidth: "min-content" }),
+    header: arc(surface.sunken, {
+      position: "sticky",
+      top: "var(--arc-data-table-sticky-top, 0px)",
+      zIndex: zIndex.sticky,
+      boxShadow: "inset 0 -1px 0 var(--border)",
+      '& > [role="row"]': {
+        display: "grid",
+        gridTemplateColumns: "var(--arc-data-table-columns)",
+        alignItems: "center",
+        minHeight: space.x9,
+      },
+    }),
+    body: arc(layout.relative),
+    row: arc(
+      edge.bottom,
+      focus.none,
+      focus.inset,
+      interaction.hover,
+      interaction.focusWithin,
+      interaction.selected,
+      motion.colours,
+      {
+        display: "grid",
+        gridTemplateColumns: "var(--arc-data-table-columns)",
+        alignItems: "center",
+        minHeight: space.x11,
+        "[data-href]": { cursor: "pointer" },
+        ":last-child": { borderBlockEndWidth: "0px" },
+      },
+    ),
+    head: arc(
+      layout.relative,
+      layout.row,
+      layout.minZero,
+      layout.nowrap,
+      gap[1],
+      type.medium,
+      fg.muted,
+      focus.none,
+      focus.inset,
+      glyph.sm,
+      aligned,
+      {
+        height: "100%",
+        paddingInline: space.x3,
+        "[data-allows-sorting]": {
+          cursor: "pointer",
+          [on.hover]: { ":hover": { color: "var(--foreground)" } },
+        },
+        "[data-sort-direction]": { color: "var(--foreground)" },
+      },
+    ),
+    cell: arc(
+      layout.relative,
+      layout.row,
+      layout.minZero,
+      layout.clip,
+      focus.none,
+      focus.inset,
+      cellPad,
+      aligned,
+      {
+        '[data-align="end"]': { fontVariantNumeric: "tabular-nums" },
+        '[role="rowheader"]': {
+          fontWeight: "var(--font-weight-medium)",
+          color: "var(--foreground)",
+        },
+      },
+    ),
+    checkbox: arc({ paddingInlineEnd: "0px" }),
+    resizer: arc({
+      position: "absolute",
       insetBlock: "0px",
-      width: "2px",
-      backgroundColor: "var(--ring)",
-    },
+      insetInlineEnd: "0px",
+      width: space.x2,
+      cursor: "col-resize",
+      touchAction: "none",
+      "::after": {
+        content: '""',
+        position: "absolute",
+        insetBlock: "25%",
+        insetInlineEnd: "0px",
+        width: "1px",
+        backgroundColor: "var(--border)",
+      },
+      "[data-hovered], [data-resizing], [data-focus-visible]": {
+        "::after": { insetBlock: "0px", width: "2px", backgroundColor: "var(--ring)" },
+      },
+    }),
+    skeleton: arc({ height: space.x3_5, width: "min(100%, 6rem)" }),
+    loader: arc(layout.centre, gap[2], fg.muted, { padding: space.x3 }),
+    empty: arc({ padding: space.x6 }),
+    pagination: arc(layout.row, layout.end, gap[2], edge.top, fg.muted, type.sm, cellPad),
+    page: arc(layout.pushEnd, type.numeric),
   },
 });
 
-const skeletonBar = arc({
-  height: "calc(var(--spacing) * 3.5)",
-  width: "min(100%, 6rem)",
-});
-
-const loading = arc({
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  gap: "calc(var(--spacing) * 2)",
-  padding: "calc(var(--spacing) * 3)",
-  color: "var(--muted-foreground)",
-});
-
-const emptyCell = arc({
-  padding: "calc(var(--spacing) * 6)",
-});
-
-const foot = arc({
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "flex-end",
-  gap: "calc(var(--spacing) * 2)",
-  borderBlockStartWidth: "1px",
-  borderBlockStartStyle: "solid",
-  borderColor: "var(--border)",
-  paddingInline: "calc(var(--spacing) * 3)",
-  paddingBlock: "calc(var(--spacing) * 2)",
-  color: "var(--muted-foreground)",
-  fontSize: "var(--text-sm)",
-});
-
-const pageText = arc({
-  marginInlineEnd: "auto",
-  fontVariantNumeric: "tabular-nums",
-});
+type Slots = ReturnType<typeof dataTableStyles>;
 
 /** The router a row link navigates through: the app's, when there is one. */
 function linkRouter(state: RouterState | undefined): Router | undefined {
@@ -459,39 +378,40 @@ function linkRouter(state: RouterState | undefined): Router | undefined {
  * or a `pageCount` says a server has already ordered or paged them.
  */
 export function DataTable<T extends RowData>(props: DataTableProps<T>) {
-  const labels = (): DataTableLabels => props.labels ?? {};
+  const messages = useArcMessages();
+  const labels = (): Required<DataTableLabels> => ({
+    selectAll: messages().selectAll,
+    selectRow: messages().selectRow,
+    loadingMore: messages().loadingMore,
+    previous: messages().previousPage,
+    next: messages().nextPage,
+    page: messages().page,
+    pagination: messages().pagination,
+    resize: messages().resizeColumn,
+    ...props.labels,
+  });
+  const cls = (): Slots => parts(dataTableStyles(), props.classes);
 
-  const [ownSorting, setOwnSorting] = createSignal<SortingState>(
+  const [sorting, setSorting] = controllable<SortingState>(
+    () => props.sorting,
     untrack(() => props.defaultSorting) ?? [],
+    (next) => props.onSortingChange?.(next),
   );
-  const sorting = (): SortingState => props.sorting ?? ownSorting();
-  const setSorting = (next: SortingState): void => {
-    if (props.sorting === undefined) setOwnSorting(next);
-    props.onSortingChange?.(next);
-  };
-
-  const [ownVisibility, setOwnVisibility] = createSignal<ColumnVisibilityState>(
+  const [visibility, setVisibility] = controllable<ColumnVisibilityState>(
+    () => props.columnVisibility,
     untrack(() => props.defaultColumnVisibility) ?? {},
+    (next) => props.onColumnVisibilityChange?.(next),
   );
-  const visibility = (): ColumnVisibilityState => props.columnVisibility ?? ownVisibility();
-
-  const [ownPage, setOwnPage] = createSignal(
+  const [pageIndex, setPageIndex] = controllable<number>(
+    () => props.pagination?.pageIndex,
     untrack(() => props.pagination?.defaultPageIndex) ?? 0,
+    (next) => props.pagination?.onPageIndexChange?.(next),
   );
-  const pageIndex = (): number => props.pagination?.pageIndex ?? ownPage();
-  const setPageIndex = (next: number): void => {
-    if (props.pagination?.pageIndex === undefined) setOwnPage(next);
-    props.pagination?.onPageIndexChange?.(next);
-  };
-
-  const [ownSelection, setOwnSelection] = createSignal<ReadonlySet<string>>(
+  const [selected, setSelected] = controllable<ReadonlySet<string>>(
+    () => props.selectedKeys,
     new Set(untrack(() => props.defaultSelectedKeys) ?? []),
+    (next) => props.onSelectionChange?.(next as Set<string>),
   );
-  const selected = (): ReadonlySet<string> => props.selectedKeys ?? ownSelection();
-  const setSelected = (next: Set<string>): void => {
-    if (props.selectedKeys === undefined) setOwnSelection(next);
-    props.onSelectionChange?.(next);
-  };
 
   const table = createTable(() => ({
     features,
@@ -516,21 +436,20 @@ export function DataTable<T extends RowData>(props: DataTableProps<T>) {
     },
     onColumnVisibilityChange: (updater: unknown) => {
       const current = untrack(visibility);
-      const next =
+      setVisibility(
         typeof updater === "function"
           ? (updater as (old: ColumnVisibilityState) => ColumnVisibilityState)(current)
-          : (updater as ColumnVisibilityState);
-      if (props.columnVisibility === undefined) setOwnVisibility(next);
-      props.onColumnVisibilityChange?.(next);
+          : (updater as ColumnVisibilityState),
+      );
     },
   }));
 
   const wide: Record<Breakpoint, () => boolean> = {
-    sm: mediaQuery(BREAKPOINTS.sm),
-    md: mediaQuery(BREAKPOINTS.md),
-    lg: mediaQuery(BREAKPOINTS.lg),
-    xl: mediaQuery(BREAKPOINTS.xl),
-    "2xl": mediaQuery(BREAKPOINTS["2xl"]),
+    sm: mediaQuery(breakpointQuery("sm")),
+    md: mediaQuery(breakpointQuery("md")),
+    lg: mediaQuery(breakpointQuery("lg")),
+    xl: mediaQuery(breakpointQuery("xl")),
+    "2xl": mediaQuery(breakpointQuery("2xl")),
   };
 
   const selectable = (): boolean => props.selectionMode === "multiple";
@@ -669,19 +588,26 @@ export function DataTable<T extends RowData>(props: DataTableProps<T>) {
               if (record !== undefined) props.onRowAction?.(record);
             }
       }
-      class={gridClass}
+      class={cls().grid}
       data-slot="data-table-grid"
     >
-      <TableHeader class={head} data-slot="data-table-header">
+      <TableHeader class={cls().header} data-slot="data-table-header">
         {(column: ColumnItem) => (
-          <HeaderCell column={column} labels={labels()} resizable={props.resizable === true} />
+          <HeaderCell
+            column={column}
+            labels={labels()}
+            resizable={props.resizable === true}
+            classes={cls()}
+          />
         )}
       </TableHeader>
       <TableBody
-        class={body}
+        class={cls().body}
         data-slot="data-table-body"
         renderEmpty={
-          <div class={emptyCell}>{props.empty ?? <EmptyState heading="Nothing here yet" />}</div>
+          <div class={cls().empty} data-slot="data-table-empty">
+            {props.empty ?? <EmptyState heading={messages().nothingHere} />}
+          </div>
         }
       >
         {(item: RowItem) =>
@@ -691,18 +617,20 @@ export function DataTable<T extends RowData>(props: DataTableProps<T>) {
               onLoadMore={() => props.onLoadMore?.()}
               data-slot="data-table-loader"
             >
-              <div class={loading}>
+              <div class={cls().loader}>
                 <Spinner />
-                {labels().loadingMore ?? "Loading more"}
+                {labels().loadingMore}
               </div>
             </TableLoadMoreItem>
           ) : (
             <Row
-              class={row}
+              class={cls().row}
               data-slot="data-table-row"
               data-skeleton={item.kind === "skeleton" ? "" : undefined}
             >
-              {(column: ColumnItem) => <BodyCell item={item} column={column} labels={labels()} />}
+              {(column: ColumnItem) => (
+                <BodyCell item={item} column={column} labels={labels()} classes={cls()} />
+              )}
             </Row>
           )
         }
@@ -744,9 +672,9 @@ export function DataTable<T extends RowData>(props: DataTableProps<T>) {
         );
 
   return (
-    <div class={arc(props.class)} data-slot="data-table">
+    <div class={arc(cls().root, props.class, props.className)} data-slot="data-table">
       <div
-        class={frame}
+        class={cls().frame}
         data-slot="data-table-frame"
         data-scrolls={props.height === undefined ? undefined : ""}
         aria-busy={isLoading() ? "true" : undefined}
@@ -758,23 +686,18 @@ export function DataTable<T extends RowData>(props: DataTableProps<T>) {
         {content()}
         <Show when={props.pagination !== undefined && !isLoading() && pageCount() > 1}>
           <nav
-            class={foot}
-            aria-label={labels().pagination ?? "Pages"}
+            class={cls().pagination}
+            aria-label={labels().pagination}
             data-slot="data-table-pagination"
           >
-            <span class={pageText}>
-              {(
-                labels().page ??
-                ((page: number, pages: number) => `Page ${String(page)} of ${String(pages)}`)
-              )(pageIndex() + 1, pageCount())}
-            </span>
+            <span class={cls().page}>{labels().page(pageIndex() + 1, pageCount())}</span>
             <Button
               variant="outline"
               size="sm"
               isDisabled={pageIndex() <= 0}
               onPress={() => setPageIndex(pageIndex() - 1)}
             >
-              {labels().previous ?? "Previous page"}
+              {labels().previous}
             </Button>
             <Button
               variant="outline"
@@ -782,7 +705,7 @@ export function DataTable<T extends RowData>(props: DataTableProps<T>) {
               isDisabled={pageIndex() >= pageCount() - 1}
               onPress={() => setPageIndex(pageIndex() + 1)}
             >
-              {labels().next ?? "Next page"}
+              {labels().next}
             </Button>
           </nav>
         </Show>
@@ -811,16 +734,17 @@ function rowText(tableRow: TableRow<DataTableFeatures, RowData>, columns: Column
 
 interface HeaderCellProps {
   column: ColumnItem;
-  labels: DataTableLabels;
+  labels: Required<DataTableLabels>;
   resizable: boolean;
+  classes: Slots;
 }
 
 function HeaderCell(props: HeaderCellProps) {
   const column = props.column;
   if (column.id === SELECT) {
     return (
-      <Column class={arc(columnHeader, checkboxCell)} data-slot="data-table-head">
-        <SelectAll label={props.labels.selectAll ?? "Select all"} />
+      <Column class={arc(props.classes.head, props.classes.checkbox)} data-slot="data-table-head">
+        <SelectAll label={props.labels.selectAll} />
       </Column>
     );
   }
@@ -828,7 +752,7 @@ function HeaderCell(props: HeaderCellProps) {
   const sorted = (): false | "asc" | "desc" => header.column.getIsSorted();
   return (
     <Column
-      class={columnHeader}
+      class={props.classes.head}
       data-slot="data-table-head"
       data-align={column.options.align ?? "start"}
     >
@@ -843,7 +767,7 @@ function HeaderCell(props: HeaderCellProps) {
         )}
       </Show>
       <Show when={props.resizable}>
-        <ColumnResizer class={resizer} aria-label={props.labels.resize ?? "Resize column"} />
+        <ColumnResizer class={props.classes.resizer} aria-label={props.labels.resize} />
       </Show>
     </Column>
   );
@@ -882,7 +806,8 @@ function RowCheckbox(props: { label: string }) {
 interface BodyCellProps {
   item: RowItem;
   column: ColumnItem;
-  labels: DataTableLabels;
+  labels: Required<DataTableLabels>;
+  classes: Slots;
 }
 
 function BodyCell(props: BodyCellProps) {
@@ -890,23 +815,31 @@ function BodyCell(props: BodyCellProps) {
   const column = props.column;
   if (column.id === SELECT) {
     return (
-      <Cell class={arc(cell, checkboxCell)} data-slot="data-table-cell">
+      <Cell class={arc(props.classes.cell, props.classes.checkbox)} data-slot="data-table-cell">
         <Show when={item.kind === "row"}>
-          <RowCheckbox label={props.labels.selectRow ?? "Select"} />
+          <RowCheckbox label={props.labels.selectRow} />
         </Show>
       </Cell>
     );
   }
   if (item.kind !== "row") {
     return (
-      <Cell class={cell} data-slot="data-table-cell" data-align={column.options.align ?? "start"}>
-        <Skeleton class={skeletonBar} />
+      <Cell
+        class={props.classes.cell}
+        data-slot="data-table-cell"
+        data-align={column.options.align ?? "start"}
+      >
+        <Skeleton class={props.classes.skeleton} />
       </Cell>
     );
   }
   const found = item.row.getAllCellsByColumnId()[column.id];
   return (
-    <Cell class={cell} data-slot="data-table-cell" data-align={column.options.align ?? "start"}>
+    <Cell
+      class={props.classes.cell}
+      data-slot="data-table-cell"
+      data-align={column.options.align ?? "start"}
+    >
       {found === undefined ? null : <FlexRender cell={found} />}
     </Cell>
   );

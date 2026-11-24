@@ -7,6 +7,7 @@ import {
   createUniqueId,
   untrack,
 } from "@barqjs/core";
+import { variants } from "@barqjs/css";
 import { ChevronDown } from "@barqjs/lucide/icons/chevron-down";
 import type { UiProps } from "@barqjs/ui/props";
 import { Separator } from "@barqjs/ui/separator";
@@ -35,7 +36,23 @@ import {
 import { getRequestEvent, isServer } from "@barqjs/web";
 
 import { arcLayer as arc } from "../layer.ts";
+import { type Customisable, parts } from "../lib/parts.ts";
+import {
+  bg,
+  edge,
+  fg,
+  focus,
+  gap,
+  layout,
+  motion,
+  rounded,
+  space,
+  truncate,
+  type,
+  zIndex,
+} from "../style/index.ts";
 import { Breadcrumbs } from "./breadcrumbs.tsx";
+import { useArcMessages } from "./messages.ts";
 import { type LinkTarget, routerLink } from "./link.ts";
 
 /** The cookie ui's `SidebarProvider` writes the open state to. */
@@ -66,7 +83,7 @@ export interface NavGroup {
   items: readonly NavItem[];
 }
 
-export interface AppShellProps extends UiProps {
+export interface AppShellProps extends Omit<UiProps, "class" | "className">, Customisable<Slots> {
   /** The sidebar's navigation, as data. */
   navigation: readonly NavGroup[];
   /** The top of the sidebar: the product's mark, a workspace switcher. */
@@ -90,98 +107,49 @@ export interface AppShellProps extends UiProps {
   variant?: SidebarVariant;
   /** @default "left", which is the start side's edge in a left-to-right page */
   side?: SidebarSide;
-  /** Names the sidebar's navigation landmark. @default "Main" */
+  /** Names the sidebar's navigation landmark. @default the provider's `mainNavigation`, "Main" */
   navigationLabel?: string;
-  /** The link to the page past the navigation, shown on focus. @default "Skip to content" */
+  /** The link to the page past the navigation, shown on focus. @default the provider's `skipToContent` */
   skipLabel?: string;
 }
 
-const skip = arc({
-  position: "fixed",
-  insetInlineStart: "calc(var(--spacing) * 2)",
-  top: "calc(var(--spacing) * 2)",
-  zIndex: "var(--z-toast, 60)",
-  borderRadius: "var(--radius)",
-  backgroundColor: "var(--background)",
-  color: "var(--foreground)",
-  paddingInline: "calc(var(--spacing) * 3)",
-  paddingBlock: "calc(var(--spacing) * 2)",
-  fontSize: "var(--text-sm)",
-  boxShadow: "0 0 0 2px var(--ring)",
-  translate: "0 calc(-100% - var(--spacing) * 4)",
-  ":focus": { translate: "0 0" },
-  ":focus-visible": { translate: "0 0" },
+export const appShellStyles = variants({
+  slots: {
+    root: arc({}),
+    skip: arc(rounded.md, bg.page, fg.default, type.sm, {
+      position: "fixed",
+      insetInlineStart: space.x2,
+      top: space.x2,
+      zIndex: zIndex.toast,
+      paddingInline: space.x3,
+      paddingBlock: space.x2,
+      boxShadow: "0 0 0 2px var(--ring)",
+      translate: "0 calc(-100% - var(--spacing) * 4)",
+      ":focus": { translate: "0 0" },
+      ":focus-visible": { translate: "0 0" },
+    }),
+    nav: arc(layout.column, gap[2]),
+    label: arc(layout.grow, layout.minZero, truncate),
+    chevron: arc(layout.noShrink, layout.pushEnd, motion.transform, {
+      '[aria-expanded="false"] > &': { rotate: "-90deg" },
+      '[aria-expanded="false"] > &:dir(rtl)': { rotate: "90deg" },
+    }),
+    inset: arc(layout.minZero),
+    topBar: arc(layout.row, layout.noShrink, gap[2], edge.bottom, bg.page, {
+      position: "sticky",
+      top: "0px",
+      zIndex: zIndex.header,
+      height: space.x14,
+      paddingInline: space.x4,
+    }),
+    divider: arc({ height: space.x4 }),
+    trail: arc(layout.row, layout.minZero, layout.grow),
+    actions: arc(layout.row, layout.noShrink, gap[2]),
+    main: arc(layout.column, layout.minZero, layout.grow, focus.none),
+  },
 });
 
-const nav = arc({
-  display: "flex",
-  flexDirection: "column",
-  gap: "calc(var(--spacing) * 2)",
-});
-
-const label = arc({
-  flex: "1",
-  minWidth: "0px",
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-  whiteSpace: "nowrap",
-});
-
-const chevron = arc({
-  flexShrink: "0",
-  marginInlineStart: "auto",
-  transitionProperty: "rotate",
-  transitionDuration: "var(--duration-fast, 150ms)",
-  '[aria-expanded="false"] > &': { rotate: "-90deg" },
-  '[aria-expanded="false"] > &:dir(rtl)': { rotate: "90deg" },
-  "@media (prefers-reduced-motion: reduce)": { transitionDuration: "0s" },
-});
-
-const inset = arc({
-  minWidth: "0px",
-});
-
-const topBar = arc({
-  position: "sticky",
-  top: "0px",
-  zIndex: "var(--z-header, 20)",
-  display: "flex",
-  height: "calc(var(--spacing) * 14)",
-  flexShrink: "0",
-  alignItems: "center",
-  gap: "calc(var(--spacing) * 2)",
-  borderBlockEndWidth: "1px",
-  borderBlockEndStyle: "solid",
-  borderColor: "var(--border)",
-  backgroundColor: "var(--background)",
-  paddingInline: "calc(var(--spacing) * 4)",
-});
-
-const divider = arc({
-  height: "calc(var(--spacing) * 4)",
-});
-
-const trailBox = arc({
-  display: "flex",
-  minWidth: "0px",
-  flex: "1",
-  alignItems: "center",
-});
-
-const actionsBox = arc({
-  display: "flex",
-  flexShrink: "0",
-  alignItems: "center",
-  gap: "calc(var(--spacing) * 2)",
-});
-
-const main = arc({
-  display: "flex",
-  minWidth: "0px",
-  flex: "1",
-  flexDirection: "column",
-  outlineStyle: "none",
-});
+type Slots = ReturnType<typeof appShellStyles>;
 
 /** A cookie's value from a `Cookie` header or `document.cookie`. */
 function readCookie(header: string | null | undefined, key: string): string | undefined {
@@ -233,17 +201,20 @@ function rememberedOpen(): boolean {
 export function AppShell(props: AppShellProps) {
   const mainId = createUniqueId();
   const initiallyOpen = untrack(() => props.defaultOpen) ?? rememberedOpen();
+  const messages = useArcMessages();
+  const cls = (): Slots => parts(appShellStyles(), props.classes);
 
   return (
     <SidebarProvider
       {...props}
       data-slot={props["data-slot"] ?? "app-shell"}
+      class={arc(cls().root, props.class, props.className)}
       defaultOpen={initiallyOpen}
       open={props.open}
       onOpenChange={props.onOpenChange}
     >
-      <a href={`#${mainId}`} class={skip} data-slot="app-shell-skip">
-        {props.skipLabel ?? "Skip to content"}
+      <a href={`#${mainId}`} class={cls().skip} data-slot="app-shell-skip">
+        {props.skipLabel ?? messages().skipToContent}
       </a>
       <Sidebar
         collapsible={props.collapsible ?? "icon"}
@@ -254,8 +225,14 @@ export function AppShell(props: AppShellProps) {
           <SidebarHeader>{props.header}</SidebarHeader>
         </Show>
         <SidebarContent>
-          <nav class={nav} data-slot="app-shell-nav" aria-label={props.navigationLabel ?? "Main"}>
-            <For each={props.navigation}>{(group: NavGroup) => <NavGroupView group={group} />}</For>
+          <nav
+            class={cls().nav}
+            data-slot="app-shell-nav"
+            aria-label={props.navigationLabel ?? messages().mainNavigation}
+          >
+            <For each={props.navigation}>
+              {(group: NavGroup) => <NavGroupView group={group} classes={cls()} />}
+            </For>
           </nav>
         </SidebarContent>
         <Show when={props.footer}>
@@ -263,20 +240,20 @@ export function AppShell(props: AppShellProps) {
         </Show>
         <SidebarRail />
       </Sidebar>
-      <SidebarInset class={inset}>
-        <header class={topBar} data-slot="app-shell-top-bar">
+      <SidebarInset class={cls().inset}>
+        <header class={cls().topBar} data-slot="app-shell-top-bar">
           <SidebarTrigger />
-          <Separator orientation="vertical" class={divider} />
-          <div class={trailBox} data-slot="app-shell-trail">
+          <Separator orientation="vertical" class={cls().divider} />
+          <div class={cls().trail} data-slot="app-shell-trail">
             {props.trail === undefined ? <Breadcrumbs /> : props.trail}
           </div>
           <Show when={props.actions}>
-            <div class={actionsBox} data-slot="app-shell-actions">
+            <div class={cls().actions} data-slot="app-shell-actions">
               {props.actions}
             </div>
           </Show>
         </header>
-        <div id={mainId} tabIndex={-1} class={main} data-slot="app-shell-main">
+        <div id={mainId} tabIndex={-1} class={cls().main} data-slot="app-shell-main">
           {props.children}
         </div>
       </SidebarInset>
@@ -284,7 +261,7 @@ export function AppShell(props: AppShellProps) {
   );
 }
 
-function NavGroupView(props: { group: NavGroup }) {
+function NavGroupView(props: { group: NavGroup; classes: Slots }) {
   const labelId = createUniqueId();
   const group = props.group;
   return (
@@ -296,7 +273,9 @@ function NavGroupView(props: { group: NavGroup }) {
         <SidebarGroupLabel id={labelId}>{group.label}</SidebarGroupLabel>
       </Show>
       <SidebarMenu>
-        <For each={group.items}>{(item: NavItem) => <NavEntry item={item} />}</For>
+        <For each={group.items}>
+          {(item: NavItem) => <NavEntry item={item} classes={props.classes} />}
+        </For>
       </SidebarMenu>
     </SidebarGroup>
   );
@@ -307,7 +286,7 @@ function closeSheet(sidebar: ReturnType<typeof useSidebar>): void {
   if (sidebar.isMobile()) sidebar.setOpenMobile(false);
 }
 
-function NavEntry(props: { item: NavItem }) {
+function NavEntry(props: { item: NavItem; classes: Slots }) {
   const sidebar = useSidebar();
   const item = props.item;
   const badgeId = createUniqueId();
@@ -329,8 +308,16 @@ function NavEntry(props: { item: NavItem }) {
           onClick={() => setExpanded((open) => !open)}
         >
           {Icon === undefined ? null : <Icon />}
-          <span class={label}>{item.label}</span>
-          {disclosure ? <ChevronDown class={chevron} aria-hidden="true" /> : null}
+          <span class={props.classes.label} data-slot="app-shell-label">
+            {item.label}
+          </span>
+          {disclosure ? (
+            <ChevronDown
+              class={props.classes.chevron}
+              data-slot="app-shell-chevron"
+              aria-hidden="true"
+            />
+          ) : null}
         </SidebarMenuButton>
       ) : (
         <SidebarMenuButton
@@ -347,7 +334,9 @@ function NavEntry(props: { item: NavItem }) {
           onMouseLeave={link.onMouseLeave}
         >
           {Icon === undefined ? null : <Icon />}
-          <span class={label}>{item.label}</span>
+          <span class={props.classes.label} data-slot="app-shell-label">
+            {item.label}
+          </span>
         </SidebarMenuButton>
       )}
       <Show when={item.badge !== undefined}>
@@ -356,7 +345,9 @@ function NavEntry(props: { item: NavItem }) {
       <Show when={item.items !== undefined && item.items.length > 0}>
         <SidebarMenuSub id={subId} hidden={disclosure && !expanded()}>
           <For each={item.items ?? []}>
-            {(child: NavSubItem) => <NavSubEntry item={child} sidebar={sidebar} />}
+            {(child: NavSubItem) => (
+              <NavSubEntry item={child} sidebar={sidebar} classes={props.classes} />
+            )}
           </For>
         </SidebarMenuSub>
       </Show>
@@ -364,7 +355,11 @@ function NavEntry(props: { item: NavItem }) {
   );
 }
 
-function NavSubEntry(props: { item: NavSubItem; sidebar: ReturnType<typeof useSidebar> }) {
+function NavSubEntry(props: {
+  item: NavSubItem;
+  sidebar: ReturnType<typeof useSidebar>;
+  classes: Slots;
+}) {
   const item = props.item;
   const sidebar = props.sidebar;
   const link = routerLink(item);
@@ -381,7 +376,9 @@ function NavSubEntry(props: { item: NavSubItem; sidebar: ReturnType<typeof useSi
         onMouseEnter={link.onMouseEnter}
         onMouseLeave={link.onMouseLeave}
       >
-        <span class={label}>{item.label}</span>
+        <span class={props.classes.label} data-slot="app-shell-label">
+          {item.label}
+        </span>
       </SidebarMenuSubButton>
     </SidebarMenuSubItem>
   );

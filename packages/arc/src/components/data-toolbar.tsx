@@ -1,4 +1,6 @@
-import { type Child, For, Show, createSignal, untrack } from "@barqjs/core";
+import { type Child, For, Show, untrack } from "@barqjs/core";
+import { variants } from "@barqjs/css";
+import { controllable } from "@barqjs/aria/utils";
 import { CirclePlus } from "@barqjs/lucide/icons/circle-plus";
 import { Search } from "@barqjs/lucide/icons/search";
 import { Settings2 } from "@barqjs/lucide/icons/settings-2";
@@ -18,6 +20,10 @@ import {
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@barqjs/ui/input-group";
 
 import { arcLayer as arc } from "../layer.ts";
+import { type Customisable, parts } from "../lib/parts.ts";
+import { type Bound, bound, withoutParams } from "../lib/search-state.ts";
+import { edge, fg, gap, layout, space, truncate, type } from "../style/index.ts";
+import { useArcMessages } from "./messages.ts";
 
 export interface DataToolbarSearch {
   /** Names the field for a screen reader. */
@@ -78,7 +84,7 @@ export interface DataToolbarLabels {
   clearSelection?: string;
 }
 
-export interface DataToolbarProps {
+export interface DataToolbarProps extends Customisable<Slots> {
   search?: DataToolbarSearch;
   filters?: readonly DataToolbarFilter[];
   /** The columns the view options can show or hide. */
@@ -90,109 +96,27 @@ export interface DataToolbarProps {
   /** At the end: an export, a button that creates. */
   actions?: Child;
   labels?: DataToolbarLabels;
-  class?: string;
 }
 
-const root = arc({
-  display: "flex",
-  flexWrap: "wrap",
-  alignItems: "center",
-  gap: "calc(var(--spacing) * 2)",
-  paddingBlockEnd: "calc(var(--spacing) * 3)",
-});
-
-const start = arc({
-  display: "flex",
-  minWidth: "0px",
-  flex: "1 1 auto",
-  flexWrap: "wrap",
-  alignItems: "center",
-  gap: "calc(var(--spacing) * 2)",
-});
-
-const end = arc({
-  display: "flex",
-  flexShrink: "0",
-  alignItems: "center",
-  gap: "calc(var(--spacing) * 2)",
-  marginInlineStart: "auto",
-});
-
-const searchBox = arc({
-  width: "min(100%, 16rem)",
-});
-
-const chip = arc({
-  borderStyle: "dashed",
-  '[data-active="true"]': {
-    borderStyle: "solid",
+export const dataToolbarStyles = variants({
+  slots: {
+    root: arc(layout.row, layout.wrap, gap[2], { paddingBlockEnd: space.x3 }),
+    start: arc(layout.row, layout.wrap, layout.minZero, gap[2], { flex: "1 1 auto" }),
+    end: arc(layout.row, layout.noShrink, layout.pushEnd, gap[2]),
+    search: arc({ width: "min(100%, 16rem)" }),
+    filter: arc({ borderStyle: "dashed", '[data-active="true"]': { borderStyle: "solid" } }),
+    chosen: arc(truncate, edge.start, type.normal, {
+      maxWidth: "12rem",
+      paddingInlineStart: space.x2,
+    }),
+    optionCount: arc(layout.pushEnd, fg.muted, type.numeric, { paddingInlineStart: space.x4 }),
+    selected: arc(type.medium, type.numeric),
+    clear: arc({}),
+    view: arc({}),
   },
 });
 
-const chosen = arc({
-  maxWidth: "12rem",
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-  borderInlineStartWidth: "1px",
-  borderInlineStartStyle: "solid",
-  borderColor: "var(--border)",
-  paddingInlineStart: "calc(var(--spacing) * 2)",
-  fontWeight: "var(--font-weight-normal)",
-});
-
-const optionCount = arc({
-  marginInlineStart: "auto",
-  paddingInlineStart: "calc(var(--spacing) * 4)",
-  color: "var(--muted-foreground)",
-  fontVariantNumeric: "tabular-nums",
-});
-
-const selectedText = arc({
-  fontWeight: "var(--font-weight-medium)",
-  fontVariantNumeric: "tabular-nums",
-});
-
-/** A value that is the caller's, the toolbar's own, or a search parameter's. */
-interface Bound<T> {
-  read: () => T;
-  write: (next: T) => void;
-  /** The search parameter it lives in, when it does. */
-  param: string | undefined;
-}
-
-type Url = ReturnType<typeof useSearchParams>;
-
-function bound<T>(
-  url: Url | undefined,
-  param: string | undefined,
-  given: () => T | undefined,
-  initial: T,
-  parse: (raw: string | null) => T,
-  format: (value: T) => string,
-  notify: (value: T) => void,
-): Bound<T> {
-  const [own, setOwn] = createSignal<{ value: T }>({ value: initial });
-  return {
-    param: url === undefined ? undefined : param,
-    read: () => {
-      if (url !== undefined && param !== undefined) return parse(url[0]().get(param));
-      return given() ?? own().value;
-    },
-    write: (next) => {
-      if (url !== undefined && param !== undefined) {
-        url[1]((current) => {
-          const kept: Record<string, string> = {};
-          for (const [key, value] of current) kept[key] = value;
-          kept[param] = format(next);
-          return kept;
-        });
-      } else if (given() === undefined) {
-        setOwn({ value: next });
-      }
-      notify(next);
-    },
-  };
-}
+type Slots = ReturnType<typeof dataToolbarStyles>;
 
 const splitValues = (raw: string | null): string[] =>
   raw === null || raw === "" ? [] : raw.split(",");
@@ -218,7 +142,17 @@ const splitValues = (raw: string | null): string[] =>
  * list, then a solid one naming what it holds.
  */
 export function DataToolbar(props: DataToolbarProps) {
-  const labels = (): DataToolbarLabels => props.labels ?? {};
+  const messages = useArcMessages();
+  const labels = (): Required<DataToolbarLabels> => ({
+    toolbar: messages().filters,
+    clear: messages().clearFilters,
+    view: messages().view,
+    columns: messages().columns,
+    selected: messages().selected,
+    clearSelection: messages().clearSelection,
+    ...props.labels,
+  });
+  const cls = (): Slots => parts(dataToolbarStyles(), props.classes);
   const wantsUrl = untrack(
     () =>
       props.search?.param !== undefined ||
@@ -271,11 +205,7 @@ export function DataToolbar(props: DataToolbarProps) {
       if (held !== undefined && valueOf(filter).length > 0) empty(held, () => held.write([]));
     }
     if (url !== undefined && removed.size > 0) {
-      url[1]((current) => {
-        const kept: Record<string, string> = {};
-        for (const [key, value] of current) if (!removed.has(key)) kept[key] = value;
-        return kept;
-      });
+      url[1]((current) => withoutParams(current, removed));
       if (search.param !== undefined && removed.has(search.param)) props.search?.onChange?.("");
       for (const filter of props.filters ?? []) {
         if (filter.param !== undefined && removed.has(filter.param)) filter.onChange?.([]);
@@ -283,38 +213,36 @@ export function DataToolbar(props: DataToolbarProps) {
     }
   };
 
-  const [ownVisibility, setOwnVisibility] = createSignal<ColumnVisibilityState>({});
-  const visibility = (): ColumnVisibilityState => props.columnVisibility ?? ownVisibility();
-  const setVisible = (id: string, visible: boolean): void => {
-    const next = { ...visibility(), [id]: visible };
-    if (props.columnVisibility === undefined) setOwnVisibility(next);
-    props.onColumnVisibilityChange?.(next);
-  };
+  const [visibility, setVisibility] = controllable<ColumnVisibilityState>(
+    () => props.columnVisibility,
+    {},
+    (next) => props.onColumnVisibilityChange?.(next),
+  );
+  const setVisible = (id: string, visible: boolean): void =>
+    setVisibility((current) => ({ ...current, [id]: visible }));
 
   const selecting = (): boolean => (props.selection?.count ?? 0) > 0;
 
   return (
     <div
       role="search"
-      aria-label={labels().toolbar ?? "Filters"}
-      class={arc(root, props.class)}
+      aria-label={labels().toolbar}
+      class={arc(cls().root, props.class, props.className)}
       data-slot="data-toolbar"
     >
-      <div class={start} data-slot="data-toolbar-start">
+      <div class={cls().start} data-slot="data-toolbar-start">
         <Show
           when={!selecting()}
           fallback={
             <>
-              <span class={selectedText} role="status" data-slot="data-toolbar-selected">
-                {(labels().selected ?? ((n: number) => `${String(n)} selected`))(
-                  props.selection?.count ?? 0,
-                )}
+              <span class={cls().selected} role="status" data-slot="data-toolbar-selected">
+                {labels().selected(props.selection?.count ?? 0)}
               </span>
               {props.selection?.actions}
               <Button
                 variant="ghost"
                 size="icon-sm"
-                aria-label={labels().clearSelection ?? "Clear selection"}
+                aria-label={labels().clearSelection}
                 onPress={() => props.selection?.onClear()}
               >
                 <X aria-hidden="true" />
@@ -323,7 +251,7 @@ export function DataToolbar(props: DataToolbarProps) {
           }
         >
           <Show when={props.search !== undefined}>
-            <InputGroup class={searchBox} data-slot="data-toolbar-search">
+            <InputGroup class={cls().search} data-slot="data-toolbar-search">
               <InputGroupAddon>
                 <Search aria-hidden="true" />
               </InputGroupAddon>
@@ -344,31 +272,39 @@ export function DataToolbar(props: DataToolbarProps) {
                 filter={filter}
                 value={valueOf(filter)}
                 onChange={(next) => filters.get(filter.id)?.write(next)}
+                classes={cls()}
+                summarise={labels().selected}
               />
             )}
           </For>
           <Show when={isFiltered()}>
-            <Button variant="ghost" size="sm" onPress={clear} data-slot="data-toolbar-clear">
-              {labels().clear ?? "Clear filters"}
+            <Button
+              variant="ghost"
+              size="sm"
+              onPress={clear}
+              class={cls().clear}
+              data-slot="data-toolbar-clear"
+            >
+              {labels().clear}
             </Button>
           </Show>
         </Show>
       </div>
-      <div class={end} data-slot="data-toolbar-end">
+      <div class={cls().end} data-slot="data-toolbar-end">
         <Show when={(props.columns ?? []).length > 0}>
           <DropdownMenu>
             <DropdownMenuTrigger>
-              <Button variant="outline" size="sm" data-slot="data-toolbar-view">
+              <Button variant="outline" size="sm" class={cls().view} data-slot="data-toolbar-view">
                 <Settings2 aria-hidden="true" />
-                {labels().view ?? "View"}
+                {labels().view}
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent
               align="end"
-              aria-label={labels().columns ?? "Columns"}
+              aria-label={labels().columns}
               shouldCloseOnSelect={false}
             >
-              <DropdownMenuLabel>{labels().columns ?? "Columns"}</DropdownMenuLabel>
+              <DropdownMenuLabel>{labels().columns}</DropdownMenuLabel>
               <For each={() => props.columns ?? []}>
                 {(column: DataToolbarColumn) => (
                   <DropdownMenuCheckboxItem
@@ -392,6 +328,8 @@ interface FilterChipProps {
   filter: DataToolbarFilter;
   value: string[];
   onChange: (value: string[]) => void;
+  classes: Slots;
+  summarise: (count: number) => string;
 }
 
 function FilterChip(props: FilterChipProps) {
@@ -402,7 +340,7 @@ function FilterChip(props: FilterChipProps) {
     const names = filter.options
       .filter((option) => props.value.includes(option.value))
       .map((option) => option.label);
-    return names.length > 2 ? `${String(names.length)} selected` : names.join(", ");
+    return names.length > 2 ? props.summarise(names.length) : names.join(", ");
   };
   const toggle = (value: string, checked: boolean): void => {
     const rest = props.value.filter((each) => each !== value);
@@ -415,14 +353,16 @@ function FilterChip(props: FilterChipProps) {
         <Button
           variant="outline"
           size="sm"
-          class={chip}
+          class={props.classes.filter}
           data-slot="data-toolbar-filter"
           data-active={active() ? "true" : "false"}
         >
           <CirclePlus aria-hidden="true" />
           {filter.label}
           <Show when={active()}>
-            <span class={chosen}>{summary()}</span>
+            <span class={props.classes.chosen} data-slot="data-toolbar-chosen">
+              {summary()}
+            </span>
           </Show>
         </Button>
       </DropdownMenuTrigger>
@@ -438,7 +378,7 @@ function FilterChip(props: FilterChipProps) {
                 {(option: DataToolbarFilterOption) => (
                   <DropdownMenuRadioItem value={option.value}>
                     {option.label}
-                    <OptionCount count={option.count} />
+                    <OptionCount count={option.count} class={props.classes.optionCount} />
                   </DropdownMenuRadioItem>
                 )}
               </For>
@@ -452,7 +392,7 @@ function FilterChip(props: FilterChipProps) {
                 onCheckedChange={(checked: boolean) => toggle(option.value, checked)}
               >
                 {option.label}
-                <OptionCount count={option.count} />
+                <OptionCount count={option.count} class={props.classes.optionCount} />
               </DropdownMenuCheckboxItem>
             )}
           </For>
@@ -462,10 +402,10 @@ function FilterChip(props: FilterChipProps) {
   );
 }
 
-function OptionCount(props: { count?: number }) {
+function OptionCount(props: { count?: number; class: string }) {
   return (
     <Show when={props.count !== undefined}>
-      <span class={optionCount} data-slot="data-toolbar-option-count">
+      <span class={props.class} data-slot="data-toolbar-option-count">
         {String(props.count)}
       </span>
     </Show>

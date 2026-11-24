@@ -1,4 +1,6 @@
 import { For, Show, createSignal } from "@barqjs/core";
+import { variants } from "@barqjs/css";
+import { on } from "@barqjs/ui/conditions";
 import { Ellipsis } from "@barqjs/lucide/icons/ellipsis";
 import { type RouteMatch, useMatches } from "@barqjs/router";
 import {
@@ -13,6 +15,20 @@ import type { UiProps } from "@barqjs/ui/props";
 import { srOnly } from "@barqjs/ui/sr-only";
 
 import { arcLayer as arc } from "../layer.ts";
+import { type Customisable, parts } from "../lib/parts.ts";
+import {
+  bg,
+  edge,
+  fg,
+  focus,
+  glyph,
+  layout,
+  rounded,
+  space,
+  interaction,
+  truncate,
+} from "../style/index.ts";
+import { useArcMessages } from "./messages.ts";
 import { type LinkTarget, routerLink } from "./link.ts";
 
 /** One step of the trail. Without `to` it is text, and the last step always is. */
@@ -41,70 +57,43 @@ function routeCrumbs(matches: readonly RouteMatch[]): Crumb[] {
   return out;
 }
 
-const root = arc({
-  minWidth: "0px",
-  containerType: "inline-size",
-  "& [data-slot=breadcrumb-list]": {
-    flexWrap: "nowrap",
-  },
-  "& [data-slot=breadcrumbs-more]": {
-    display: "none",
-  },
-  "@container (width < 32rem)": {
-    "&:not([data-expanded]) [data-middle]": {
-      display: "none",
-    },
-    "& [data-slot=breadcrumbs-more]": {
-      display: "inline-flex",
-    },
-  },
-});
-
-const item = arc({
-  minWidth: "0px",
-});
-
-const crumbText = arc({
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-  whiteSpace: "nowrap",
-  maxWidth: "16rem",
-  borderRadius: "calc(var(--radius) * 0.6)",
-  outlineStyle: "none",
-  ":focus-visible": {
-    boxShadow: "0 0 0 2px var(--ring)",
+export const breadcrumbsStyles = variants({
+  slots: {
+    root: arc(layout.minZero, layout.container, {
+      "& [data-slot=breadcrumb-list]": { flexWrap: "nowrap" },
+      "& [data-slot=breadcrumbs-more]": { display: "none" },
+      [on.cqBelowMd]: {
+        "&:not([data-expanded]) [data-middle]": { display: "none" },
+        "& [data-slot=breadcrumbs-more]": { display: "inline-flex" },
+      },
+    }),
+    list: arc({}),
+    item: arc(layout.minZero),
+    text: arc(truncate, rounded.sm, focus.none, focus.visible, { maxWidth: "16rem" }),
+    separator: arc({}),
+    expand: arc(
+      layout.inlineCentre,
+      rounded.sm,
+      bg.transparent,
+      fg.inherit,
+      edge.none,
+      focus.none,
+      focus.visible,
+      interaction.hoverText,
+      interaction.pressable,
+      glyph.md,
+      { width: space.x6, height: space.x6, padding: "0px" },
+    ),
   },
 });
 
-const more = arc({
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  width: "calc(var(--spacing) * 6)",
-  height: "calc(var(--spacing) * 6)",
-  padding: "0px",
-  border: "0px",
-  borderRadius: "calc(var(--radius) * 0.6)",
-  backgroundColor: "transparent",
-  color: "inherit",
-  cursor: "pointer",
-  outlineStyle: "none",
-  "& > svg": {
-    width: "calc(var(--spacing) * 4)",
-    height: "calc(var(--spacing) * 4)",
-  },
-  "@media (hover: hover)": {
-    ":hover": { color: "var(--foreground)" },
-  },
-  ":focus-visible": {
-    boxShadow: "0 0 0 2px var(--ring)",
-  },
-});
+type Slots = ReturnType<typeof breadcrumbsStyles>;
 
-export interface BreadcrumbsProps extends UiProps {
+export interface BreadcrumbsProps
+  extends Omit<UiProps, "class" | "className">, Customisable<Slots> {
   /** The trail itself. Left out, it is read from the matched routes' `staticData.crumb`. */
   items?: readonly Crumb[];
-  /** Names the button that shows the steps a narrow trail hides. @default "Show the full path" */
+  /** Names the button that shows the steps a narrow trail hides. @default the provider's `showFullPath` */
   expandLabel?: string;
 }
 
@@ -135,6 +124,8 @@ interface Placed {
 export function Breadcrumbs(props: BreadcrumbsProps) {
   const matches = useMatches();
   const [expanded, setExpanded] = createSignal(false);
+  const messages = useArcMessages();
+  const cls = (): Slots => parts(breadcrumbsStyles(), props.classes);
   const crumbs = (): readonly Crumb[] => props.items ?? routeCrumbs(matches());
   const placed = (): Placed[] => {
     const all = crumbs();
@@ -150,33 +141,36 @@ export function Breadcrumbs(props: BreadcrumbsProps) {
   return (
     <Breadcrumb
       {...props}
-      class={arc(root, props.class, props.className)}
+      class={arc(cls().root, props.class, props.className)}
       data-slot={props["data-slot"] ?? "breadcrumbs"}
-      aria-label={props["aria-label"] ?? "Breadcrumb"}
+      aria-label={props["aria-label"] ?? messages().breadcrumb}
       data-expanded={expanded() ? "" : undefined}
     >
-      <BreadcrumbList>
+      <BreadcrumbList class={cls().list}>
         <For each={placed()}>
           {(entry: Placed) => (
             <>
               <Show when={!entry.first}>
-                <BreadcrumbSeparator data-middle={entry.middle ? "" : undefined} />
+                <BreadcrumbSeparator
+                  class={cls().separator}
+                  data-middle={entry.middle ? "" : undefined}
+                />
               </Show>
-              <BreadcrumbItem class={item} data-middle={entry.middle ? "" : undefined}>
-                <CrumbStep crumb={entry.crumb} last={entry.last} />
+              <BreadcrumbItem class={cls().item} data-middle={entry.middle ? "" : undefined}>
+                <CrumbStep crumb={entry.crumb} last={entry.last} text={cls().text} />
               </BreadcrumbItem>
               <Show when={entry.hidesMiddle}>
-                <BreadcrumbSeparator data-slot="breadcrumbs-more" />
+                <BreadcrumbSeparator class={cls().separator} data-slot="breadcrumbs-more" />
                 <BreadcrumbItem data-slot="breadcrumbs-more">
                   <button
                     type="button"
-                    class={more}
+                    class={cls().expand}
                     data-slot="breadcrumbs-expand"
                     aria-expanded={expanded() ? "true" : "false"}
                     onClick={() => setExpanded((open) => !open)}
                   >
                     <Ellipsis aria-hidden="true" />
-                    <span class={srOnly}>{props.expandLabel ?? "Show the full path"}</span>
+                    <span class={srOnly}>{props.expandLabel ?? messages().showFullPath}</span>
                   </button>
                 </BreadcrumbItem>
               </Show>
@@ -188,18 +182,18 @@ export function Breadcrumbs(props: BreadcrumbsProps) {
   );
 }
 
-function CrumbStep(props: { crumb: Crumb; last: boolean }) {
+function CrumbStep(props: { crumb: Crumb; last: boolean; text: string }) {
   const crumb = props.crumb;
   if (props.last) {
     return (
-      <BreadcrumbPage class={crumbText} title={crumb.label}>
+      <BreadcrumbPage class={props.text} title={crumb.label}>
         {crumb.label}
       </BreadcrumbPage>
     );
   }
   if (crumb.to === undefined) {
     return (
-      <span class={crumbText} data-slot="breadcrumbs-text" title={crumb.label}>
+      <span class={props.text} data-slot="breadcrumbs-text" title={crumb.label}>
         {crumb.label}
       </span>
     );
@@ -207,7 +201,7 @@ function CrumbStep(props: { crumb: Crumb; last: boolean }) {
   const link = routerLink({ ...crumb, to: crumb.to });
   return (
     <BreadcrumbLink
-      class={crumbText}
+      class={props.text}
       href={link.href()}
       title={crumb.label}
       onClick={link.onClick}
