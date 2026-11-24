@@ -33,6 +33,16 @@ export type Moment = Date | number | string;
 
 const toDate = (moment: Moment): Date => (moment instanceof Date ? moment : new Date(moment));
 
+/** The calendar day a moment falls on in a zone, as `YYYY-MM-DD`, for grouping by day. */
+export function dayKey(moment: Moment, timeZone: string | undefined): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(toDate(moment));
+}
+
 /**
  * Whether this is the browser after hydration, when its own clock and time
  * zone may be read. The server and the hydrating page answer false, so they

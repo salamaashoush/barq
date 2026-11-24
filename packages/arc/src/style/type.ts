@@ -48,6 +48,8 @@ export const type = {
   stat: arc(display, numeric),
   /** Figures that line up in a column or hold still while they change. */
   numeric: arc(numeric),
+  /** Text as it was typed: its line breaks kept, and a long word broken wherever it must. */
+  written: arc({ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }),
   mono: arc({ fontFamily: "var(--font-mono)" }),
   sans: arc({ fontFamily: "var(--font-sans)" }),
   /** Sizes and weights on their own, for a part whose role is set elsewhere. */

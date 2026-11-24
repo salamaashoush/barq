@@ -35,7 +35,7 @@ import type { Tone } from "../theme/tokens.ts";
 import type { NavIcon } from "./app-shell.tsx";
 import type { Person } from "./avatar-stack.tsx";
 import { EmptyState } from "./empty-state.tsx";
-import { type Moment, RelativeTime } from "./format.tsx";
+import { type Moment, RelativeTime, dayKey } from "./format.tsx";
 import { IconButton } from "./icon-button.tsx";
 import { Indicator } from "./indicator.tsx";
 import { useArcMessages } from "./messages.ts";
@@ -150,16 +150,6 @@ interface Group {
   key: string;
   label: string;
   items: NotificationItem[];
-}
-
-function dayKey(moment: Moment, zone: string | undefined): string {
-  const date = moment instanceof Date ? moment : new Date(moment);
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: zone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(date);
 }
 
 /**

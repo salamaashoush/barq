@@ -16,3 +16,12 @@ export {
   type TypingIndicatorProps,
   typingIndicatorStyles,
 } from "./typing-indicator.tsx";
+export { MessageItem, type MessageItemProps, messageItemStyles } from "./message-item.tsx";
+export type {
+  ChatAttachment,
+  ChatMessage,
+  ChatPerson,
+  DeliveryState,
+  MessageHandlers,
+  ThreadSummary,
+} from "./model.ts";

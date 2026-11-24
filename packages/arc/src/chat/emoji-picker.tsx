@@ -35,6 +35,7 @@ import {
   gap,
   interaction,
   layout,
+  panel,
   rounded,
   space,
   target,
@@ -58,19 +59,14 @@ export const emojiPickerStyles = variants({
     header: arc(layout.row, gap[1.5]),
     search: arc(layout.grow, layout.minZero),
     skin: arc(layout.noShrink),
-    categories: arc(layout.row, gap[0.5], edge.bottom, {
-      overflowX: "auto",
-      scrollbarWidth: "none",
-    }),
+    categories: arc(layout.row, layout.wrap, gap[0.5], edge.bottom),
     category: arc(control.bare, layout.inlineCentre, rounded.sm, target.size, focus.visible, {
       fontSize: "1.125rem",
       opacity: "0.6",
       "[aria-current]": { opacity: "1", boxShadow: `inset 0 -2px 0 ${tokens.primary}` },
     }),
-    viewport: arc(layout.relative, focus.outline, {
+    viewport: arc(panel.body, layout.relative, focus.outline, {
       blockSize: "var(--arc-emoji-height, 16rem)",
-      overflowY: "auto",
-      overscrollBehavior: "contain",
     }),
     grid: arc(layout.relative, { inlineSize: "100%" }),
     heading: arc(type.meta, type.medium, layout.row, { paddingInline: space.x1 }),

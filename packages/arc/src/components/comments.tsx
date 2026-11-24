@@ -145,7 +145,7 @@ export const commentsStyles = variants({
     meta: arc(type.meta, type.numeric),
     status: arc(type.caption, fg.muted),
     error: arc(type.caption, fg.danger),
-    body: arc(type.body, { whiteSpace: "pre-wrap", overflowWrap: "anywhere" }),
+    body: arc(type.body, type.written),
     mention: arc(fg.link, type.medium),
     reactions: arc(layout.row, layout.wrap, gap[1]),
     actions: arc(layout.pushEnd, layout.row, gap[1]),
