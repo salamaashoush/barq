@@ -21,7 +21,9 @@ import {
   useContext,
 } from "./signals.ts";
 
-const tick = (ms = 0) => new Promise((done) => setTimeout(done, ms));
+function tick(ms = 0) {
+  return new Promise((done) => setTimeout(done, ms));
+}
 
 function read<T>(node: () => T): T | "PENDING" {
   try {
@@ -127,6 +129,10 @@ describe("from", () => {
   );
 });
 
+interface SessionUser {
+  user: string;
+}
+
 describe("a provider passing undefined", () => {
   test(
     "provides nothing: the read falls back to the default",
@@ -147,10 +153,10 @@ describe("a provider passing undefined", () => {
   test(
     "and with no default the read fails as a missing provider does",
     rooted(() => {
-      const Session = createContext<{ user: string }>(undefined, "Session");
-      let session: (() => { user: string }) | undefined;
+      const Session = createContext<SessionUser>(undefined, "Session");
+      let session: (() => SessionUser) | undefined;
       Session({
-        value: undefined as unknown as { user: string },
+        value: undefined as unknown as SessionUser,
         children: () => {
           session = useContext(Session);
           return null;
@@ -163,8 +169,8 @@ describe("a provider passing undefined", () => {
   test(
     "while null is a value it passes through",
     rooted(() => {
-      const Session = createContext<{ user: string } | null>(null);
-      let session: (() => { user: string } | null) | undefined;
+      const Session = createContext<SessionUser | null>(null);
+      let session: (() => SessionUser | null) | undefined;
       Session({
         value: null,
         children: () => {

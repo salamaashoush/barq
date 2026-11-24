@@ -24,13 +24,18 @@ import { describe, expect, test } from "bun:test";
 
 const ENTRIES = ["index", "dev", "hot", "internal"] as const;
 
-const distOf = (entry: string): string =>
-  fileURLToPath(new URL(`../dist/${entry}.js`, import.meta.url));
+function distOf(entry: string): string {
+  return fileURLToPath(new URL(`../dist/${entry}.js`, import.meta.url));
+}
 
 const built = ENTRIES.every((entry) => existsSync(distOf(entry)));
 
+interface MemoKeyOptions {
+  key?: string;
+}
+
 interface Index {
-  createMemo: (fn: () => Promise<unknown>, options?: { key?: string }) => () => unknown;
+  createMemo: (fn: () => Promise<unknown>, options?: MemoKeyOptions) => () => unknown;
   createRoot: (fn: (dispose: () => void) => void) => unknown;
   runWithOwner: <T>(owner: object | null, fn: () => T) => T;
   settle: (session?: symbol) => Promise<void>;

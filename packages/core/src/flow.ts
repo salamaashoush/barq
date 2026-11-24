@@ -61,6 +61,7 @@ import {
   lookupContext,
   underScope,
   untrack,
+  type Arity,
 } from "./signals.ts";
 
 // ============================================================================
@@ -243,7 +244,7 @@ function elsewhere(own: RangeHost, construct: string): Renderer | null {
   if (provided === CONTEXT_MISS) return null;
   const { host, sync } = provided as Renderer;
   if (host === own) return null;
-  const refuse = (nodes: object[]): object[] => {
+  function refuse(nodes: object[]): object[] {
     for (const node of nodes) {
       if (own.owns?.(node) === true) {
         throw new Error(
@@ -253,7 +254,7 @@ function elsewhere(own: RangeHost, construct: string): Renderer | null {
       }
     }
     return nodes;
-  };
+  }
   return { host: { ...host, toNodes: (child, scope) => refuse(host.toNodes(child, scope)) }, sync };
 }
 
@@ -309,12 +310,13 @@ export interface Site {
   cold?: boolean;
 }
 
+interface SiteLookup {
+  site: Site;
+  out: object | null;
+}
+
 /** K7: a region with no parent owns ONE empty text node, not a comment pair. */
-function siteFor(
-  host: RangeHost,
-  parent: object | null,
-  anchor: object | null,
-): { site: Site; out: object | null } {
+function siteFor(host: RangeHost, parent: object | null, anchor: object | null): SiteLookup {
   if (parent !== null) return { site: { host, parent, anchor }, out: null };
   const own = host.sentinel();
   LIVE_EDGES.add(own);
@@ -474,6 +476,11 @@ export function activate(
   return claims!.activate(given, site, body, args, flags, kind, claim, placed);
 }
 
+interface AttemptInstance {
+  scope: Scope;
+  nodes: readonly object[];
+}
+
 /**
  * Build one instance. With `placed` false the nodes are built and handed back
  * for the caller's effect to put in the document once its pass has committed;
@@ -499,11 +506,11 @@ export function attempt(
   // The cursor is kept so `evictUnclaimed` can ask it what the body did NOT
   // consume, which is the same question `each` asks its row cursor.
   let cursor: Cursor | null = null;
-  const under = <T>(work: () => T): T => {
+  function under<T>(work: () => T): T {
     if (claim === null) return withoutClaim(work);
     cursor = claims!.openCursor(claim);
     return atCursor(cursor, () => inDocumentOrder(work));
-  };
+  }
 
   const host = site.host;
   if ((flags & NO_SCOPE) !== 0) {
@@ -513,7 +520,7 @@ export function attempt(
     return { scope: null, nodes };
   }
   const scope = childScope(given, kind);
-  const instance: { scope: Scope; nodes: readonly object[] } = { scope, nodes: EMPTY };
+  const instance: AttemptInstance = { scope, nodes: EMPTY };
   // Installed before the body runs: a scope's cleanups unwind last-registered
   // first, so the range is still in the document while the body's own run.
   ownRange(scope, () => {
@@ -628,10 +635,11 @@ function region<K>(
   /** The instance in the document, kept for the one case nothing else removes. */
   let standing = NOTHING;
 
-  const pick = (k: K): Block<unknown> | null | undefined =>
-    typeof bodies === "function" ? bodies : bodies[k as unknown as number];
+  function pick(k: K): Block<unknown> | null | undefined {
+    return typeof bodies === "function" ? bodies : bodies[k as unknown as number];
+  }
 
-  const make = (k: K, placed: boolean): Instance => {
+  function make(k: K, placed: boolean): Instance {
     const claimed = site.claim;
     if (claimed !== undefined && claimed !== null) claims!.reconcileKey(site, claimed, k);
     activation++;
@@ -646,7 +654,7 @@ function region<K>(
       return NOTHING;
     }
     return activate(getOwner(), site, body, args, flags, "branch", placed);
-  };
+  }
 
   if ((flags & STATIC_KEY) !== 0) {
     // The compiler proved the key reads nothing reactive: no memo, no effect,
@@ -795,7 +803,7 @@ export function keyMode<T>(
     return carrier === COUNT || carrier === false ? carrier : null;
   }
   const resolved =
-    typeof carrier === "function" && (carrier as { length: number }).length >= 1
+    typeof carrier === "function" && (carrier as Arity).length >= 1
       ? carrier
       : readSlot(carrier, "For.keyed");
   if (typeof resolved === "function") return resolved as (item: T) => unknown;
@@ -828,11 +836,11 @@ export function eachIn<T, N extends object>(
   // per list, and a Block arriving where rows were expected is refused instead
   // of rendering as an empty list.
   cellSlot(src, "For.each");
-  const source = (): unknown => {
+  function source(): unknown {
     const yielded = (src as () => unknown)();
     cellSlot(yielded, "For.each", true);
     return yielded;
-  };
+  }
   const { site, out } = siteFor(host, parent, anchor);
   if (claims !== null) claims.claimSite(site, parent, anchor, flags, "each");
   const claimed = site.claim ?? null;
@@ -851,8 +859,9 @@ export function eachIn<T, N extends object>(
   const claim = site.claim ?? null;
   let rowCursor: Cursor | null = claim === null ? null : claims!.openCursor(claim);
   const body = row as Block<unknown>;
-  const rowOf = (args: readonly unknown[]): object[] =>
-    host.row(build(host, getOwner(), body, args));
+  function rowOf(args: readonly unknown[]): object[] {
+    return host.row(build(host, getOwner(), body, args));
+  }
   // A list with nothing to claim builds its rows cold, and says so to each
   // one: a row is built by the list's own node, under whatever cursor the
   // page left current, and a template there would claim from it.
@@ -895,22 +904,22 @@ export function eachIn<T, N extends object>(
         { fallback: fallbackRows },
       );
     } else {
-      const one = (item: unknown): Row => {
+      function one(item: unknown): Row {
         activation++;
         if (OWNERSHIP.sink !== null) traceRow(given);
         if (rowCursor === null) {
           return listRow(cold ? withoutClaim(() => rowOf([item])) : rowOf([item]));
         }
         return listRow(claims!.inRow(rowCursor, () => rowOf([item])));
-      };
-      const two = (item: unknown, index: unknown): Row => {
+      }
+      function two(item: unknown, index: unknown): Row {
         activation++;
         if (OWNERSHIP.sink !== null) traceRow(given);
         if (rowCursor === null) {
           return listRow(cold ? withoutClaim(() => rowOf([item, index])) : rowOf([item, index]));
         }
         return listRow(claims!.inRow(rowCursor, () => rowOf([item, index])));
-      };
+      }
       // The engine reads the mapper's arity to decide whether a row needs an
       // index at all, and an index is a whole signal per row. The row Block's
       // own parameter list is the only thing that knows, and only a row that
@@ -918,7 +927,7 @@ export function eachIn<T, N extends object>(
       // one declares none and reads them all.
       rows = mapArray(
         source as Cell<Maybe<readonly T[]>>,
-        ((row as { length: number }).length === 1 ? one : two) as never,
+        ((row as Arity).length === 1 ? one : two) as never,
         { keyed: (keyOf ?? true) as never, fallback: fallbackRows },
       ) as () => Row[];
     }
@@ -1138,6 +1147,10 @@ export function boundaryIn<N extends object>(
   return outFor(site, out, claimed) as N | N[] | null;
 }
 
+interface CaughtError {
+  error: unknown;
+}
+
 /**
  * Both kinds, because they are one shape: the content is built ONCE, under the
  * engine's boundary, and stays alive while the fallback shows. What differs is
@@ -1205,32 +1218,32 @@ function guarded(
     host.insertRange(fragment, [lead], site.anchor);
     pinned = true;
   }
-  const leadOf = (first: object | undefined): object | null => {
+  function leadOf(first: object | undefined): object | null {
     if (first !== undefined) return host.prevOf(first);
     const parent = parentOfSite(site);
     if (site.anchor !== null) return host.prevOf(site.anchor);
     return parent === null ? null : host.lastOf(parent);
-  };
+  }
   if (firstClaim !== null && !pinned) lead = leadOf(firstClaim.nodes[0]);
 
-  const standing = (): object[] => {
+  function standing(): object[] {
     const parent = parentOfSite(site);
     if (parent === null) return [...content.nodes];
     const out: object[] = [];
     let node = lead === null ? host.firstOf(parent) : host.nextOf(lead);
     for (; node !== null && node !== site.anchor; node = host.nextOf(node)) out.push(node);
     return out;
-  };
+  }
 
-  const parked = (): object[] => {
+  function parked(): object[] {
     const out: object[] = [];
     for (let node = host.firstOf(park.parent!); node !== null; node = host.nextOf(node)) {
       out.push(node);
     }
     return out;
-  };
+  }
 
-  const move = (target: Site): void => {
+  function move(target: Site): void {
     if (live === target) return;
     // Either way it is what is THERE that moves, not the node list the last
     // build returned: a region inside the content swaps arms on its own, and
@@ -1241,14 +1254,14 @@ function guarded(
     live = target;
     if (target === site && !pinned) lead = leadOf(undefined);
     insertAt(target, moving);
-  };
+  }
 
   // E2 entry point for what the engine cannot see: a handler, a cleanup, an
   // async continuation. Routing one here re-runs the content, which throws it
   // where the boundary is listening.
-  const routed = kind === "error" ? createSignal<{ error: unknown } | null>(null) : null;
+  const routed = kind === "error" ? createSignal<CaughtError | null>(null) : null;
 
-  const compose = (): typeof CONTENT => {
+  function compose(): typeof CONTENT {
     if (routed !== null) {
       const thrown = routed[0]();
       if (thrown !== null) throw thrown.error;
@@ -1299,7 +1312,7 @@ function guarded(
       }
     });
     return CONTENT;
-  };
+  }
 
   // The error is read where the engine hands it over, inside the boundary's
   // own pass. By the time the effect below acts the read would be an outside
@@ -1347,14 +1360,15 @@ function guarded(
 
   if (mismatch !== null) throw mismatch as HydrationMismatch;
 
-  const asError = (thrown: unknown): Error =>
-    thrown instanceof Error ? thrown : new Error(String(thrown));
+  function asError(thrown: unknown): Error {
+    return thrown instanceof Error ? thrown : new Error(String(thrown));
+  }
 
-  const dropStandIn = (): void => {
+  function dropStandIn(): void {
     if (standIn === NOTHING) return;
     teardown(host, standIn);
     standIn = NOTHING;
-  };
+  }
 
   renderEffect(view, (showing: unknown) => {
     dropStandIn();
@@ -1426,12 +1440,12 @@ export function islandIn<N extends object>(
     const island = claims!.island(parent, anchor);
     if (island !== undefined) return island as N | null;
   }
-  const unhydratable = (...args: readonly unknown[]): unknown => {
+  function unhydratable(...args: readonly unknown[]): unknown {
     setHydratable(getOwner()!, false);
     return typeof block === "function"
       ? (block as (...rest: readonly unknown[]) => unknown)(...args)
       : block;
-  };
+  }
   // Never without a scope: the scope is what carries the mark.
   const scoped = flags & ~NO_SCOPE;
   const instance = attempt(getOwner(), site, unhydratable, EMPTY_ARGS, scoped, "branch", null);

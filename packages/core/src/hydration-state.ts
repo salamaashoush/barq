@@ -19,6 +19,10 @@ export interface Mismatch {
   detail: string;
 }
 
+interface OwnerPathCarrier {
+  ownerPath: string[] | undefined;
+}
+
 /**
  * Thrown by every claim that cannot be satisfied. It is never caught by the
  * code that raised it: a region catches its own, `hydrate` catches the rest.
@@ -41,7 +45,7 @@ export class HydrationMismatch extends Error {
     // so the bundler drops both lines.
     if (OBSERVE !== undefined) {
       this.template = SESSION?.template;
-      (this as { ownerPath: string[] | undefined }).ownerPath = OBSERVE.ownerPath(getOwner());
+      (this as OwnerPathCarrier).ownerPath = OBSERVE.ownerPath(getOwner());
     }
   }
 }
@@ -198,6 +202,11 @@ export function hydrating(): boolean {
   return SESSION !== null && SESSION.stack.length > 0;
 }
 
+export interface LateClaim<T> {
+  value: T;
+  abandoned: HydrationMismatch | null;
+}
+
 /**
  * The renderer's half of what a construct asks of the server's nodes, reached
  * through this table and installed by the renderer's `hydrate`. A page that
@@ -207,7 +216,7 @@ export interface ClaimWalk {
   claimAt(parent: object | null, anchor: object | null, mode?: number): Range | null;
   claimRange(parent: object | null, anchor: object | null, mode?: number): Range | null;
   probeRange(parent: object | null, anchor: object | null): Range | null;
-  claimLate<T>(container: object, work: () => T): { value: T; abandoned: HydrationMismatch | null };
+  claimLate<T>(container: object, work: () => T): LateClaim<T>;
   isScaffolding(node: object | null): boolean;
   isBlank(node: object): boolean;
   rangeKey(range: Range): string | null;
@@ -240,10 +249,7 @@ export function claimWalk(): ClaimWalk {
  * boundary's content, swapped in where the boundary's fallback was claimed.
  * Where no walk is installed nothing is claiming, and `work` simply runs.
  */
-export function claimLate<T>(
-  container: object,
-  work: () => T,
-): { value: T; abandoned: HydrationMismatch | null } {
+export function claimLate<T>(container: object, work: () => T): LateClaim<T> {
   return walk === null ? { value: work(), abandoned: null } : walk.claimLate(container, work);
 }
 

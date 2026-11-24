@@ -12,6 +12,10 @@ import {
 } from "./index.ts";
 import { disposeScope } from "./signals.ts";
 
+interface MaybeIdentified {
+  id?: string;
+}
+
 test("a binding takes no place in the engine's numbering and allocates no id", () => {
   const root = rootScope();
   const [count, setCount] = createSignal(1);
@@ -29,7 +33,7 @@ test("a binding takes no place in the engine's numbering and allocates no id", (
 
       let memoId: string | undefined;
       createMemo(() => {
-        memoId = (getOwner() as { id?: string } | null)?.id;
+        memoId = (getOwner() as MaybeIdentified | null)?.id;
         return count();
       });
       expect(memoId).toBe(before);

@@ -20,10 +20,12 @@ function owned(build: () => void): () => void {
   });
 }
 
-function recorder(): {
+interface Recorder {
   writes: Writes;
   write: (node: object, name: string, value: unknown, prev: unknown) => unknown;
-} {
+}
+
+function recorder(): Recorder {
   const writes: Writes = [];
   return {
     writes,
@@ -61,11 +63,11 @@ describe("bindSlot", () => {
 });
 
 describe("bindPlain", () => {
-  const apply =
-    (writes: unknown[]) =>
-    (value: unknown): void => {
+  function apply(writes: unknown[]) {
+    return (value: unknown): void => {
       writes.push(value);
     };
+  }
 
   test(
     "fields of plain data are read once and written once, with no effect",

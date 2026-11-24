@@ -82,12 +82,12 @@ export function hot<T extends Implementation>(
     let scope = childScope(owner);
     let built = inFrame(scope, () => current(...args));
     const [version, setVersion] = createSignal(0, { ownedWrite: true });
-    const rebuild = (next: Implementation): void => {
+    function rebuild(next: Implementation): void {
       disposeScope(scope);
       scope = childScope(owner);
       built = inFrame(scope, () => next(...args));
       setVersion((count) => count + 1);
-    };
+    }
     instances.add(rebuild);
     if (owner !== null) {
       runWithOwner(owner, () => {

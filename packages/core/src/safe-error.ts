@@ -24,10 +24,14 @@ export function markSafeError<E>(error: E): E {
   return error;
 }
 
+interface SafeErrorMark {
+  [SAFE_ERROR]?: unknown;
+}
+
 export function isSafeError(value: unknown): boolean {
   return (
     value !== null &&
     (typeof value === "object" || typeof value === "function") &&
-    (value as { [SAFE_ERROR]?: unknown })[SAFE_ERROR] === true
+    (value as SafeErrorMark)[SAFE_ERROR] === true
   );
 }

@@ -19,14 +19,17 @@ interface Item {
 
 /** A host over plain objects, labelled so a test can tell two hosts apart. */
 function memoryHost(name: string): RangeHost<Item> {
-  const make = (label: string): Item => ({ label: `${name}:${label}`, parent: null, children: [] });
-  const detach = (node: Item): void => {
+  function make(label: string): Item {
+    return { label: `${name}:${label}`, parent: null, children: [] };
+  }
+  function detach(node: Item): void {
     if (node.parent === null) return;
     node.parent.children.splice(node.parent.children.indexOf(node), 1);
     node.parent = null;
-  };
-  const sibling = (node: Item, step: number): Item | null =>
-    node.parent?.children[node.parent.children.indexOf(node) + step] ?? null;
+  }
+  function sibling(node: Item, step: number): Item | null {
+    return node.parent?.children[node.parent.children.indexOf(node) + step] ?? null;
+  }
   return {
     sentinel: () => make("sentinel"),
     park: () => make("park"),

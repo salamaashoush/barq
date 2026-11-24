@@ -1,3 +1,7 @@
+interface SourceFailure {
+  readonly error: unknown;
+}
+
 /**
  * The async sources one live connection reads, shared across every render it
  * makes.
@@ -17,7 +21,7 @@ interface Source {
   /** How many values it has yielded; a seat that has read fewer is owed the latest. */
   version: number;
   done: boolean;
-  failure: { readonly error: unknown } | null;
+  failure: SourceFailure | null;
   readonly waiting: Set<() => void>;
 }
 
@@ -61,14 +65,14 @@ export class SharedSources {
       [Symbol.asyncIterator]: (): AsyncIterator<T> => {
         let read = 0;
         let wake: (() => void) | null = null;
-        const step = (): IteratorResult<T> | null => {
+        function step(): IteratorResult<T> | null {
           if (held.failure !== null) throw held.failure.error;
           if (read < held.version) {
             read = held.version;
             return { done: false, value: held.latest as T };
           }
           return held.done ? { done: true, value: undefined } : null;
-        };
+        }
         return {
           next: () => {
             // A value already here is answered as a bare result, which the
@@ -165,15 +169,19 @@ export class SharedSources {
   }
 }
 
+interface RegistryHost {
+  [key: symbol]: Map<symbol, SharedSources> | undefined;
+}
+
 /**
  * Which renders read through which connection's seats. On the global under a
  * registered symbol: the server bundle and the package entry a host imports
  * each carry a copy of this module, and the connection is opened through one
  * while the render declares its memos through the other.
  */
-const REGISTRY: Map<symbol, SharedSources> = ((
-  globalThis as { [key: symbol]: Map<symbol, SharedSources> | undefined }
-)[Symbol.for("barq.shared-sources")] ??= new Map());
+const REGISTRY: Map<symbol, SharedSources> = ((globalThis as RegistryHost)[
+  Symbol.for("barq.shared-sources")
+] ??= new Map());
 
 /** Read every async source a render under `session` declares through `shared`. */
 export function shareSources(session: symbol, shared: SharedSources): void {

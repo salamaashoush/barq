@@ -43,6 +43,14 @@ export function describeTarget(target: unknown): string | undefined {
   return out;
 }
 
+interface GlobalWithClock {
+  performance?: Clock;
+}
+
+interface Clock {
+  now(): number;
+}
+
 /**
  * When the host made the event, on the `performance.now()` clock, which is
  * where the user's wait began. An environment that stamps events on another
@@ -50,7 +58,7 @@ export function describeTarget(target: unknown): string | undefined {
  */
 function dispatchedAt(event: Dispatched): number | undefined {
   const at = event.timeStamp;
-  const clock = (globalThis as { performance?: { now(): number } }).performance;
+  const clock = (globalThis as GlobalWithClock).performance;
   if (typeof at !== "number" || clock === undefined) return undefined;
   return at >= 0 && at <= clock.now() ? at : undefined;
 }

@@ -27,7 +27,9 @@ import {
   runWithOwner,
 } from "./signals.ts";
 
-const tick = (ms = 0) => new Promise((res) => setTimeout(res, ms));
+function tick(ms = 0) {
+  return new Promise((res) => setTimeout(res, ms));
+}
 
 /** Reads the node, reporting the pending throw rather than propagating it */
 function read<T>(node: () => T): T | "PENDING" {

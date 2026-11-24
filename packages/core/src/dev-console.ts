@@ -41,6 +41,14 @@ const SKILL_URL =
   "https://github.com/salamaashoush/barq/blob/main/packages/core/skills/diagnostics/SKILL.md";
 const LOOP_SKILL = "@barqjs/diagnostics/skills/agent-loops/SKILL.md";
 
+interface GlobalWithLocation {
+  location?: PartialLocation;
+}
+
+interface PartialLocation {
+  origin?: string;
+}
+
 /**
  * The `at` line's target. In a browser the development server serves the
  * project root at the page's origin, so the position is printed as a URL the
@@ -48,7 +56,7 @@ const LOOP_SKILL = "@barqjs/diagnostics/skills/agent-loops/SKILL.md";
  * it is the path as compiled.
  */
 function locationOf(loc: string): string {
-  const origin = (globalThis as { location?: { origin?: string } }).location?.origin;
+  const origin = (globalThis as GlobalWithLocation).location?.origin;
   if (origin === undefined || origin === "null" || loc.startsWith("..") || loc.startsWith("/")) {
     return loc;
   }
@@ -135,8 +143,12 @@ export function installDevConsole(): () => void {
   };
 }
 
+interface DevElementCarrier {
+  _devElement?: unknown;
+}
+
 /** The element a compiled binding writes, which a browser console can point at. */
 function elementOf(subject: DiagnosticSubject | null | undefined): unknown {
   if (typeof subject !== "object" || subject === null) return undefined;
-  return (subject as { _devElement?: unknown })._devElement;
+  return (subject as DevElementCarrier)._devElement;
 }

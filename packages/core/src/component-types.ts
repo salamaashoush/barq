@@ -83,6 +83,10 @@ export type RefCallback<T> = (el: T) => void;
  */
 export type RefObject<T> = { current: T | null };
 
+export interface BivariantWrite<T> {
+  write(value: T): unknown;
+}
+
 /**
  * A `bind:` target: a signal, which is the `[read, write]` pair `createSignal`
  * returns.
@@ -97,4 +101,4 @@ export type RefObject<T> = { current: T | null };
  * `bind:value` slot serves a text input and a number input, and a setter for
  * `string` has to fit a slot that also admits `number`.
  */
-export type Bindable<T> = readonly [read: () => T, write: { write(value: T): unknown }["write"]];
+export type Bindable<T> = readonly [read: () => T, write: BivariantWrite<T>["write"]];

@@ -175,28 +175,36 @@ export const createEffect = ((...args: Parameters<typeof engineCreateEffect>): v
   engineCreateEffect(...args);
 }) as typeof engineCreateEffect;
 
-export const onSettled = (...args: Parameters<typeof engineOnSettled>): void => {
+export function onSettled(...args: Parameters<typeof engineOnSettled>): void {
   if (activeAsyncSession !== null) return;
   engineOnSettled(...args);
-};
+}
 
-export const onFlush = (callback: () => void): void => {
+export function onFlush(callback: () => void): void {
   if (activeAsyncSession !== null) return;
   engineOnFlush(callback);
-};
+}
+
+export interface OwnershipSlot {
+  sink: OwnershipSink | null;
+}
 
 /**
  * The L2b ownership trace's attachment point. `null` until
  * `beginOwnershipTrace()` installs a sink.
  */
-export const OWNERSHIP: { sink: OwnershipSink | null } = { sink: null };
+export const OWNERSHIP: OwnershipSlot = { sink: null };
+
+export interface InteractionSlot {
+  frame: ((event: object, run: () => void) => void) | null;
+}
 
 /**
  * How a renderer runs an event handler as the interaction its event is. Empty
  * until the development entry fills it, so a production bundle carries the one
  * test and none of what describes an event.
  */
-export const INTERACTION: { frame: ((event: object, run: () => void) => void) | null } = {
+export const INTERACTION: InteractionSlot = {
   frame: null,
 };
 
@@ -501,6 +509,14 @@ function markOwnerPath(error: unknown, owner: Scope): void {
   }
 }
 
+interface WithSource {
+  source?: unknown;
+}
+
+interface WithCause {
+  cause?: unknown;
+}
+
 /**
  * Where an error was thrown, as a component path: the innermost component
  * whose body threw it, or the computation the engine says it left.
@@ -509,11 +525,11 @@ export function errorOwnerPath(error: unknown): string[] | undefined {
   if (typeof error !== "object" || error === null) return undefined;
   const marked = (error as Record<symbol, unknown>)[OWNER_PATH];
   if (Array.isArray(marked)) return marked as string[];
-  const source = (error as { source?: unknown }).source;
+  const source = (error as WithSource).source;
   if (typeof source === "object" && source !== null && "_parent" in source) {
     return ownerPathOf(source as DiagnosticSubject);
   }
-  const cause = (error as { cause?: unknown }).cause;
+  const cause = (error as WithCause).cause;
   return cause === error ? undefined : errorOwnerPath(cause);
 }
 
@@ -640,6 +656,10 @@ interface Labelled {
   _devElement?: unknown;
 }
 
+export interface DevTier {
+  readonly diagnostics: DiagnosticsChannel;
+}
+
 /**
  * The engine's development tier (devtools hooks, graph traversal, the console
  * face) with the channel both the engine's and barq's findings arrive on. The
@@ -649,10 +669,9 @@ interface Labelled {
  * could have an effect, and a bundle that never reads `DEV` would then keep it
  * and the whole channel behind it.
  */
-export const DEV: Partial<EngineDev> & { readonly diagnostics: DiagnosticsChannel } =
-  /* @__PURE__ */ devTier();
+export const DEV: Partial<EngineDev> & DevTier = /* @__PURE__ */ devTier();
 
-function devTier(): Partial<EngineDev> & { readonly diagnostics: DiagnosticsChannel } {
+function devTier(): Partial<EngineDev> & DevTier {
   return {
     ...ENGINE_DEV,
     diagnostics: {
@@ -708,7 +727,9 @@ export function scopeAllocations(): number {
 // happened to make around them. A binding that took a slot would also carry an
 // id string of its own, one per bound prop of every row.
 const TRANSPARENT = { transparent: true } as const;
-const openTransparent = (): Scope => createOwner(TRANSPARENT);
+function openTransparent(): Scope {
+  return createOwner(TRANSPARENT);
+}
 
 /**
  * A place in the tree of scopes, and the count of what has been declared
@@ -770,6 +791,10 @@ export function createUniqueId(): string {
     : `barq-${positionUnder(numbering, numbering.ids++)}`;
 }
 
+export interface CountedId {
+  id: string | undefined;
+}
+
 /**
  * Open a fresh child of `parent`. It is NOT made current: run a body under it
  * with `runWithOwner`.
@@ -798,7 +823,7 @@ export function createUniqueId(): string {
 export function childScope(
   parent: Scope | null,
   kind: ScopeKind = "scope",
-  counted?: { id: string | undefined },
+  counted?: CountedId,
 ): Scope {
   scopesAllocated++;
   const scope = runWithOwner(parent, openTransparent);
@@ -1074,16 +1099,20 @@ export function inFrame<R>(frame: Scope, body: () => R): R {
   }
 }
 
+export interface Arity {
+  length: number;
+}
+
 function carry<R>(value: R, home: Scope, bindings: Map<string | symbol, unknown>): R {
   if (isBlock(value)) {
     const build = value as unknown as (...args: unknown[]) => unknown;
-    const carried = (...args: unknown[]): unknown => {
+    function carried(...args: unknown[]): unknown {
       const at = getOwner();
       if (at === null) return build(...args);
       const scope = childScope(at);
       for (const [key, held] of bindings) bindOn(scope, key, held);
       return runWithOwner(scope, () => carry(build(...args), scope, bindings));
-    };
+    }
     // What the Block is, said again on the one standing in for it: a consumer
     // tells a row callback from parts by `length`, and reads any brand it set.
     for (const key of Reflect.ownKeys(build)) {
@@ -1104,7 +1133,7 @@ function carry<R>(value: R, home: Scope, bindings: Map<string | symbol, unknown>
   }
   // A function that takes something is a row callback in a children slot,
   // handed on untouched as `unwrapBlocks` hands it on.
-  if (typeof value !== "function" || (value as { length: number }).length > 0) return value;
+  if (typeof value !== "function" || (value as Arity).length > 0) return value;
   const cell = value as unknown as () => unknown;
   return runWithOwner(home, () =>
     internalMemo(() => carry(cell(), home, bindings), { transparent: true }),
@@ -1125,7 +1154,7 @@ function providedValue(carrier: unknown): () => unknown {
   const cell = carrier as () => unknown;
   return (): unknown => {
     const value = cell();
-    return typeof value === "function" && (value as { length: number }).length === 0
+    return typeof value === "function" && (value as Arity).length === 0
       ? (value as () => unknown)()
       : value;
   };
@@ -1153,6 +1182,15 @@ export interface Context<T> extends ContextProviderComponent<T> {
   readonly defaultValue: T | undefined;
 }
 
+export interface ContextDescription {
+  name?: string;
+}
+
+interface ContextFields<T> {
+  id?: symbol;
+  defaultValue?: T;
+}
+
 /**
  * Create a context for dependency injection. The second argument names the
  * context in a missing-provider error, either as a string or as Solid's
@@ -1160,7 +1198,7 @@ export interface Context<T> extends ContextProviderComponent<T> {
  */
 export function createContext<T>(
   defaultValue?: T,
-  description?: string | { name?: string },
+  description?: string | ContextDescription,
 ): Context<T> {
   const name = typeof description === "string" ? description : description?.name;
   const id = Symbol(name || "context");
@@ -1171,7 +1209,7 @@ export function createContext<T>(
    * built": the only party holding the instance scope is this function, and it
    * writes the binding before it runs the body under that scope.
    */
-  const provider = (props: ContextProviderProps<T>): JSXElement => {
+  function provider(props: ContextProviderProps<T>): JSXElement {
     const instance = childScope(getOwner(), "provide");
     provideOn(instance, id, providedValue(props.value));
     let built = false;
@@ -1187,9 +1225,9 @@ export function createContext<T>(
       // O4.4: a subtree that threw half-way is disposed, not abandoned.
       if (!built) disposeScope(instance);
     }
-  };
+  }
 
-  const context: { id?: symbol; defaultValue?: T } & typeof provider = provider;
+  const context: ContextFields<T> & typeof provider = provider;
   context.id = id;
   context.defaultValue = defaultValue;
   return context as Context<T>;
@@ -1233,7 +1271,7 @@ export function unwrapBlocks<R>(out: R, instance: Scope): R {
     // component that could not find the context it was written inside. A memo
     // made HERE is owned by this scope and is still a Cell to the hole that
     // reads it, so what the Cell builds is built where the binding is.
-    if ((at as unknown as { length: number }).length > 0) return at;
+    if ((at as unknown as Arity).length > 0) return at;
     const cell = at as unknown as () => R;
     return internalMemo(() => unwrapBlocks(cell(), getOwner() as Scope)) as unknown as R;
   }
@@ -1270,7 +1308,9 @@ export function setContext<T>(
   }
 
   const resolved = value === undefined ? context.defaultValue : value;
-  const cell = (): T | undefined => resolved;
+  function cell(): T | undefined {
+    return resolved;
+  }
   provideOn(owner, context.id, cell);
   recordInstall(owner, context.id, cell);
 }
@@ -1335,12 +1375,16 @@ function orDefault<T>(context: Context<T>): T {
   throw contextNotFound(context);
 }
 
+export interface IdentifiedContext {
+  readonly id: symbol;
+}
+
 /**
  * The engine's miss, saying WHICH context. Its own message is the same for
  * every context, and the description `createContext` was given is the only
  * thing that tells one missing provider from another.
  */
-export function contextNotFound(context: { readonly id: symbol }): ContextNotFoundError {
+export function contextNotFound(context: IdentifiedContext): ContextNotFoundError {
   const error = new ContextNotFoundError();
   const name = context.id.description;
   if (name !== undefined && name !== "context") {
@@ -1564,6 +1608,21 @@ export function internalMemo<T>(
   );
 }
 
+export interface CreateMemo {
+  <T>(
+    compute: (prev: T) => T | PromiseLike<T> | AsyncIterable<T>,
+    options: MemoOptions<T> & HydrationOptions & LoadingValue<T>,
+  ): SourceAccessor<T>;
+  <T>(
+    compute: (prev: T | undefined) => T | PromiseLike<T> | AsyncIterable<T>,
+    options?: MemoOptions<T> & HydrationOptions,
+  ): SourceAccessor<T>;
+}
+
+export interface LoadingValue<T> {
+  loadingValue: T;
+}
+
 /**
  * `createMemo`, with one branch in front of it.
  *
@@ -1581,16 +1640,7 @@ export function internalMemo<T>(
  * seeding the wrong value. `key` replaces it outright and has to be unique
  * across the page. `unclaimedSeeds()` reports the drift after the fact.
  */
-export const createMemo: {
-  <T>(
-    compute: (prev: T) => T | PromiseLike<T> | AsyncIterable<T>,
-    options: MemoOptions<T> & HydrationOptions & { loadingValue: T },
-  ): SourceAccessor<T>;
-  <T>(
-    compute: (prev: T | undefined) => T | PromiseLike<T> | AsyncIterable<T>,
-    options?: MemoOptions<T> & HydrationOptions,
-  ): SourceAccessor<T>;
-} = <T>(
+export const createMemo: CreateMemo = <T>(
   compute: (prev: T | undefined) => T | PromiseLike<T> | AsyncIterable<T>,
   options?: MemoOptions<T> & HydrationOptions,
 ): SourceAccessor<T> => engineCreateMemo<T>(hydrationAware(compute, options) as never, options);
@@ -1647,9 +1697,13 @@ export interface HydrationOptions {
 
 let following = false;
 
+interface SeedHost {
+  __BARQ_DATA__?: Record<string, unknown>;
+}
+
 /** The payload a server render left on the page, while any of it is unclaimed. */
 function seeds(): Record<string, unknown> | undefined {
-  return (globalThis as { __BARQ_DATA__?: Record<string, unknown> }).__BARQ_DATA__;
+  return (globalThis as SeedHost).__BARQ_DATA__;
 }
 
 /** Whether async values declared now are followed, and so need a key. */
@@ -1937,9 +1991,14 @@ export function hydrationScope(owner: Scope | null, renderId: string): Scope | n
   return scope;
 }
 
+interface SeedLookup {
+  found: boolean;
+  value?: unknown;
+}
+
 /** Client: the payload a server render's seed script assigned, if present */
-function getSeed(key: string): { found: boolean; value?: unknown } {
-  const store = (globalThis as { __BARQ_DATA__?: Record<string, unknown> }).__BARQ_DATA__;
+function getSeed(key: string): SeedLookup {
+  const store = (globalThis as SeedHost).__BARQ_DATA__;
   if (store && Object.hasOwn(store, key)) {
     const value = store[key];
     delete store[key]; // consume: a later refresh() refetches for real
@@ -1970,7 +2029,13 @@ const LIVE_SEED = "__barq_live__";
  */
 const RESUBSCRIBE_SEED = "__barq_resubscribe__";
 
-function liveSeed(value: unknown): { live: boolean; resubscribe: boolean; value: unknown } {
+interface LiveSeed {
+  live: boolean;
+  resubscribe: boolean;
+  value: unknown;
+}
+
+function liveSeed(value: unknown): LiveSeed {
   if (typeof value === "object" && value !== null && LIVE_SEED in value) {
     return {
       live: true,
@@ -1989,6 +2054,20 @@ const liveKeys = new Map<symbol, Map<string, boolean>>();
 
 const SUBSCRIPTION = Symbol.for("barq.subscription");
 
+interface SymbolWithObservable {
+  observable?: symbol;
+}
+
+interface ObservableCandidate {
+  subscribe?: unknown;
+  "@@observable"?: unknown;
+  [key: symbol]: unknown;
+}
+
+interface MarkedSubscription {
+  [SUBSCRIPTION]?: true;
+}
+
 /**
  * A callback subscription, an Observable or an async iterable as an async
  * iterable a computation returns: `createMemo(() => from(source))`. Each value
@@ -1998,19 +2077,15 @@ const SUBSCRIPTION = Symbol.for("barq.subscription");
  */
 export function from<T>(source: FromSource<T>): AsyncIterable<T> {
   const iterable = engineFrom(source);
-  const observable = (Symbol as { observable?: symbol }).observable;
-  const candidate = source as {
-    subscribe?: unknown;
-    "@@observable"?: unknown;
-    [key: symbol]: unknown;
-  };
+  const observable = (Symbol as SymbolWithObservable).observable;
+  const candidate = source as ObservableCandidate;
   if (
     typeof source === "function" ||
     typeof candidate.subscribe === "function" ||
     typeof candidate["@@observable"] === "function" ||
     (observable !== undefined && typeof candidate[observable] === "function")
   ) {
-    (iterable as { [SUBSCRIPTION]?: true })[SUBSCRIPTION] = true;
+    (iterable as MarkedSubscription)[SUBSCRIPTION] = true;
   }
   return iterable;
 }
@@ -2024,13 +2099,14 @@ export function deferredFlightsOf(session: symbol): PromiseLike<unknown>[] {
 }
 
 function holdShell(session: symbol, promise: PromiseLike<unknown>): void {
-  let held = deferred.get(session);
-  if (held === undefined) deferred.set(session, (held = new Set()));
+  let existing = deferred.get(session);
+  if (existing === undefined) deferred.set(session, (existing = new Set()));
+  const held = existing;
   held.add(promise);
-  const release = (): void => {
+  function release(): void {
     held.delete(promise);
     if (held.size === 0 && deferred.get(session) === held) deferred.delete(session);
-  };
+  }
   promise.then(release, release);
 }
 
@@ -2083,6 +2159,11 @@ function continuedFrom<T>(
   };
 }
 
+interface Stamped {
+  s?: unknown;
+  v?: unknown;
+}
+
 /**
  * Wrap a compute so its async answers are visible to `settle` and, under a key,
  * cross from the server to the client.
@@ -2133,7 +2214,7 @@ function asyncAware<T>(
   let resubscribe = false;
   let first = true;
 
-  const adopt = (value: unknown): T => {
+  function adopt(value: unknown): T {
     const seeded = liveSeed(value);
     if (seeded.resubscribe && declaredIn === null && gate === null) {
       // The default source has no gate of its own: a `from()` subscription is
@@ -2149,9 +2230,9 @@ function asyncAware<T>(
       gate();
     }
     return seeded.value as T;
-  };
+  }
 
-  const run = (prev: T | undefined, session: symbol | null): ReturnType<typeof fn> => {
+  function run(prev: T | undefined, session: symbol | null): ReturnType<typeof fn> {
     const node = getOwner();
     if (source === "client") {
       // The server never runs it, and nothing waits for it there.
@@ -2216,7 +2297,7 @@ function asyncAware<T>(
             // server's markup for it: a `.then` answers a microtask too late,
             // and a failure the server rendered an error boundary for would
             // otherwise reach the client as content that is not ready yet.
-            const stamped = value as { s?: unknown; v?: unknown };
+            const stamped = value as Stamped;
             if (stamped.s === 2) throw stamped.v;
             if (stamped.s === 1 && !isAbandonedSeed(stamped.v)) return adopt(stamped.v);
             // Followed without a key: the wait is this read's own work, and
@@ -2243,7 +2324,7 @@ function asyncAware<T>(
     if (typeof result !== "object" || result === null) return result;
     if (isThenable(result)) return follow(result, session, key, node, holdsShell);
     if (isAsyncIterable(result)) {
-      const subscription = (result as { [SUBSCRIPTION]?: true })[SUBSCRIPTION] === true;
+      const subscription = (result as MarkedSubscription)[SUBSCRIPTION] === true;
       if ((source === "hybrid" || subscription) && key !== undefined && session !== null) {
         let keys = liveKeys.get(session);
         if (keys === undefined) liveKeys.set(session, (keys = new Map<string, boolean>()));
@@ -2261,7 +2342,7 @@ function asyncAware<T>(
       );
     }
     return result;
-  };
+  }
 
   return (prev) => {
     // A render that has ended dropped its bucket, and what it declared is
@@ -2282,7 +2363,7 @@ function asyncAware<T>(
   };
 }
 
-const IGNORE = (): void => {};
+function IGNORE(): void {}
 
 function follow<T>(
   promise: PromiseLike<T>,
@@ -2294,10 +2375,10 @@ function follow<T>(
   inFlight.set(promise, session);
   if (node !== null) flights.set(node, promise);
   if (holdsShell && session !== null) holdShell(session, promise);
-  const landed = (): void => {
+  function landed(): void {
     inFlight.delete(promise);
     if (node !== null && flights.get(node) === promise) flights.delete(node);
-  };
+  }
   if (key === undefined || session === null) {
     promise.then(landed, landed);
     return promise;
@@ -2347,16 +2428,16 @@ function followStream<T>(
   inFlight.set(firstAnswer, session);
   if (node !== null) flights.set(node, firstAnswer);
   if (holdsShell && session !== null) holdShell(session, firstAnswer);
-  const firstAnswered = (value: unknown): void => {
+  function firstAnswered(value: unknown): void {
     inFlight.delete(firstAnswer);
     if (node !== null && flights.get(node) === firstAnswer) flights.delete(node);
     answered(value);
-  };
+  }
   const records = key === undefined || session === null ? null : recordsOf(session);
   return {
     [Symbol.asyncIterator](): AsyncIterator<T> {
       const inner = source[Symbol.asyncIterator]();
-      const landed = (step: IteratorResult<T>): IteratorResult<T> => {
+      function landed(step: IteratorResult<T>): IteratorResult<T> {
         if (
           !step.done &&
           key !== undefined &&
@@ -2367,7 +2448,7 @@ function followStream<T>(
         }
         firstAnswered(step.value);
         return step;
-      };
+      }
       return {
         next: () => {
           const pulled = inner.next();
@@ -2508,7 +2589,7 @@ function landing(promise: PromiseLike<unknown>): PromiseLike<void> {
  */
 export function getHydrationData(session?: symbol): Record<string, unknown> {
   const result: Record<string, unknown> = {};
-  const emit = (origin: symbol | null, bucket: Map<string, unknown>): void => {
+  function emit(origin: symbol | null, bucket: Map<string, unknown>): void {
     const kept = unhydrated.get(origin);
     const live = origin === null ? undefined : liveKeys.get(origin);
     for (const [key, value] of bucket) {
@@ -2521,7 +2602,7 @@ export function getHydrationData(session?: symbol): Record<string, unknown> {
             ? { [LIVE_SEED]: value, [RESUBSCRIBE_SEED]: true }
             : { [LIVE_SEED]: value };
     }
-  };
+  }
   if (session !== undefined) {
     const bucket = hydrationData.get(session);
     if (bucket) emit(session, bucket);
@@ -2569,7 +2650,7 @@ export function clearHydrationData(session?: symbol): void {
  * shifted tree always strands the tail of the payload.
  */
 export function unclaimedSeeds(): string[] {
-  const store = (globalThis as { __BARQ_DATA__?: Record<string, unknown> }).__BARQ_DATA__;
+  const store = (globalThis as SeedHost).__BARQ_DATA__;
   const unclaimed = store === undefined ? [] : Object.keys(store);
   if (unclaimed.length !== 0) {
     emitDiagnostic({

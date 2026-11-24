@@ -297,7 +297,11 @@ function flattenChildren(list: readonly unknown[], out: ResolvedElement[]): NotR
   return pending;
 }
 
-export function Fragment(props: { children?: Child | Child[] }): JSXElement {
+export interface FragmentProps {
+  children?: Child | Child[];
+}
+
+export function Fragment(props: FragmentProps): JSXElement {
   // C8: a fragment is an ARRAY of its parts. Nothing builds a DocumentFragment.
   const kids = props.children;
   return Array.isArray(kids) ? kids : [kids];
@@ -347,8 +351,12 @@ export function For<T, K extends ForKeyed<T> = true>(
 }
 
 export function Repeat(props: RepeatProps): JSXElement {
-  const from = (): number => (readValue(props.from, "Repeat.from") as number | undefined) ?? 0;
-  const count = (): number => readValue(props.count, "Repeat.count") as number;
+  function from(): number {
+    return (readValue(props.from, "Repeat.from") as number | undefined) ?? 0;
+  }
+  function count(): number {
+    return readValue(props.count, "Repeat.count") as number;
+  }
   // Solid 2.0's `Repeat` calls any function child with the index and renders
   // anything else as it is.
   const shifted: Block<unknown> = (index: unknown): unknown =>
@@ -374,6 +382,12 @@ export function Match<T, K extends boolean = false>(props: MatchProps<T, K>): JS
   return props;
 }
 
+interface MatchDescriptor {
+  when?: unknown;
+  keyed?: unknown;
+  children?: unknown;
+}
+
 export function Switch(props: SwitchProps): JSXElement {
   // The arms are read as DATA, and what arrives is not always the data: a
   // `<Match>` written after another is a Block that yields its descriptor, and
@@ -381,13 +395,13 @@ export function Switch(props: SwitchProps): JSXElement {
   // it builds does not change; a Cell is read where the arms are chosen, so
   // the choice follows it.
   const yielded = new WeakMap<object, unknown>();
-  const once = (slot: () => unknown): unknown => {
+  function once(slot: () => unknown): unknown {
     if (!yielded.has(slot)) yielded.set(slot, untrack(slot));
     return yielded.get(slot);
-  };
-  const descriptors = (): unknown[] => {
+  }
+  function descriptors(): unknown[] {
     const out: unknown[] = [];
-    const visit = (entry: unknown): void => {
+    function visit(entry: unknown): void {
       if (Array.isArray(entry)) {
         for (const item of entry) visit(item);
       } else if (typeof entry === "function") {
@@ -395,17 +409,13 @@ export function Switch(props: SwitchProps): JSXElement {
       } else {
         out.push(entry);
       }
-    };
+    }
     visit(props.children);
     return out;
-  };
+  }
 
   const arms = internalMemo(() => {
-    const listed = descriptors() as Array<{
-      when?: unknown;
-      keyed?: unknown;
-      children?: unknown;
-    }>;
+    const listed = descriptors() as Array<MatchDescriptor>;
     for (let i = 0; i < listed.length; i++) {
       const child = listed[i];
       if (!child || typeof child !== "object" || !("when" in child)) continue;
@@ -442,10 +452,10 @@ export function Switch(props: SwitchProps): JSXElement {
     // across a value change. A keyed arm gets the value, and the generation
     // counter above is what rebuilds it.
     const keyed = readValue(found.match.keyed, "Match.keyed") === true;
-    const narrowed = (): unknown => {
+    function narrowed(): unknown {
       const now = arms();
       return now === null ? undefined : now.value;
-    };
+    }
     return callSlot(found.match.children, keyed ? found.value : narrowed);
   };
 
@@ -478,6 +488,10 @@ export function Errored(props: ErroredProps): JSXElement {
   );
 }
 
+export interface NoHydrationProps {
+  children: unknown;
+}
+
 /**
  * `<NoHydration>` — an ISLAND: markup the server renders that the client never
  * hydrates.
@@ -491,8 +505,13 @@ export function Errored(props: ErroredProps): JSXElement {
  * control-flow constructs: it decides who claims the markup, not what the page
  * contains.
  */
-export function NoHydration(props: { children: unknown }): JSXElement {
+export function NoHydration(props: NoHydrationProps): JSXElement {
   return islandIn(rendererHere("NoHydration").host, null, null, props.children as Block<unknown>);
+}
+
+export interface HydrationProps {
+  id?: string;
+  children?: unknown;
 }
 
 /**
@@ -506,7 +525,7 @@ export function NoHydration(props: { children: unknown }): JSXElement {
  * `<NoHydration>` builds nothing while hydrating, so there is nothing here to
  * re-enter.
  */
-export function Hydration(props: { id?: string; children?: unknown }): JSXElement {
+export function Hydration(props: HydrationProps): JSXElement {
   const id = readValue(props.id, "Hydration.id") as string | undefined;
   const scope = hydrationScope(getOwner(), id ?? "");
   if (scope === null) return props.children as JSXElement;
@@ -577,8 +596,20 @@ export type LazyComponent<T> = T & {
   loaded: () => boolean;
 };
 
+export type DefaultExport<T> = {
+  default: T;
+};
+
+export interface NamedExport<K> {
+  export: K;
+}
+
+export interface ExportChoice {
+  export?: string;
+}
+
 export function lazy<T extends (props: never) => unknown>(
-  load: () => Promise<{ default: T }>,
+  load: () => Promise<DefaultExport<T>>,
   pick?: undefined,
   moduleUrl?: string,
 ): LazyComponent<T>;
@@ -589,7 +620,7 @@ export function lazy<M, T extends (props: never) => unknown>(
 ): LazyComponent<T>;
 export function lazy<M extends Record<string, unknown>, K extends keyof M & string>(
   load: () => Promise<M>,
-  options: { export: K },
+  options: NamedExport<K>,
   moduleUrl?: string,
 ): LazyComponent<M[K]>;
 // `P` is the props type of the component this RETURNS, which is the only
@@ -597,12 +628,12 @@ export function lazy<M extends Record<string, unknown>, K extends keyof M & stri
 // oxlint-disable-next-line typescript/no-unnecessary-type-parameters
 export function lazy<P = unknown>(
   load: () => Promise<Record<string, unknown>>,
-  pick?: ((module: Record<string, unknown>) => unknown) | { export?: string },
+  pick?: ((module: Record<string, unknown>) => unknown) | ExportChoice,
   moduleUrl?: string,
 ): LazyComponent<(props: P) => JSXElement>;
 export function lazy(
   load: () => Promise<Record<string, unknown>>,
-  which?: ((module: Record<string, unknown>) => unknown) | { export?: string },
+  which?: ((module: Record<string, unknown>) => unknown) | ExportChoice,
   moduleUrl?: string,
 ): LazyComponent<(props: unknown) => JSXElement> {
   const name = typeof which === "object" ? (which.export ?? "default") : "default";
@@ -610,22 +641,23 @@ export function lazy(
     typeof which === "function" ? which : (module: Record<string, unknown>) => module[name];
   let cell: Cell<unknown> | null = null;
   let here = false;
-  const resolved = (): Cell<unknown> =>
+  function resolved(): Cell<unknown> {
     // Under a root of its own that nothing disposes: a memo with no owner is
     // released whenever nothing is reading it, and the next read would import
     // again.
-    (cell ??= runWithOwner(null, () =>
+    return (cell ??= runWithOwner(null, () =>
       createRoot(() => createMemo(async () => pick(await load()))),
     ));
+  }
 
-  const component = (props: unknown): JSXElement => {
+  function component(props: unknown): JSXElement {
     // Before the read, which throws while the module is on its way: the page
     // needs the module's assets whether or not this render waits for them.
     if (moduleUrl !== undefined) reportModule(moduleUrl);
     const Loaded = resolved()() as (props: unknown) => JSXElement;
     here = true;
     return Loaded(props);
-  };
+  }
 
   // Warms the SAME cell. `resolve` awaits the cell's first settled value rather
   // than calling `load()` again — a second call is a second fetch on any loader
@@ -690,7 +722,7 @@ export type LazyModule<T> = (() => Promise<T>) & {
 export function lazyModule<T>(load: () => Promise<T>): LazyModule<T> {
   let pending: Promise<T> | undefined;
   let landed: T | undefined;
-  const read = (): Promise<T> => {
+  function read(): Promise<T> {
     if (pending !== undefined) return pending;
     const current = load();
     pending = current;
@@ -703,6 +735,6 @@ export function lazyModule<T>(load: () => Promise<T>): LazyModule<T> {
       },
     );
     return current;
-  };
+  }
   return Object.assign(read, { preload: read, peek: (): T | undefined => landed });
 }

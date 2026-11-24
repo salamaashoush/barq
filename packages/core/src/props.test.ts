@@ -22,8 +22,13 @@ import { describe, expect, test } from "bun:test";
 import { cell, merge, omit, props, SOURCES } from "./props.ts";
 import { createSignal } from "./signals.ts";
 
+interface Counting<T> {
+  readonly carrier: () => T;
+  reads: number;
+}
+
 /** A Cell that records every call. Reading it is the only way to its value. */
-function counting<T>(value: T): { readonly carrier: () => T; reads: number } {
+function counting<T>(value: T): Counting<T> {
   const box = {
     reads: 0,
     carrier: (): T => {
@@ -33,6 +38,14 @@ function counting<T>(value: T): { readonly carrier: () => T; reads: number } {
   };
   return box;
 }
+
+interface YProps {
+  y: () => number;
+}
+
+type XProps = {
+  x: () => string;
+};
 
 describe("laziness conformance: a counting Cell reads 0 after", () => {
   test("spread", () => {
@@ -50,7 +63,7 @@ describe("laziness conformance: a counting Cell reads 0 after", () => {
     const box = counting("v");
     const source = props([{ x: box.carrier, y: cell(1), z: cell(2) }, { w: cell(3) }]);
 
-    const { y, ...rest } = source as { y: () => number } & Record<string, () => unknown>;
+    const { y, ...rest } = source as YProps & Record<string, () => unknown>;
 
     expect(box.reads).toBe(0);
     expect(Object.keys(rest).toSorted()).toEqual(["w", "x", "z"]);
@@ -63,7 +76,7 @@ describe("laziness conformance: a counting Cell reads 0 after", () => {
     const box = counting("v");
     const source = props([{ a: cell(0) }, { x: box.carrier }]);
 
-    const copy = Object.assign({}, source) as { x: () => string };
+    const copy = Object.assign({}, source) as XProps;
 
     expect(box.reads).toBe(0);
     expect(copy.x()).toBe("v");
@@ -112,11 +125,15 @@ describe("laziness conformance: a counting Cell reads 0 after", () => {
 
     // C5: forwarding is IDENTITY. Each hop passes the same Cell, so depth costs
     // nothing and the kind cannot change on the way.
-    const one = (p: Record<string, unknown>): Record<string, unknown> => props([p]);
-    const two = (p: Record<string, unknown>): Record<string, unknown> =>
-      one(merge(p, { hop: cell(2) }));
-    const three = (p: Record<string, unknown>): Record<string, unknown> =>
-      two(merge(p, { hop: cell(3) }));
+    function one(p: Record<string, unknown>): Record<string, unknown> {
+      return props([p]);
+    }
+    function two(p: Record<string, unknown>): Record<string, unknown> {
+      return one(merge(p, { hop: cell(2) }));
+    }
+    function three(p: Record<string, unknown>): Record<string, unknown> {
+      return two(merge(p, { hop: cell(3) }));
+    }
 
     const forwarded = three({ x: box.carrier });
 
@@ -144,6 +161,10 @@ describe("laziness conformance: a counting Cell reads 0 after", () => {
   });
 });
 
+interface DollarCarrier {
+  $: unknown[];
+}
+
 describe("the source list", () => {
   test("one plain record is returned unchanged", () => {
     const only = { x: cell(1) };
@@ -157,7 +178,7 @@ describe("the source list", () => {
     expect((outer.a as () => number)()).toBe(1);
     expect((outer.b as () => number)()).toBe(3);
     // $ concatenates rather than nesting: three records, not a record and a proxy.
-    expect((outer as unknown as { $: unknown[] }).$.length).toBe(3);
+    expect((outer as unknown as DollarCarrier).$.length).toBe(3);
   });
 
   test("merge treats a later undefined as a value", () => {
@@ -189,7 +210,7 @@ describe("the source list", () => {
 
 describe("cell", () => {
   test("evaluates once, so an identity-observable prop keeps its identity", () => {
-    const handler = (): void => {};
+    function handler(): void {}
     const carrier = cell(handler);
     expect(carrier()).toBe(handler);
     expect(carrier()).toBe(carrier());
@@ -318,7 +339,9 @@ describe("a spread of plain values into a component", () => {
   // A function in a spread already carries the calling convention, so it is
   // forwarded by name rather than wrapped a second time.
   test("a member that is already a Cell is forwarded", () => {
-    const cellular = (): string => "up";
+    function cellular(): string {
+      return "up";
+    }
     const merged = props([{ trend: cellular }, { title: () => "Revenue" }]);
     expect(merged["trend"]).toBe(cellular);
   });

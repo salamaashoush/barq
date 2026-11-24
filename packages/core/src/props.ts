@@ -15,7 +15,7 @@
 import type { Incoming } from "./config.ts";
 import type { Cell } from "./scope.ts";
 
-import { BLOCK } from "./signals.ts";
+import { BLOCK, type Arity } from "./signals.ts";
 
 export { BLOCK, block, isBlock } from "./signals.ts";
 
@@ -275,6 +275,10 @@ export function cell<T>(value: T): Cell<T> {
   return (): T => value;
 }
 
+interface Tagged {
+  [Symbol.toStringTag]?: string;
+}
+
 /**
  * Whether reading a key from `source` has to go through a live lookup.
  *
@@ -287,7 +291,7 @@ export function cell<T>(value: T): Cell<T> {
 function isLive(source: Held): boolean {
   if (source === null || source === undefined || typeof source !== "object") return false;
   if (SOURCES in source) return true;
-  return (source as { [Symbol.toStringTag]?: string })[Symbol.toStringTag] === "Store";
+  return (source as Tagged)[Symbol.toStringTag] === "Store";
 }
 
 /**
@@ -432,7 +436,7 @@ export function readAttr(held: unknown): unknown {
  * reading it would place it once with nothing.
  */
 export function readTag(held: unknown): unknown {
-  if (typeof held === "function" && (held as { length: number }).length > 0) return held;
+  if (typeof held === "function" && (held as Arity).length > 0) return held;
   return readProp(held);
 }
 

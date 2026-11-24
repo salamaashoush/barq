@@ -23,6 +23,7 @@ import {
   WHOLE,
   withoutClaim,
   type Cursor,
+  type LateClaim,
   type Range,
 } from "./hydration-state.ts";
 import type { Block, Scope } from "./scope.ts";
@@ -401,6 +402,10 @@ function takeUnsettledClaim(site: Site): Range | null {
   return claim;
 }
 
+interface BoundaryMarker {
+  $$barq?: (failed: boolean) => boolean;
+}
+
 /**
  * The claim a boundary's position holds. `idle` answers whether the boundary
  * has no content standing yet, which is when a swapped range may still be
@@ -421,7 +426,7 @@ function boundaryClaim(site: Site, idle: () => boolean): BoundaryClaim {
   const owedKey = owedRange === null ? null : claimWalk().rangeKey(owedRange);
   if (owed !== null && owedKey !== null && (owedKey.startsWith("b:") || owedKey.startsWith("e:"))) {
     const deferred = owedKey.startsWith("b:");
-    (owed as { $$barq?: (failed: boolean) => boolean }).$$barq = (failed) => {
+    (owed as BoundaryMarker).$$barq = (failed) => {
       if (!deferred || failed || !idle() || host.parentOf(owed) === null) return false;
       lateOpen = owed;
       return true;
@@ -450,7 +455,7 @@ function boundaryClaim(site: Site, idle: () => boolean): BoundaryClaim {
  * boundary to build cold instead.
  */
 function adoptLate(host: RangeHost, claim: Range, build: () => Instance): Instance | null {
-  let claimed: { value: Instance; abandoned: HydrationMismatch | null };
+  let claimed: LateClaim<Instance>;
   try {
     claimed = claimLate(claim.parent, build);
   } catch (error) {

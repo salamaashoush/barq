@@ -20,7 +20,9 @@ import {
 
 // Solid's `createRoot`: owned by the scope it is created under, so it sees
 // that scope's context.
-const root = <T>(fn: (dispose: () => void) => T): T => createRoot(fn);
+function root<T>(fn: (dispose: () => void) => T): T {
+  return createRoot(fn);
+}
 
 describe("context", () => {
   test(

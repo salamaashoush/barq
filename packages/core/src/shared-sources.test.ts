@@ -7,11 +7,13 @@ import { expect, test } from "bun:test";
 
 import { SharedSources } from "./shared-sources.ts";
 
-function source(): {
+interface TestSource {
   iterable: AsyncIterable<number>;
   push: (value: number | null) => void;
   pulls: () => number;
-} {
+}
+
+function source(): TestSource {
   const queue: (number | null)[] = [];
   let wake: (() => void) | null = null;
   let pulls = 0;
@@ -33,11 +35,15 @@ function source(): {
   };
 }
 
-const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+function settle() {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
 
 // A seat answers a value already there as a bare result, which its
 // `AsyncIterator` type still calls a promise.
-const now = (iterator: AsyncIterator<number>): unknown => iterator.next();
+function now(iterator: AsyncIterator<number>): unknown {
+  return iterator.next();
+}
 
 test("a seat taken after a value has arrived reads it at once, without waiting", async () => {
   const shared = new SharedSources();
