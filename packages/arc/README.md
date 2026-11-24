@@ -790,6 +790,16 @@ import { CommentThreadList } from "@barqjs/arc";
   under it across a narrow one.
 - `PersonAvatar`: one person's photo, or their initials while it loads or when
   it fails, which `AvatarStack` and the comments draw.
+- `MemberInvite`, `PendingInvites` and `InviteLinks`: bringing people in.
+  `MemberInvite` is an arc form: addresses typed or pasted as `TagInput`
+  chips, each checked as it is added (`validateEmail` adds rules of the
+  app's own), a role from `roles`, and Send; the addresses the server
+  refuses stay in the field with the reason and the rest are cleared.
+  `PendingInvites` lists the invitations not yet accepted with their role,
+  who sent them and when, an expired one said so, Resend pending while it
+  runs and Revoke asked through `confirm()`. `InviteLinks` lists links to
+  join by, each with a copy button, its uses and its expiry and Deactivate
+  asked first; `onCreate` adds a form for a new one by role, uses and days.
 
 ## Notifications
 
