@@ -1,7 +1,7 @@
 /** Mounting `<DiagramEditor>` with its UI in a 1280 by 800 region, a desktop's, and driving it. */
 
 import { afterEach, beforeEach } from "bun:test";
-import { flush } from "@barqjs/core";
+import { type Child, flush } from "@barqjs/core";
 import { cleanup, render, tick } from "@barqjs/testing";
 
 import { DiagramEditor, type DiagramEditorApi, type DiagramEditorProps } from "../index.ts";
@@ -44,11 +44,20 @@ export async function settle(): Promise<void> {
   flush();
 }
 
+/**
+ * Mounts the editor; `children`, a function so they are made where the
+ * editor reads them, are its children (`MainMenu`, `WelcomeScreen`, ...).
+ */
 export async function mountEditor(
-  props: Partial<DiagramEditorProps> = {},
+  props: Partial<Omit<DiagramEditorProps, "children">> = {},
+  children?: () => Child,
 ): Promise<{ api: DiagramEditorApi; region: HTMLElement }> {
   let api: DiagramEditorApi | undefined;
-  render(() => <DiagramEditor height={SIZE.height} {...props} api={(given) => (api = given)} />);
+  render(() => (
+    <DiagramEditor height={SIZE.height} {...props} api={(given) => (api = given)}>
+      {children?.()}
+    </DiagramEditor>
+  ));
   await settle();
   const region = document.querySelector<HTMLElement>("[role=application]");
   if (!api || !region) throw new Error("the editor did not mount");

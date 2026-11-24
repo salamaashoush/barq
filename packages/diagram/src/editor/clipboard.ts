@@ -119,6 +119,15 @@ export class EditorClipboard {
     if (app.isDestroyed) {
       return;
     }
+    if (app.host.onPaste) {
+      try {
+        if (!(await app.host.onPaste(data, event))) {
+          return;
+        }
+      } catch (error) {
+        console.error(error);
+      }
+    }
     await this.insertClipboardContent(data, filesList, isPlainPaste);
     app.batch(() =>
       app.setActiveTool({ type: app.state.preferredSelectionTool.type }, { keepSelection: true }),

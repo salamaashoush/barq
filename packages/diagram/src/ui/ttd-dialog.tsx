@@ -1,3 +1,4 @@
+import type { JSX } from "@barqjs/web";
 import {
   type Child,
   For,
@@ -35,6 +36,8 @@ import {
 } from "../ttd/mermaid-error.ts";
 import { TextToDiagramSession, getLastAssistantMessage } from "../ttd/session.ts";
 import { useDiagramUI } from "./context.tsx";
+import { hostSlot, isHostChild } from "./host-children.ts";
+import { readProp } from "@barqjs/core";
 import { bg, edge, fg, gap, layout, rounded, space, type } from "@barqjs/arc/style";
 
 import { diagramLayer as d } from "./layer.ts";
@@ -540,10 +543,10 @@ function TextToDiagramTab(props: {
         </div>
         <div class={log} role="log" aria-live="polite" aria-label={t("chat.label")}>
           <Show when={history().messages.length === 0}>
-            <div>
-              <p style="margin:0 0 4px;font-weight:600">{t("chat.placeholder.title")}</p>
-              <p class={muted}>{t("chat.placeholder.description")}</p>
-              <p class={muted}>{t("chat.placeholder.hint")}</p>
+            <div data-testid="ttd-welcome">
+              {props.options.renderWelcomeScreen?.({ rateLimits: rateLimits() ?? null }) ?? (
+                <TTDWelcomeMessage />
+              )}
             </div>
           </Show>
           <For each={history().messages} keyed={(chat: ChatMessage) => chat.id}>
@@ -558,7 +561,9 @@ function TextToDiagramTab(props: {
                   <span>{chat().content}</span>
                 </Show>
                 <Show when={chat().type === "warning"}>
-                  <span role="alert">{warning(chat())}</span>
+                  <span role="alert">
+                    {props.options.renderWarning?.(chat()) ?? warning(chat())}
+                  </span>
                 </Show>
                 <Show when={chat().type === "assistant"}>
                   <Show when={chat().content}>
@@ -702,11 +707,71 @@ function TextToDiagramTab(props: {
 }
 
 /**
- * Excalidraw's text-to-diagram dialog (`openDialog: ttd`): the Mermaid tab,
- * and, when `aiEnabled` and the app gives a `textToDiagram` backend, the
- * text-to-diagram chat beside it.
+ * Excalidraw's `TTDDialog`, given to `<DiagramEditor>` as a child: the app's
+ * text-to-diagram backend (`onTextSubmit`, `persistenceAdapter`,
+ * `renderWelcomeScreen`, `renderWarning`), which the dialog's chat talks to.
+ * Without it the dialog has the Mermaid tab alone.
  */
-export function TTDDialog() {
+function TTDDialogRoot(props: TextToDiagramOptions): JSX.Element {
+  if (isHostChild()) {
+    return hostSlot("ttdDialog", {
+      get onTextSubmit() {
+        return props.onTextSubmit;
+      },
+      get persistenceAdapter() {
+        return props.persistenceAdapter;
+      },
+      get renderWelcomeScreen() {
+        return props.renderWelcomeScreen;
+      },
+      get renderWarning() {
+        return props.renderWarning;
+      },
+    });
+  }
+  return <TTDDialogBase />;
+}
+
+export const TTDDialog = Object.assign(TTDDialogRoot, {
+  /** The chat's default greeting, for a `renderWelcomeScreen` that adds to it. */
+  WelcomeMessage: TTDWelcomeMessage,
+});
+
+/**
+ * Excalidraw's `TTDDialogTrigger`, given to `<DiagramEditor>` as a child: the
+ * extra tools' entry that opens the text-to-diagram dialog, with its label
+ * (`children`) and icon.
+ */
+export function TTDDialogTrigger(props: { children?: Child; icon?: Child }): JSX.Element {
+  return isHostChild()
+    ? hostSlot("ttdDialogTrigger", {
+        get children() {
+          return readProp(props.children) as Child;
+        },
+        get icon() {
+          return readProp(props.icon) as Child;
+        },
+      })
+    : null;
+}
+
+function TTDWelcomeMessage() {
+  const ui = useDiagramUI();
+  const t = ui.t;
+  return (
+    <>
+      <p style="margin:0 0 4px;font-weight:600">{t("chat.placeholder.title")}</p>
+      <p class={muted}>{t("chat.placeholder.description")}</p>
+      <p class={muted}>{t("chat.placeholder.hint")}</p>
+    </>
+  );
+}
+
+/**
+ * The text-to-diagram dialog (`openDialog: ttd`): the Mermaid tab, and, when
+ * `aiEnabled` and the app gives a backend, the text-to-diagram chat beside it.
+ */
+export function TTDDialogBase() {
   const ui = useDiagramUI();
   const t = ui.t;
   const store = ui.store;

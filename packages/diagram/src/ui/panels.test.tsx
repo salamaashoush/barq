@@ -281,15 +281,13 @@ describe("UIOptions", () => {
   test("an app's own menu entries replace the defaults, and slots render", async () => {
     const { MainMenu } = await import("../index.ts");
     const picked: string[] = [];
-    await mountEditor({
-      mainMenu: () => (
-        <>
-          <MainMenu.DefaultItems.Help />
-          <MainMenu.Item onSelect={() => picked.push("share")}>Share</MainMenu.Item>
-        </>
-      ),
-      renderTopRightUI: () => <button type="button">Publish</button>,
-    });
+    const selected: string[] = [];
+    await mountEditor({ renderTopRightUI: () => <button type="button">Publish</button> }, () => (
+      <MainMenu onSelect={(event) => selected.push(event.type)}>
+        <MainMenu.DefaultItems.Help />
+        <MainMenu.Item onSelect={() => picked.push("share")}>Share</MainMenu.Item>
+      </MainMenu>
+    ));
     expect(screen.getByRole("button", { name: "Publish" })).toBeDefined();
     await user.click(screen.getByRole("button", { name: "Menu" }));
     await settle();
@@ -301,14 +299,15 @@ describe("UIOptions", () => {
     ).toEqual(["Help?", "Share"]);
     await user.click(within(menu).getByRole("menuitem", { name: "Share" }));
     expect(picked).toEqual(["share"]);
+    expect(selected).toEqual(["select"]);
   });
 
-  test("excalidrawAPI is the api under Excalidraw's name, and a promised scene opens", async () => {
-    let given: DiagramEditorApi | undefined;
+  test("onExcalidrawAPI is the api under Excalidraw's name, and a promised scene opens", async () => {
+    let given: DiagramEditorApi | null | undefined;
     render(() => (
       <DiagramEditor
         height={640}
-        excalidrawAPI={(api) => (given = api)}
+        onExcalidrawAPI={(api) => (given = api)}
         initialData={Promise.resolve({ elements: [rectangle("A", 10, 10)] })}
       />
     ));

@@ -464,6 +464,68 @@ export type LibraryItem = {
 export type LibraryItems = readonly LibraryItem[];
 export type LibraryItems_anyVersion = LibraryItems | LibraryItems_v1;
 
+/**
+ * Excalidraw's `InteractionConfig`: what stays enabled while the editor is
+ * otherwise not interactive. Anything omitted or `false` is off.
+ */
+export type InteractionConfig = {
+  enabled?: {
+    /** Element links show their icon and open when clicked, as in view mode. */
+    links?: boolean;
+    /** Embeds activate on hover and click, as in view mode. */
+    embeds?: boolean;
+    /** `links` and `embeds` together. */
+    interactiveContent?: boolean;
+    /**
+     * Panning and zooming (drag, wheel, pinch, the zoom keys), held to
+     * `scrollConstraints`; the editor takes the wheel back from the page.
+     */
+    navigation?: boolean;
+    /** The browser's own zoom over the editor, which is held back otherwise. */
+    browserZoom?: boolean;
+    /** Tools the pointer keeps driving while active; switching tools stays the host's. */
+    tools?: {
+      /** The laser draws and `onPointerUpdate` keeps reporting. */
+      laser?: boolean;
+      /** A custom tool keeps `onPointerDown` and `onPointerUp` coming. */
+      custom?: boolean;
+    };
+  };
+};
+
+/**
+ * Excalidraw's `UIConfig`: the default controls kept while the rest of the
+ * default UI is hidden (`enabled`), or removed from it (`disabled`).
+ */
+export type UIConfig =
+  | {
+      enabled: {
+        /** Zoom out, the level (which resets it) and zoom in. */
+        zoom?: boolean;
+        /** The button shown once the viewport is away from every element. */
+        scrollBackToContent?: boolean;
+      };
+    }
+  | {
+      disabled: {
+        /** The minimap and every way to toggle it. */
+        minimap?: boolean;
+      };
+    };
+
+export type UIControl = "zoom" | "scrollBackToContent" | "minimap";
+
+/** Excalidraw's `ImageOptions`: how inserted images are kept small. */
+export type ImageOptions = Partial<{
+  maxWidthOrHeight: number;
+  maxFileSizeBytes: number;
+}>;
+
+/** A tool the host forces, Excalidraw's `activeTool` prop: any but the image tool. */
+export type ForcedActiveTool =
+  | { type: Exclude<ToolType, "image"> }
+  | { type: "custom"; customType: string };
+
 /** What a render may change about an element: never its geometry, content, bindings or style. */
 export type ElementRenderOverride = Readonly<{
   /** Absolute opacity, 0 to 100. */
@@ -517,5 +579,51 @@ export type Offsets = Partial<{
   bottom: number;
   left: number;
 }>;
+
+/**
+ * The `data-viewport-ui` of a UI surface over the canvas, which
+ * `getViewportOffsets` measures: `top` and `bottom` by the edge facing the
+ * canvas, `side` by the half of the viewport its centre is in.
+ */
+export type ViewportUIDock = "top" | "bottom" | "side";
+
+/** The `data-viewport-ui-name` of a surface that comes and goes, measured on its own and reserved while hidden. */
+export type ViewportUIName = "sidebar" | "stylesPanel" | "stats";
+
+/**
+ * How `getViewportOffsets` measures the UI. Unlike `Offsets`, the horizontal
+ * sides are logical: `left` is the reading direction's start.
+ */
+export type ViewportOffsetsOptions = {
+  /** Added to each measured side. @default 24 */
+  padding?: number;
+  paddingTop?: number;
+  paddingRight?: number;
+  paddingBottom?: number;
+  paddingLeft?: number;
+  /** A side's final value in place of the measured UI, without padding. */
+  top?: number;
+  bottom?: number;
+  left?: number;
+  right?: number;
+  /**
+   * Room kept for these surfaces while they are hidden, so the offsets do not
+   * shift as they come and go: their last measured size, or an estimate.
+   * Not on a phone, where they cover the canvas.
+   */
+  reserve?: {
+    stylesPanel?: boolean;
+    sidebar?: boolean;
+  };
+};
+
+/**
+ * The insets `setViewport` and `initialState.viewport` fit a target within:
+ * static sides in screen pixels, the UI as rendered (`ui`), or both, a
+ * static side winning over the measured one.
+ */
+export type ViewportOffsets = Offsets & {
+  ui?: true | ViewportOffsetsOptions;
+};
 
 export type { EditorInterface };

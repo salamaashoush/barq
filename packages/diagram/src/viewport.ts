@@ -21,7 +21,32 @@ import type { ExcalidrawElement } from "@excalidraw/element/types";
 
 import { getNormalizedZoom } from "./scene/normalize.ts";
 
-import type { AppState, NormalizedZoomValue, Offsets, PointerCoords, Zoom } from "./types.ts";
+import type {
+  AppState,
+  NormalizedZoomValue,
+  Offsets,
+  PointerCoords,
+  ScrollConstraints,
+  ViewportOffsets,
+  Zoom,
+} from "./types.ts";
+
+/**
+ * The scene rectangle a viewport shows, `@excalidraw/element`'s, typed on the
+ * fields it reads so a barq `AppState` passes as it is.
+ */
+export const getVisibleSceneBounds = ({
+  scrollX,
+  scrollY,
+  width,
+  height,
+  zoom,
+}: Pick<AppState, "scrollX" | "scrollY" | "width" | "height" | "zoom">): SceneBounds => [
+  -scrollX,
+  -scrollY,
+  -scrollX + width / zoom.value,
+  -scrollY + height / zoom.value,
+];
 
 /** default rubberband overscroll give for scroll locks, in viewport px */
 export const DEFAULT_OVERSCROLL = 150;
@@ -40,6 +65,42 @@ type ZoomOptions = {
 export type ViewportFit = "scale-down" | "contain" | "none";
 
 type Viewport = Pick<AppState, "scrollX" | "scrollY" | "zoom">;
+
+export type AnimationOptions = {
+  duration?: number;
+};
+
+export type SetViewportRect = {
+  x: number;
+  y: number;
+  width?: number;
+  height?: number;
+};
+
+export type SetViewportOptions = {
+  /**
+   * What to show: a box or a rect in scene coordinates, elements (those in
+   * the scene and not deleted), or an element or group id or an element link.
+   */
+  target: Bounds | SetViewportRect | ExcalidrawElement | readonly ExcalidrawElement[] | string;
+  /** @default "scale-down" */
+  fit?: ViewportFit;
+  lock?: {
+    /** Holds panning to the target box. */
+    scroll?: ScrollConstraints["lockScroll"];
+    /** Makes the resolved zoom the least zoom. */
+    zoom?: ScrollConstraints["lockZoom"];
+    /**
+     * How far past the lock a pan goes before it springs back, in screen
+     * pixels: `true` for `DEFAULT_OVERSCROLL`, `false` for none.
+     * @default true
+     */
+    overscroll?: boolean | number;
+  };
+  /** @default true, for 500ms */
+  animation?: AnimationOptions | boolean;
+  offsets?: ViewportOffsets;
+};
 
 /**
  * Clamps a single scroll axis so the visible scene span stays inside the box.

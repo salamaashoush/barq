@@ -1,4 +1,5 @@
 import { For, Show, createMemo, createSignal } from "@barqjs/core";
+import type { HostSlots } from "./host-children.ts";
 import { Toolbar as AriaToolbar } from "@barqjs/aria/toolbar";
 import { ArrowRight } from "@barqjs/lucide/icons/arrow-right";
 import { Circle } from "@barqjs/lucide/icons/circle";
@@ -323,11 +324,17 @@ function ExtraTools(props: {
           )}
         </For>
         <DropdownMenuSeparator />
-        <Show when={ui.host().aiEnabled && ui.host().textToDiagram}>
-          <DropdownMenuItem id="textToDiagram" class={menuItem} data-testid="toolbar-textToDiagram">
-            <ScanText aria-hidden="true" />
-            <span>{t("labels.textToDiagram")}</span>
-          </DropdownMenuItem>
+        <Show when={ui.host().aiEnabled && ui.host().slots.ttdDialogTrigger} keyed>
+          {(trigger: HostSlots["ttdDialogTrigger"]) => (
+            <DropdownMenuItem
+              id="textToDiagram"
+              class={menuItem}
+              data-testid="toolbar-textToDiagram"
+            >
+              {trigger.icon ?? <ScanText aria-hidden="true" />}
+              <span>{trigger.children ?? t("labels.textToDiagram")}</span>
+            </DropdownMenuItem>
+          )}
         </Show>
         <DropdownMenuItem id="mermaid" class={menuItem} data-testid="toolbar-mermaid">
           <Waypoints aria-hidden="true" />

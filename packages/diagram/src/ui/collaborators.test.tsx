@@ -254,11 +254,11 @@ describe("LiveCollaborationTrigger", () => {
 
   test("is a main menu entry too", async () => {
     let opened = 0;
-    await mountEditor({
-      mainMenu: () => (
+    await mountEditor({}, () => (
+      <MainMenu>
         <MainMenu.DefaultItems.LiveCollaborationTrigger isCollaborating onSelect={() => opened++} />
-      ),
-    });
+      </MainMenu>
+    ));
     await user.click(screen.getByTestId("main-menu-trigger"));
     await settle();
     const item = screen.getByRole("menuitem", { name: "Live collaboration..." });

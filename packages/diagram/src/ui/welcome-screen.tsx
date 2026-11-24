@@ -1,3 +1,4 @@
+import type { JSX } from "@barqjs/web";
 import { type Child, Show } from "@barqjs/core";
 import { CircleHelp } from "@barqjs/lucide/icons/circle-help";
 import { FolderOpen } from "@barqjs/lucide/icons/folder-open";
@@ -5,6 +6,7 @@ import { FolderOpen } from "@barqjs/lucide/icons/folder-open";
 import { actionLoadScene } from "../editor/actions/export.ts";
 import { actionShortcuts } from "../editor/actions/toggles.ts";
 import { useDiagramUI } from "./context.tsx";
+import { hostSlot, isHostChild } from "./host-children.ts";
 import { bg, edge, fg, gap, interaction, layout, rounded, space, type } from "@barqjs/arc/style";
 import { tokens } from "@barqjs/ui/theme/tokens";
 
@@ -259,29 +261,34 @@ function Center(props: { children?: Child }) {
  * Excalidraw's welcome screen, shown over a scene that has never had an
  * element while the selection tool is active: a heading and a menu in the
  * middle, and hints pointing at the main menu, the toolbar and help. An app
- * passes `welcomeScreen` to `<DiagramEditor>`: `true` for these defaults, or
- * the `WelcomeScreen` parts to show.
+ * gives it to `<DiagramEditor>` as a child, empty for these defaults or with
+ * the parts to show.
  *
  * ```tsx
- * <DiagramEditor
- *   welcomeScreen={
- *     <>
- *       <WelcomeScreen.Center>
- *         <WelcomeScreen.Center.Logo><MyMark /></WelcomeScreen.Center.Logo>
- *         <WelcomeScreen.Center.Heading>Sketch the release</WelcomeScreen.Center.Heading>
- *         <WelcomeScreen.Center.Menu>
- *           <WelcomeScreen.Center.MenuItemLoadScene />
- *           <WelcomeScreen.Center.MenuItemHelp />
- *         </WelcomeScreen.Center.Menu>
- *       </WelcomeScreen.Center>
- *       <WelcomeScreen.Hints.ToolbarHint />
- *     </>
- *   }
- * />
+ * <DiagramEditor>
+ *   <WelcomeScreen>
+ *     <WelcomeScreen.Center>
+ *       <WelcomeScreen.Center.Logo><MyMark /></WelcomeScreen.Center.Logo>
+ *       <WelcomeScreen.Center.Heading>Sketch the release</WelcomeScreen.Center.Heading>
+ *       <WelcomeScreen.Center.Menu>
+ *         <WelcomeScreen.Center.MenuItemLoadScene />
+ *         <WelcomeScreen.Center.MenuItemHelp />
+ *       </WelcomeScreen.Center.Menu>
+ *     </WelcomeScreen.Center>
+ *     <WelcomeScreen.Hints.ToolbarHint />
+ *   </WelcomeScreen>
+ * </DiagramEditor>
  * ```
  */
-export const WelcomeScreen = Object.assign(
-  (props: { children?: Child }) => (
+function WelcomeScreenRoot(props: { children?: Child }): JSX.Element {
+  if (isHostChild()) {
+    return hostSlot("welcomeScreen", {
+      get children() {
+        return props.children;
+      },
+    });
+  }
+  return (
     <>
       {props.children ?? (
         <>
@@ -292,25 +299,26 @@ export const WelcomeScreen = Object.assign(
         </>
       )}
     </>
-  ),
-  {
-    Center: Object.assign(Center, {
-      Logo,
-      Heading,
-      Menu,
-      MenuItem,
-      MenuItemLink,
-      MenuItemHelp,
-      MenuItemLoadScene,
-    }),
-    Hints: { MenuHint, ToolbarHint, HelpHint },
-  },
-);
+  );
+}
+
+export const WelcomeScreen = Object.assign(WelcomeScreenRoot, {
+  Center: Object.assign(Center, {
+    Logo,
+    Heading,
+    Menu,
+    MenuItem,
+    MenuItemLink,
+    MenuItemHelp,
+    MenuItemLoadScene,
+  }),
+  Hints: { MenuHint, ToolbarHint, HelpHint },
+});
 
 const layer = d(pinned, cover);
 
 /** The welcome screen when the editor is empty and waiting, Excalidraw's `renderWelcomeScreen`. */
-export function WelcomeScreenLayer(props: { content: true | Child }) {
+export function WelcomeScreenLayer(props: { content: Child }) {
   const ui = useDiagramUI();
   const store = ui.store;
   const shown = () =>
@@ -322,7 +330,7 @@ export function WelcomeScreenLayer(props: { content: true | Child }) {
   return (
     <Show when={shown()}>
       <div class={layer} data-testid="welcome-screen">
-        {props.content === true ? <WelcomeScreen /> : props.content}
+        {props.content ?? <WelcomeScreen />}
       </div>
     </Show>
   );

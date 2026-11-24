@@ -231,9 +231,14 @@ describe("DiagramEditor", () => {
 
   test("unmounting stops the editor", async () => {
     const { api, region } = await mount((grab) => <DiagramEditor api={grab} />);
+    let changes = 0;
+    api.onChange(() => changes++);
     for (const cleanup of cleanups.splice(0)) cleanup();
     key(region, { key: "r", code: "KeyR" });
-    expect(api.getAppState().activeTool.type).toBe("selection");
+    expect(changes).toBe(0);
+    // as Excalidraw's: the API says so, and its getters throw
+    expect(api.isDestroyed).toBe(true);
+    expect(() => api.getAppState()).toThrow(/isDestroyed/);
   });
 });
 
@@ -327,7 +332,7 @@ export const page = () => () => (
 test("the server renders the 3b UI (welcome screen, sidebar, dialogs) and the browser hydrates it", async () => {
   const compiled = compile(
     `
-import { DiagramEditor, WelcomeScreen } from ${JSON.stringify(ENTRY)}
+import { DiagramEditor, TTDDialog, WelcomeScreen } from ${JSON.stringify(ENTRY)}
 
 export const handle = { api: null }
 
@@ -336,15 +341,16 @@ export const page = () => () => (
     <DiagramEditor
       label="Whiteboard"
       name="Release plan"
-      welcomeScreen={
+      onLibraryChange={(items) => items}
+      api={(api) => (handle.api = api)}
+    >
+      <WelcomeScreen>
         <WelcomeScreen.Center>
           <WelcomeScreen.Center.Heading>Sketch it</WelcomeScreen.Center.Heading>
         </WelcomeScreen.Center>
-      }
-      textToDiagram={{ onTextSubmit: async () => ({ generatedResponse: "" }) }}
-      onLibraryChange={() => {}}
-      api={(api) => (handle.api = api)}
-    />
+      </WelcomeScreen>
+      <TTDDialog onTextSubmit={async (request) => ({ generatedResponse: request.messages.length ? "" : "" })} />
+    </DiagramEditor>
   </main>
 )
 `,

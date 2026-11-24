@@ -10,7 +10,7 @@ import {
 
 import { getSelectionStateForElements } from "../selection.ts";
 
-import { advanceListMarkers } from "../duplicate.ts";
+import { advanceListMarkers, runOnDuplicate } from "../duplicate.ts";
 
 import type { Action } from "../types.ts";
 
@@ -40,7 +40,7 @@ export const actionDuplicateSelection: Action = {
       }
     }
 
-    const { duplicatedElements, elementsWithDuplicates } = duplicateElements({
+    const duplication = duplicateElements({
       type: "in-place",
       elements,
       idsOfElementsToDuplicate: arrayToMap(
@@ -61,6 +61,21 @@ export const actionDuplicateSelection: Action = {
         };
       },
     });
+
+    let { duplicatedElements, elementsWithDuplicates } = duplication;
+
+    if (app.host.onDuplicate) {
+      ({ elements: elementsWithDuplicates, duplicatedElements } = runOnDuplicate(
+        app,
+        duplication,
+        elementsWithDuplicates,
+        elements,
+      ));
+      // the host vetoed it
+      if (duplicatedElements.length === 0) {
+        return false;
+      }
+    }
 
     advanceListMarkers(app, duplicatedElements);
 

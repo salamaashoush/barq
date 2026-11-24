@@ -1,3 +1,4 @@
+import type { JSX } from "@barqjs/web";
 import {
   type Child,
   For,
@@ -70,6 +71,7 @@ import {
   menuSurface,
 } from "./styles.ts";
 import { UserList } from "./user-list.tsx";
+import { hostSlot, isHostChild } from "./host-children.ts";
 
 import type { ShortcutName } from "./shortcuts.ts";
 
@@ -361,23 +363,36 @@ function ChangeCanvasBackground() {
 }
 
 /**
- * The main menu's parts, Excalidraw's `MainMenu`: an app passes its own
- * `mainMenu`, built from these, to add entries or leave defaults out.
+ * Excalidraw's `MainMenu`, given to `<DiagramEditor>` as a child: its
+ * children replace the default entries (`MainMenu.DefaultItems` brings
+ * them back one by one), and `onSelect` hears any entry chosen.
  *
  * ```tsx
- * <DiagramEditor
- *   mainMenu={() => (
- *     <>
- *       <MainMenu.DefaultItems.Help />
- *       <MainMenu.Item onSelect={share}>Share</MainMenu.Item>
- *       <MainMenu.Separator />
- *       <MainMenu.DefaultItems.ToggleTheme />
- *     </>
- *   )}
- * />
+ * <DiagramEditor>
+ *   <MainMenu>
+ *     <MainMenu.DefaultItems.Help />
+ *     <MainMenu.Item onSelect={share}>Share</MainMenu.Item>
+ *     <MainMenu.Separator />
+ *     <MainMenu.DefaultItems.ToggleTheme />
+ *   </MainMenu>
+ * </DiagramEditor>
  * ```
  */
-export const MainMenu = {
+function MainMenuRoot(props: { children?: Child; onSelect?: (event: Event) => void }): JSX.Element {
+  if (isHostChild()) {
+    return hostSlot("mainMenu", {
+      get children() {
+        return props.children;
+      },
+      get onSelect() {
+        return props.onSelect;
+      },
+    });
+  }
+  return <>{props.children ?? <DefaultMainMenuItems />}</>;
+}
+
+export const MainMenu = Object.assign(MainMenuRoot, {
   Item,
   ItemLink,
   Group,
@@ -394,7 +409,7 @@ export const MainMenu = {
     ChangeCanvasBackground,
     LiveCollaborationTrigger,
   },
-};
+});
 
 /** Excalidraw's default menu, in its order. */
 function DefaultMainMenuItems() {
@@ -431,8 +446,9 @@ function useMainMenu(): MainMenuState {
 }
 
 /** The main menu's button, top start, and the menu it opens. */
-export function MainMenuButton(props: { items?: Child }) {
+export function MainMenuButton() {
   const ui = useDiagramUI();
+  const host = () => ui.host().slots.mainMenu;
   const t = ui.t;
   const [confirming, setConfirming] = createSignal(false);
   const [confirmingLoad, setConfirmingLoad] = createSignal(false);
@@ -477,9 +493,10 @@ export function MainMenuButton(props: { items?: Child }) {
                 aria-label={t("buttons.menu")}
                 side="bottom"
                 align="start"
+                onAction={() => host()?.onSelect?.(new Event("select"))}
                 data-testid="main-menu"
               >
-                {props.items ?? <DefaultMainMenuItems />}
+                {host()?.children ?? <DefaultMainMenuItems />}
                 <Show
                   when={
                     ui.store.editorInterface().formFactor === "phone" &&

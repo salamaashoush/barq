@@ -1,7 +1,6 @@
 import { UserIdleState, throttleRAF } from "@excalidraw/common";
 import {
   getSceneVersion,
-  getVisibleSceneBounds,
   isImageElement,
   isInitializedImageElement,
   newElementWith,
@@ -14,7 +13,7 @@ import { bumpElementVersions, restoreElements } from "../data/restore.ts";
 import { createIdleDetector } from "../idle.ts";
 import { errorMessageOf } from "../i18n.ts";
 import { throttle } from "../throttle.ts";
-import { zoomToFitBounds } from "../viewport.ts";
+import { getVisibleSceneBounds, zoomToFitBounds } from "../viewport.ts";
 import {
   WS_SUBTYPES,
   getSyncableElements,
@@ -379,7 +378,8 @@ class CollaborationSession implements Collaboration {
     this.clearInitializationTimer();
     for (const off of this.teardown.splice(0)) off();
 
-    if (this.connected) {
+    // an editor gone first has nothing left to save or hand back
+    if (this.connected && !this.api.isDestroyed) {
       await this.saveCollabRoom(getSyncableElements(this.api.getSceneElementsIncludingDeleted()));
       this.queueFileUpload.flush();
       await this.pendingUpload;
@@ -394,17 +394,19 @@ class CollaborationSession implements Collaboration {
     this.followedBy = new Set();
     this.collaborators = new Map();
 
-    const elements = this.api.getSceneElementsIncludingDeleted().map((element) => {
-      if (isImageElement(element) && element.status === "saved") {
-        return newElementWith(element, { status: "pending" });
-      }
-      return element;
-    });
-    this.api.updateScene({
-      elements,
-      collaborators: this.collaborators,
-      captureUpdate: "NEVER",
-    });
+    if (!this.api.isDestroyed) {
+      const elements = this.api.getSceneElementsIncludingDeleted().map((element) => {
+        if (isImageElement(element) && element.status === "saved") {
+          return newElementWith(element, { status: "pending" });
+        }
+        return element;
+      });
+      this.api.updateScene({
+        elements,
+        collaborators: this.collaborators,
+        captureUpdate: "NEVER",
+      });
+    }
     this.setState({
       status: "closed",
       collaborators: this.collaborators,

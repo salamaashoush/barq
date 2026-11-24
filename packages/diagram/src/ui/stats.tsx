@@ -1,4 +1,4 @@
-import { For, Show, createMemo } from "@barqjs/core";
+import { type Child, For, Show, createMemo } from "@barqjs/core";
 import { ChevronDown } from "@barqjs/lucide/icons/chevron-down";
 import { X } from "@barqjs/lucide/icons/x";
 import { KEYS, STATS_PANELS } from "@excalidraw/common";
@@ -77,6 +77,9 @@ const sectionToggle = d(
 );
 
 const heading = d(captionHeading, { gridColumn: "1 / -1" });
+
+const statsRow = d(grid, { columnGap: space.x2, alignItems: "center" });
+const statsRows = d(layout.column, { rowGap: space.x1_5 });
 
 const scrub = d({ cursor: "ew-resize", touchAction: "none", userSelect: "none" });
 
@@ -529,7 +532,13 @@ export function StatsPanel() {
 
   return (
     <Show when={shown()}>
-      <section class={panel} aria-label={t("stats.fullTitle")} data-testid="stats-panel">
+      <section
+        class={panel}
+        aria-label={t("stats.fullTitle")}
+        data-viewport-ui="side"
+        data-viewport-ui-name="stats"
+        data-testid="stats-panel"
+      >
         <div class={header}>
           <h2 class={title}>{t("stats.title")}</h2>
           <button
@@ -662,3 +671,46 @@ export function StatsPanel() {
     </Show>
   );
 }
+
+/** A row of the stats panel, Excalidraw's `Stats.StatsRow`: `columns` cells, a section's `heading`. */
+function StatsRow(props: {
+  children?: Child;
+  columns?: number;
+  heading?: boolean;
+  class?: string;
+  "data-testid"?: string;
+}) {
+  return (
+    <div
+      class={`${props.heading ? `${statsRow} ${heading}` : statsRow}${props.class ? ` ${props.class}` : ""}`}
+      style={{ gridTemplateColumns: `repeat(${props.columns ?? 1}, 1fr)` }}
+      data-testid={props["data-testid"]}
+    >
+      {props.children}
+    </div>
+  );
+}
+
+/** Rows of the stats panel, Excalidraw's `Stats.StatsRows`, placed by `order`. */
+function StatsRows(props: {
+  children?: Child;
+  order?: number;
+  class?: string;
+  "data-testid"?: string;
+}) {
+  return (
+    <div
+      class={props.class ? `${statsRows} ${props.class}` : statsRows}
+      style={props.order === undefined ? undefined : { order: props.order }}
+      data-testid={props["data-testid"]}
+    >
+      {props.children}
+    </div>
+  );
+}
+
+/**
+ * Excalidraw's `Stats`: the stats panel, and its `StatsRow` and `StatsRows`
+ * for what `renderCustomStats` adds to it.
+ */
+export const Stats = Object.assign(StatsPanel, { StatsRow, StatsRows });

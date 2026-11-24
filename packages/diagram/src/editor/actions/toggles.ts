@@ -93,12 +93,16 @@ export const actionToggleMinimap: Action = {
   keywords: ["map", "overview", "navigator", "navigation"],
   announcement: "Minimap toggled",
   viewMode: true,
+  navigation: true,
   perform: (_elements, appState) => ({
     appState: { ...appState, minimapEnabled: !appState.minimapEnabled },
     captureUpdate: CaptureUpdateAction.EVENTUALLY,
   }),
   checked: (appState) => appState.minimapEnabled,
-  predicate: (_elements, appState) => appState.height >= MINIMAP_MIN_EDITOR_HEIGHT,
+  predicate: (_elements, appState, app) =>
+    app.isUIControlEnabled("minimap") &&
+    appState.height >= MINIMAP_MIN_EDITOR_HEIGHT &&
+    app.isNavigationEnabled(),
 };
 
 /** The hint under the toolbar, which says what the tool or the selection does. */

@@ -1,3 +1,5 @@
+import type { Child } from "@barqjs/core";
+
 /** A message as the text-to-diagram backend reads it. Excalidraw's `LLMMessage`. */
 export interface LLMMessage {
   role: "user" | "assistant";
@@ -56,10 +58,12 @@ export interface SavedChat {
   timestamp: number;
 }
 
+export type SavedChats = SavedChat[];
+
 /** Where the app keeps the text-to-diagram chats. Excalidraw's `TTDPersistenceAdapter`. */
 export interface TTDPersistenceAdapter {
-  loadChats(): Promise<SavedChat[]>;
-  saveChats(chats: SavedChat[]): Promise<void>;
+  loadChats(): Promise<SavedChats>;
+  saveChats(chats: SavedChats): Promise<void>;
 }
 
 /**
@@ -71,6 +75,10 @@ export interface TextToDiagramOptions {
   onTextSubmit: (request: TextSubmitRequest) => Promise<TextSubmitResult>;
   /** Keeps the chats between sessions; they last as long as the editor without one. */
   persistenceAdapter?: TTDPersistenceAdapter;
+  /** What an empty chat shows instead of the default greeting; `undefined` keeps it. */
+  renderWelcomeScreen?: (props: { rateLimits: RateLimits | null }) => Child | undefined;
+  /** What a warning in the chat says instead of the default; `undefined` keeps it. */
+  renderWarning?: (chatMessage: ChatMessage) => Child | undefined;
 }
 
 export interface RateLimits {

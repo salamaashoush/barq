@@ -19,6 +19,7 @@ import {
   DRAGGING_THRESHOLD,
   ELEMENT_SHIFT_TRANSLATE_AMOUNT,
   ELEMENT_TRANSLATE_AMOUNT,
+  AppEventBus,
   Emitter,
   KEYS,
   LINE_CONFIRM_THRESHOLD,
@@ -33,6 +34,7 @@ import {
   getStrokeWidthByKey,
   invariant,
   isArrowKey,
+  isLocalLink,
   isIOS,
   isTransparent,
   isInputLike,
@@ -48,6 +50,8 @@ import {
   updateActiveTool,
   updateStable,
   viewportCoordsToSceneCoords,
+  wrapEvent,
+  EVENT,
 } from "@excalidraw/common";
 import {
   bindBindingElementToFixedPoint,
@@ -72,6 +76,8 @@ import {
   getMinTextElementWidth,
   hasBoundTextElement,
   isEndpointBoundText,
+  isElementLink,
+  parseElementLinkFromURL,
   isTextBindableContainer,
   isValidTextContainer,
   getBindingStrategyForDraggingBindingElementEndpoints,
@@ -144,6 +150,7 @@ import {
   removeElementsFromFrame,
   replaceAllElementsInFrame,
   Store,
+  StoreDelta,
   updateBoundElements,
   updateFrameMembershipOfSelectedElements,
   elementOverlapsWithFrame,
@@ -152,7 +159,14 @@ import { getRenderEnvironment } from "@excalidraw/element/renderEnvironment";
 import { pointDistance, pointFrom } from "@excalidraw/math";
 
 import type { EditorInterface } from "@excalidraw/common";
-import type { ArrowEndpoint, BindingStrategy } from "@excalidraw/element";
+import type {
+  ApplyToOptions,
+  ArrowEndpoint,
+  BindingStrategy,
+  DurableIncrement,
+  EphemeralIncrement,
+  ElementUpdate,
+} from "@excalidraw/element";
 import type { RenderEnvironment } from "@excalidraw/element/renderEnvironment";
 import type {
   ExcalidrawBindableElement,
@@ -171,6 +185,7 @@ import type {
   NonDeletedExcalidrawElement,
   Ordered,
   OrderedExcalidrawElement,
+  SceneElementsMap,
   Theme,
 } from "@excalidraw/element/types";
 import type { GlobalPoint, LocalPoint } from "@excalidraw/math";
@@ -224,6 +239,11 @@ import {
   selectGroupsForSelectedElements,
 } from "./selection.ts";
 import { SelectionTool } from "./selection-tool.ts";
+import { EditorViewport } from "./viewport.ts";
+import { AppStateObserver, type OnStateChange } from "./state-observer.ts";
+import { copyElementRenderOverrides, getElementRenderOffsets } from "./render-overrides.ts";
+import { getName } from "./actions/export.ts";
+import { isPointHittingLink } from "../renderer/link-icons.ts";
 import {
   getReferenceSnapPoints,
   getSnapLinesAtPointer,
@@ -235,7 +255,7 @@ import {
 } from "./snapping.ts";
 import { EditorClipboard } from "./clipboard.ts";
 import { convertElementTypes, getConversionTypeFromElements } from "./convert.ts";
-import { commitDraggedDuplicates } from "./duplicate.ts";
+import { commitDraggedDuplicates, runOnDuplicate } from "./duplicate.ts";
 import { EditorFlowchart } from "./flowchart.ts";
 import { EditorImages } from "./images.ts";
 import { EditorText } from "./text.ts";
@@ -249,7 +269,12 @@ import { TOGGLE_TOOLS, findToolByKey, isEditorTool } from "./tools.ts";
 import { patchLinearEditor } from "./linear.ts";
 import { getContextMenuItems } from "./context-menu.ts";
 import { TOOL_DRAG_PREVIEW_OPACITY, ToolDrag } from "./tool-drag.ts";
-import { defaultEditorHost, type EditorHost } from "./ui-options.ts";
+import {
+  defaultEditorHost,
+  isDefaultUIEnabled,
+  isUIControlEnabled,
+  type EditorHost,
+} from "./ui-options.ts";
 
 import type { DiagramScene, ExcalidrawLibraryIds } from "../data/types.ts";
 import type { InteractiveSceneRenderAnimationState, ScrollBars } from "../scene/types.ts";
@@ -264,10 +289,18 @@ import type {
   NullableGridSize,
   OnUserFollowedPayload,
   PointerUpdatePayload,
+  ElementRenderOffsets,
+  ElementRenderOverrides,
+  SidebarName,
+  SidebarTabName,
   SocketId,
   ToolType,
+  Offsets,
+  UIControl,
+  ViewportOffsetsOptions,
   Zoom,
 } from "../types.ts";
+import type { SetViewportOptions } from "../viewport.ts";
 import type { FinalizeData } from "./actions/finalize.ts";
 import type { TextEditRequest } from "./text.ts";
 
@@ -338,7 +371,113 @@ export interface DiagramEditorApi {
   readonly id: string;
   /** Excalidraw's `updateLibrary`: replaces or merges the library's items, from items or a file. */
   updateLibrary: Library["updateLibrary"];
+  /** Whether the editor is gone; its getters and subscriptions throw from then on. */
+  readonly isDestroyed: boolean;
+  /**
+   * Applies store deltas, squashed into one, to copies of the elements and
+   * the app state, and returns them with whether anything changed; the scene
+   * is not touched.
+   */
+  applyDeltas(
+    deltas: StoreDelta[],
+    options?: ApplyToOptions,
+  ): [SceneElementsMap, AppState, boolean];
+  /** Changes an element in the scene, its version bumped; `informMutation` redraws. */
+  mutateElement<TElement extends ExcalidrawElement>(
+    element: TElement,
+    updates: ElementUpdate<TElement>,
+    informMutation?: boolean,
+  ): TElement;
+  getSceneElementsMapIncludingDeleted(): SceneElementsMap;
+  /**
+   * Selects elements (or ids), adds them to the selection, removes them, or
+   * clears it, by the editor's rules: with their groups unless `deep`, a frame
+   * apart from its children, locked ones only with `includeLocked`. Text
+   * editing and cropping end; `captureUpdate` as for `updateScene`.
+   */
+  selection: Pick<EditorSelection, "select" | "add" | "remove" | "clear">;
+  /** The scene's name, the host's `name`, or "Untitled" and the date. */
+  getName(): string;
+  /**
+   * Shows a target (a box, elements, an id or an element link), animated
+   * unless `animation: false`, and installs or lifts a scroll or zoom lock;
+   * `null` lifts the lock.
+   */
+  setViewport(opts: SetViewportOptions | null): void;
+  /** How far the rendered UI reaches into the canvas from each side, padded. */
+  getViewportOffsets(opts?: ViewportOffsetsOptions): Offsets;
+  /**
+   * Replaces the transient opacities and offsets drawn over the document's,
+   * `null` clearing them: nothing in the document, the history or `onChange`
+   * changes, and exports and hit-testing keep the document's values.
+   */
+  setElementRenderOverrides(overrides: ElementRenderOverrides | null): void;
+  /** Adds an action the keys and `executeAction` reach. */
+  registerAction(action: Action): void;
+  setToast(toast: AppState["toast"]): void;
+  setCursor(cursor: string): void;
+  /** The active tool's cursor again. */
+  resetCursor(): void;
+  /**
+   * Opens a sidebar (on a tab), or closes it when it is open there; `force`
+   * opens or closes it outright. Returns whether it is open.
+   */
+  toggleSidebar(opts: { name: SidebarName | null; tab?: SidebarTabName; force?: boolean }): boolean;
+  /** The layout of the moment: the form factor, touch, and whether a sidebar fits. */
+  getEditorInterface(): EditorInterface;
+  /** Which parts of frames draw (the frames stay interactive); for view mode. */
+  updateFrameRendering(
+    opts:
+      | Partial<AppState["frameRendering"]>
+      | ((prevState: AppState["frameRendering"]) => Partial<AppState["frameRendering"]>),
+  ): void;
+  /** Subscribes to the store's increments, durable (undoable) and ephemeral. */
+  onIncrement(listener: (event: DurableIncrement | EphemeralIncrement) => void): () => void;
+  /** Subscribes to presses on the canvas. */
+  onPointerDown(
+    listener: (
+      activeTool: AppState["activeTool"],
+      pointerDownState: PointerDownState,
+      event: PointerEvent,
+    ) => void,
+  ): () => void;
+  /** Subscribes to the release of a press on the canvas. */
+  onPointerUp(
+    listener: (
+      activeTool: AppState["activeTool"],
+      pointerDownState: PointerDownState,
+      event: PointerEvent,
+    ) => void,
+  ): () => void;
+  /**
+   * Subscribes to a key, keys or a selector of the app state changing, or to a
+   * predicate holding; without a callback, a promise of the next change.
+   */
+  onStateChange: OnStateChange;
+  /**
+   * Subscribes to the editor's life: `"editor:mount"`, `"editor:initialize"`
+   * (the initial scene loaded) and `"editor:unmount"`, each once and replayed
+   * to a late subscriber; without a callback, a promise of it.
+   */
+  onEvent: EditorLifecycleEvents["on"];
 }
+
+export type DiagramEditorEventMap = {
+  "editor:mount": [payload: { excalidrawAPI: DiagramEditorApi; container: HTMLElement }];
+  "editor:initialize": [api: DiagramEditorApi];
+  "editor:unmount": [];
+};
+
+const editorLifecycleEventBehavior = {
+  "editor:mount": { cardinality: "once", replay: "last" },
+  "editor:initialize": { cardinality: "once", replay: "last" },
+  "editor:unmount": { cardinality: "once", replay: "last" },
+} as const;
+
+type EditorLifecycleEvents = AppEventBus<
+  DiagramEditorEventMap,
+  typeof editorLifecycleEventBehavior
+>;
 
 export interface DiagramEditorOptions {
   /** The focusable element the canvases sit in: it takes the keyboard and is measured for the viewport. */
@@ -352,9 +491,20 @@ export interface DiagramEditorOptions {
   /** An SVG over the canvases the laser, eraser and lasso draw their trails in. */
   svgLayer?: SVGSVGElement | null;
   initialData?: DiagramScene | null;
+  /** Excalidraw's `initialState`: the viewport the initial scene opens at, as `setViewport` takes it. */
+  initialState?: { viewport?: Omit<SetViewportOptions, "animation"> };
   theme?: Theme;
   viewModeEnabled?: boolean;
   gridModeEnabled?: boolean;
+  objectsSnapModeEnabled?: boolean;
+  /** The document the editor lives in, when it is not the container's (an iframe's, mounted from its parent). */
+  ownerDocument?: Document;
+  /**
+   * Where the renderer and the exports make canvases and images, and measure
+   * text: one object for the editor's life, every render cache being keyed by it.
+   * @default the owner window's
+   */
+  renderEnvironment?: RenderEnvironment;
   /** What the host decides: the UI options, and the modes it controls. */
   host?: Partial<EditorHost>;
 }
@@ -467,8 +617,11 @@ export class DiagramEditor {
   public readonly ownerDocument: Document;
   public editorInterface: EditorInterface = DEFAULT_EDITOR_INTERFACE;
   public readonly api: DiagramEditorApi;
+  public readonly viewport: EditorViewport;
   /** What the host decides, which actions read as Excalidraw's read `app.props`. */
   public host: EditorHost;
+  /** The element whose link icon the pointer is over, which a click opens. */
+  public hitLinkElement: NonDeletedExcalidrawElement | undefined;
 
   /**
    * Text and arrows, Excalidraw's `AppArrowText`: the free endpoint a new
@@ -565,6 +718,20 @@ export class DiagramEditor {
     [scrollX: number, scrollY: number, zoom: Zoom]
   >();
   private readonly userFollowEmitter = new Emitter<[payload: OnUserFollowedPayload]>();
+  private readonly pointerDownEmitter = new Emitter<
+    [activeTool: AppState["activeTool"], pointerDownState: PointerDownState, event: PointerEvent]
+  >();
+  private readonly pointerUpEmitter = new Emitter<
+    [activeTool: AppState["activeTool"], pointerDownState: PointerDownState, event: PointerEvent]
+  >();
+  private readonly appStateObserver = new AppStateObserver(() => this.state);
+  private readonly lifecycleEvents: EditorLifecycleEvents = new AppEventBus(
+    editorLifecycleEventBehavior,
+  );
+  private initialized = false;
+  private elementRenderOverrides: ElementRenderOverrides = new Map();
+  /** The offsets of `elementRenderOverrides`, the same map while they do not change. */
+  private elementRenderOffsets: ElementRenderOffsets = new Map();
   private readonly announceEmitter = new Emitter<[message: string, localized: LocalizedMessage]>();
   private readonly textEditEmitter = new Emitter<[request: TextEditRequest]>();
   private readonly textEditEndEmitter = new Emitter();
@@ -624,17 +791,21 @@ export class DiagramEditor {
     const { container, interactiveCanvas } = options;
     // the ref may run before the container is in the page, while it still
     // belongs to a template's inert document
-    this.ownerWindow = container.ownerDocument.defaultView ?? window;
-    this.ownerDocument = this.ownerWindow.document;
-    this.renderEnvironment = getRenderEnvironment();
+    this.ownerWindow =
+      options.ownerDocument?.defaultView ?? container.ownerDocument.defaultView ?? window;
+    this.ownerDocument = options.ownerDocument ?? this.ownerWindow.document;
+    this.renderEnvironment = options.renderEnvironment ?? getRenderEnvironment();
     this.host = { ...defaultEditorHost(), ...options.host };
 
     const defaults = getDefaultAppState();
     this._state = {
       ...defaults,
       theme: options.theme ?? defaults.theme,
-      viewModeEnabled: options.viewModeEnabled ?? false,
+      // a non-interactive editor is in view mode, so every edit-mode gate holds
+      viewModeEnabled: this.isInteractionEnabled() ? (options.viewModeEnabled ?? false) : true,
       gridModeEnabled: options.gridModeEnabled ?? false,
+      objectsSnapModeEnabled: options.objectsSnapModeEnabled ?? defaults.objectsSnapModeEnabled,
+      activeTool: this.forcedActiveTool(defaults) ?? defaults.activeTool,
       width: 1,
       height: 1,
       offsetLeft: 0,
@@ -643,6 +814,7 @@ export class DiagramEditor {
     this.committedState = this._state;
 
     this.sceneCanvas = new SceneCanvas(options.canvas, [], () => this.onSceneUpdate());
+    this.sceneCanvas.renderEnvironment = options.renderEnvironment;
     this.scene = this.sceneCanvas.scene;
     this.store = new Store(this);
     this.history = new History(this.store);
@@ -684,6 +856,9 @@ export class DiagramEditor {
     this.magicFrame = new MagicFrame(this);
     this.embeds = new EditorEmbeds(this);
     this.bucketFill = new BucketFill(this);
+    this.viewport = new EditorViewport(this, {
+      isGestureActive: () => this.gesture.pointers.size >= 2 || this.panTeardown !== null,
+    });
     if (options.svgLayer) {
       this.drawShape.start(options.svgLayer);
       this.laserTrails.start(options.svgLayer);
@@ -709,6 +884,35 @@ export class DiagramEditor {
       onUserFollow: (listener) => this.userFollowEmitter.on(listener),
       id: this.id,
       updateLibrary: (opts) => this.library.updateLibrary(opts),
+      isDestroyed: false,
+      applyDeltas: (deltas, opts) => this.applyDeltas(deltas, opts),
+      mutateElement: (element, updates, informMutation) =>
+        this.batch(() => this.mutateElement(element, updates, informMutation)),
+      getSceneElementsMapIncludingDeleted: () => this.scene.getElementsMapIncludingDeleted(),
+      selection: {
+        select: (elementsOrIds, opts) =>
+          this.batch(() => this.selection.select(elementsOrIds, opts)),
+        add: (elementsOrIds, opts) => this.batch(() => this.selection.add(elementsOrIds, opts)),
+        remove: (elementsOrIds, opts) =>
+          this.batch(() => this.selection.remove(elementsOrIds, opts)),
+        clear: (opts) => this.batch(() => this.selection.clear(opts)),
+      },
+      getName: () => getName(this),
+      setViewport: (opts) => this.batch(() => this.viewport.setViewport(opts)),
+      getViewportOffsets: (opts) => this.viewport.getOffsets(opts),
+      setElementRenderOverrides: (overrides) => this.setElementRenderOverrides(overrides),
+      registerAction: (action) => this.actionManager.registerAction(action),
+      setToast: (toast) => this.batch(() => this.setState({ toast })),
+      setCursor: (cursor) => this.cursor.set(cursor),
+      resetCursor: () => this.cursor.reset(),
+      toggleSidebar: (opts) => this.batch(() => this.toggleSidebar(opts)),
+      getEditorInterface: () => this.editorInterface,
+      updateFrameRendering: (opts) => this.batch(() => this.updateFrameRendering(opts)),
+      onIncrement: (listener) => this.store.onStoreIncrementEmitter.on(listener),
+      onPointerDown: (listener) => this.pointerDownEmitter.on(listener),
+      onPointerUp: (listener) => this.pointerUpEmitter.on(listener),
+      onStateChange: this.appStateObserver.onStateChange,
+      onEvent: this.lifecycleEvents.on.bind(this.lifecycleEvents),
     };
 
     this.measure();
@@ -721,6 +925,7 @@ export class DiagramEditor {
         ? new this.ownerWindow.ResizeObserver(() => this.batch(() => this.refresh()))
         : null;
     this.resize?.observe(container);
+    this.lifecycleEvents.emit("editor:mount", { excalidrawAPI: this.api, container });
   }
 
   // ---------------------------------------------------------------------------
@@ -1089,7 +1294,7 @@ export class DiagramEditor {
       y - Math.abs(maxY - minY) / 2,
       this.getEffectiveGridSize(),
     );
-    const { duplicatedElements } = duplicateElements({
+    const duplication = duplicateElements({
       type: "everything",
       elements: elements.map((element) =>
         newElementWith(element, { x: element.x + gridX - minX, y: element.y + gridY - minY }),
@@ -1097,18 +1302,31 @@ export class DiagramEditor {
       randomizeSeed: !opts.retainSeed,
       preserveFrameChildrenOrder: opts.preserveFrameChildrenOrder,
     });
-    let nextElements: ExcalidrawElement[] = [
-      ...this.scene.getElementsIncludingDeleted(),
-      ...duplicatedElements,
-    ];
+    let duplicatedElements: NonDeletedExcalidrawElement[] = duplication.duplicatedElements;
+    const prevElements = this.scene.getElementsIncludingDeleted();
+    let nextElements: ExcalidrawElement[] = [...prevElements, ...duplicatedElements];
     syncMovedIndices(nextElements, arrayToMap(duplicatedElements));
+    // before `onDuplicate`, so the host sees the duplicates as they land
     const topLayerFrame = this.getTopLayerFrameAtSceneCoords({ x, y });
     if (topLayerFrame) {
       nextElements = addElementsToFrame(
         nextElements,
-        filterElementsEligibleAsFrameChildren(duplicatedElements, topLayerFrame),
+        filterElementsEligibleAsFrameChildren(duplication.duplicatedElements, topLayerFrame),
         topLayerFrame,
       );
+    }
+    if (this.host.onDuplicate) {
+      ({ elements: nextElements, duplicatedElements } = runOnDuplicate(
+        this,
+        duplication,
+        nextElements,
+        prevElements,
+      ));
+      // the host vetoed it
+      if (duplicatedElements.length === 0) {
+        return;
+      }
+      syncMovedIndices(nextElements, arrayToMap(duplicatedElements));
     }
     this.scene.replaceAllElements(nextElements);
 
@@ -1489,8 +1707,225 @@ export class DiagramEditor {
   public getEffectiveGridSize = (): NullableGridSize =>
     (this.state.gridModeEnabled ? this.state.gridSize : null) as NullableGridSize;
 
+  /**
+   * Whether the tool lock holds or the host forces the tool: it stays after
+   * use and what it draws is not selected. Forcing leaves the user's lock
+   * preference (`activeTool.locked`) as it is.
+   */
   public isToolLocked(): boolean {
-    return this.state.activeTool.locked;
+    return this.state.activeTool.locked || this.host.activeTool !== undefined;
+  }
+
+  /** Whether the user's input reaches the editor: not with `interaction` `false` or a config. */
+  public isInteractionEnabled(host: Pick<EditorHost, "interaction"> = this.host): boolean {
+    return host.interaction !== false && typeof host.interaction !== "object";
+  }
+
+  /** Whether element links show their icon and open: interactive, or `enabled.links`. */
+  public isLinksEnabled(host: Pick<EditorHost, "interaction"> = this.host): boolean {
+    const { interaction } = host;
+    if (typeof interaction === "object") {
+      return (
+        interaction.enabled?.links === true || interaction.enabled?.interactiveContent === true
+      );
+    }
+    return interaction !== false;
+  }
+
+  /** Whether panning and zooming reach the editor: interactive, or `enabled.navigation`. */
+  public isNavigationEnabled(host: Pick<EditorHost, "interaction"> = this.host): boolean {
+    const { interaction } = host;
+    if (typeof interaction === "object") {
+      return interaction.enabled?.navigation === true;
+    }
+    return interaction !== false;
+  }
+
+  /** Whether embeds activate: interactive, or `enabled.embeds`. */
+  public isEmbedsEnabled(host: Pick<EditorHost, "interaction"> = this.host): boolean {
+    const { interaction } = host;
+    if (typeof interaction === "object") {
+      return (
+        interaction.enabled?.embeds === true || interaction.enabled?.interactiveContent === true
+      );
+    }
+    return interaction !== false;
+  }
+
+  /** Whether the browser's own zoom stays over a non-interactive editor. */
+  public isBrowserZoomEnabled(host: Pick<EditorHost, "interaction"> = this.host): boolean {
+    const { interaction } = host;
+    return typeof interaction === "object" && interaction.enabled?.browserZoom === true;
+  }
+
+  /**
+   * Whether a tool can be activated and driven by the user: not turned off
+   * in `UIOptions.tools`, and while not interactive, kept by `enabled.tools`.
+   */
+  public isToolSupported(
+    tool: ToolType | "custom",
+    host: Pick<EditorHost, "interaction" | "UIOptions"> = this.host,
+  ): boolean {
+    if (tool === "image" && !host.UIOptions.tools.image) {
+      return false;
+    }
+    if (this.isInteractionEnabled(host)) {
+      return true;
+    }
+    const tools =
+      typeof host.interaction === "object" ? host.interaction.enabled?.tools : undefined;
+    if (tool === "laser") {
+      return tools?.laser === true;
+    }
+    if (tool === "custom") {
+      return tools?.custom === true;
+    }
+    return false;
+  }
+
+  /**
+   * Whether the active tool takes the primary pointer rather than view
+   * mode's drag-to-pan: the laser and custom tools, and while not
+   * interactive, a tool `enabled.tools` keeps.
+   */
+  public isActiveToolPointerCapturing(): boolean {
+    if (!this.isInteractionEnabled()) {
+      return this.isToolSupported(this.state.activeTool.type);
+    }
+    return this.state.activeTool.type === "laser" || this.state.activeTool.type === "custom";
+  }
+
+  /** Whether the default UI renders: not with `ui` `false` or `{ enabled }`. */
+  public isDefaultUIEnabled(host: Pick<EditorHost, "ui"> = this.host): boolean {
+    return isDefaultUIEnabled(host.ui);
+  }
+
+  /** Whether a default UI control renders under `ui`. */
+  public isUIControlEnabled(control: UIControl, host: Pick<EditorHost, "ui"> = this.host): boolean {
+    return isUIControlEnabled(control, host.ui);
+  }
+
+  /** The tool the host forces, as the state holds it, when it can be activated. */
+  private forcedActiveTool(state: Pick<AppState, "activeTool">): AppState["activeTool"] | null {
+    const forced = this.host.activeTool;
+    if (!forced) {
+      return null;
+    }
+    if ((forced.type as string) === "image") {
+      console.warn(`"image" tool cannot be forced via "props.activeTool"`);
+      return null;
+    }
+    if (!this.isToolSupported(forced.type)) {
+      console.warn(
+        `"${forced.type}" tool ("props.activeTool") cannot be activated — disabled via "UIOptions.tools", or not enabled while non-interactive (see "interaction.enabled.tools")`,
+      );
+      return null;
+    }
+    return updateActiveTool(state, forced);
+  }
+
+  private static isSameTool(
+    a: { type: string; customType?: string | null } | null | undefined,
+    b: { type: string; customType?: string | null } | null | undefined,
+  ): boolean {
+    return (
+      a?.type === b?.type &&
+      (a?.type === "custom" ? (a.customType ?? null) : null) ===
+        (b?.type === "custom" ? (b.customType ?? null) : null)
+    );
+  }
+
+  /** Excalidraw's `applyDeltas`: the deltas squashed and applied to copies of the scene and state. */
+  public applyDeltas(
+    deltas: StoreDelta[],
+    options?: ApplyToOptions,
+  ): [SceneElementsMap, AppState, boolean] {
+    const aggregated = StoreDelta.squash(...deltas);
+    const nextAppState = { ...this.state };
+    const nextElements = new Map(this.scene.getElementsMapIncludingDeleted()) as SceneElementsMap;
+    return StoreDelta.applyTo(aggregated, nextElements, nextAppState, {
+      ...options,
+      renderEnvironment: options?.renderEnvironment ?? this.renderEnvironment,
+    }) as [SceneElementsMap, AppState, boolean];
+  }
+
+  /** Excalidraw's `mutateElement`, through the scene. */
+  public mutateElement<TElement extends ExcalidrawElement>(
+    element: TElement,
+    updates: ElementUpdate<TElement>,
+    informMutation = true,
+  ): TElement {
+    return this.scene.mutateElement(element, updates, { informMutation, isDragging: false });
+  }
+
+  /** The host's transient overrides, drawn until replaced; see the API's `setElementRenderOverrides`. */
+  public setElementRenderOverrides(overrides: ElementRenderOverrides | null): void {
+    if (this.destroyed) {
+      return;
+    }
+    const next = copyElementRenderOverrides(overrides);
+    // clearing what is clear already is the one no-op worth skipping
+    if (next.size === 0 && this.elementRenderOverrides.size === 0) {
+      return;
+    }
+    this.elementRenderOverrides = next;
+    this.elementRenderOffsets = getElementRenderOffsets(next, this.elementRenderOffsets);
+    this.embeds.update();
+    this.placeFrameNames();
+    this.scheduleRender(true);
+  }
+
+  /** The overrides the static layer draws with. */
+  public get renderOverrides(): {
+    overrides: ElementRenderOverrides;
+    offsets: ElementRenderOffsets;
+  } {
+    return { overrides: this.elementRenderOverrides, offsets: this.elementRenderOffsets };
+  }
+
+  /** Excalidraw's `toggleSidebar`; whether the sidebar is open after. */
+  public toggleSidebar({
+    name,
+    tab,
+    force,
+  }: {
+    name: SidebarName | null;
+    tab?: SidebarTabName;
+    force?: boolean;
+  }): boolean {
+    const nextName =
+      force === undefined
+        ? this.state.openSidebar?.name === name && this.state.openSidebar?.tab === tab
+          ? null
+          : name
+        : force
+          ? name
+          : null;
+    const next: AppState["openSidebar"] = nextName ? { name: nextName } : null;
+    if (next && tab) {
+      next.tab = tab;
+    }
+    this.setState({ openSidebar: next });
+    return !!nextName;
+  }
+
+  /** Excalidraw's `updateFrameRendering`: which parts of frames draw. */
+  public updateFrameRendering(
+    opts:
+      | Partial<AppState["frameRendering"]>
+      | ((prevState: AppState["frameRendering"]) => Partial<AppState["frameRendering"]>),
+  ): void {
+    this.setState((prevState) => {
+      const next = typeof opts === "function" ? opts(prevState.frameRendering) : opts;
+      return {
+        frameRendering: {
+          enabled: next?.enabled ?? prevState.frameRendering.enabled,
+          clip: next?.clip ?? prevState.frameRendering.clip,
+          name: next?.name ?? prevState.frameRendering.name,
+          outline: next?.outline ?? prevState.frameRendering.outline,
+        },
+      };
+    });
   }
 
   public focusContainer = (): void => {
@@ -1538,6 +1973,23 @@ export class DiagramEditor {
   }
 
   private didUpdate(prevState: AppState): void {
+    // before the state listeners below hear of it
+    if (!this.initialized && !this.state.isLoading) {
+      this.initialized = true;
+      this.lifecycleEvents.emit("editor:initialize", this.api);
+    }
+    // a flow that reset the tool (a finalize, a scene load) gives the forced one back
+    const forced = this.host.activeTool;
+    if (
+      forced &&
+      prevState.activeTool !== this.state.activeTool &&
+      !DiagramEditor.isSameTool(forced, this.state.activeTool) &&
+      (forced.type as string) !== "image" &&
+      this.isToolSupported(forced.type)
+    ) {
+      this.setActiveTool(forced);
+    }
+
     // the line editor ends once its line is no longer selected
     if (
       this.state.selectedLinearElement?.isEditing &&
@@ -1630,6 +2082,7 @@ export class DiagramEditor {
     this.updateFrameNames();
     this.embeds.update();
 
+    this.appStateObserver.flush(prevState);
     this.store.commit(this.scene.getElementsMapIncludingDeleted(), this.state);
     this.changeEmitter.trigger(this.scene.getElementsIncludingDeleted(), this.state, this.files);
     this.announceChanges(prevState);
@@ -1673,8 +2126,133 @@ export class DiagramEditor {
 
   /** Changes what the host decides, as its props change. */
   public setHost(host: Partial<EditorHost>): void {
+    const prevHost = this.host;
     this.host = { ...this.host, ...host };
-    this.batch(() => this.scene.triggerUpdate());
+    this.batch(() => {
+      this.handleInteractionChange(prevHost);
+      this.handleForcedToolChange(prevHost);
+      this.scene.triggerUpdate();
+    });
+  }
+
+  /**
+   * Excalidraw's `handleInteractionStateChange`: a non-interactive editor is
+   * in view mode, ends what is under way, and keeps only the tools its config
+   * enables; interactive again, it takes the `viewModeEnabled` prop back.
+   */
+  private handleInteractionChange(prevHost: EditorHost): void {
+    const was = this.isInteractionEnabled(prevHost);
+    const is = this.isInteractionEnabled();
+    if (was !== is) {
+      const viewModeEnabled = is ? this.host.viewModeEnabled === true : true;
+      if (viewModeEnabled !== this.state.viewModeEnabled) {
+        this.setState({ viewModeEnabled });
+      }
+      if (!is) {
+        this.terminateActiveInteraction();
+      }
+    }
+    if (this.isLinksEnabled(prevHost) && !this.isLinksEnabled()) {
+      this.hitLinkElement = undefined;
+      this.cursor.reset();
+    }
+    if (this.isEmbedsEnabled(prevHost) && !this.isEmbedsEnabled()) {
+      this.setState({ activeEmbeddable: null });
+    }
+    const toolType = this.state.activeTool.type;
+    if (this.isToolSupported(toolType, prevHost) !== this.isToolSupported(toolType)) {
+      if (!this.isToolSupported(toolType)) {
+        this.laserTrails.endPath();
+      }
+      this.cursor.reset();
+    }
+    // a tool the config does not keep (a presenter's laser after handing
+    // off) goes, rather than linger in `onChange` and the pointer payloads
+    if (!is && !this.isToolSupported(toolType) && toolType !== "selection") {
+      this.setState({ activeTool: updateActiveTool(this.state, { type: "selection" }) });
+    }
+  }
+
+  /** Ends input under way as the editor stops taking it. */
+  private terminateActiveInteraction(): void {
+    this.maybeCleanupAfterMissingPointerUp(null);
+    this.spaceHeld = false;
+    this.isDraggingScrollBar = false;
+    this.gesture.pointers.clear();
+    this.gesture.lastCenter = null;
+    this.gesture.initialDistance = null;
+    this.gesture.initialScale = null;
+    this.ownerWindow.clearTimeout(this.tappedTwiceTimer);
+    this.tappedTwiceTimer = 0;
+    this.didTapTwice = false;
+    this.resetContextMenuTimer();
+    this.clipboard.clearPlainPaste();
+    if (this.bindModeHandler) {
+      clearTimeout(this.bindModeHandler);
+      this.bindModeHandler = null;
+    }
+    this.flowchart.clear();
+    this.bucketFill.closeTemporaryEyeDropper();
+    if (this.state.editingFrame) {
+      const frame = this.scene.getNonDeletedElement(this.state.editingFrame);
+      this.resetEditingFrame(frame && isFrameLikeElement(frame) ? frame : null);
+    }
+    // after the current event, as the text editor's own blur may submit first
+    queueMicrotask(() => {
+      if (!this.isInteractionEnabled() || this.state.viewModeEnabled) {
+        this.text.textWysiwygSubmitHandler?.();
+      }
+    });
+    this.setState({
+      contextMenu: null,
+      openMenu: null,
+      openPopup: null,
+      cursorButton: "up",
+      activeEmbeddable: null,
+      selectedElementsAreBeingDragged: false,
+      selectionElement: null,
+      resizingElement: null,
+      isResizing: false,
+      isRotating: false,
+      isCropping: false,
+      croppingElementId: null,
+      suggestedBinding: null,
+      frameToHighlight: null,
+      elementsToHighlight: null,
+      snapLines: [],
+      showHyperlinkPopup: false,
+      originSnapOffset: null,
+    });
+    this.selection.clear();
+    this.hitLinkElement = undefined;
+    this.cursor.reset();
+  }
+
+  /**
+   * Excalidraw's `handleForcedToolChange`: the forced tool is applied as it
+   * changes or once it can be activated.
+   */
+  private handleForcedToolChange(prevHost: EditorHost): void {
+    const forced = this.host.activeTool;
+    if (!forced) {
+      return;
+    }
+    const changed = !DiagramEditor.isSameTool(prevHost.activeTool, forced);
+    if ((forced.type as string) === "image") {
+      if (changed) {
+        console.warn(`"image" tool cannot be forced via "props.activeTool"`);
+      }
+      return;
+    }
+    if (DiagramEditor.isSameTool(forced, this.state.activeTool)) {
+      return;
+    }
+    if (
+      changed ||
+      this.isToolSupported(forced.type, prevHost) !== this.isToolSupported(forced.type)
+    ) {
+      this.setActiveTool(forced);
+    }
   }
 
   private loadScene(data: DiagramScene | null): void {
@@ -1700,10 +2278,24 @@ export class DiagramEditor {
         theme: this.options.theme ?? (data?.appState?.theme ? restored.appState.theme : theme),
         viewModeEnabled,
         gridModeEnabled: data?.appState?.gridModeEnabled ?? gridModeEnabled,
+        objectsSnapModeEnabled:
+          this.options.objectsSnapModeEnabled ?? restored.appState.objectsSnapModeEnabled,
         isLoading: false,
       },
       captureUpdate: CaptureUpdateAction.NEVER,
     });
+    // the initial scene, and only it, opens at the host's viewport
+    const initialViewport = this.options.initialState?.viewport;
+    if (initialViewport && !this.initialized) {
+      const viewport = this.viewport.resolveInitialViewport(
+        initialViewport,
+        this.scene.getNonDeletedElementsMap(),
+        this.state,
+      );
+      if (viewport) {
+        this.setState(viewport);
+      }
+    }
     void Promise.all([this.sceneCanvas.loadFonts(), this.sceneCanvas.setFiles(this.files)]).catch(
       (error: unknown) => {
         console.error("DiagramEditor: the scene's fonts or images did not load", error);
@@ -1818,7 +2410,10 @@ export class DiagramEditor {
           ...appState,
           contextMenu: null,
           editingTextElement: appState.editingTextElement ?? null,
-          viewModeEnabled: appState.viewModeEnabled ?? prevState.viewModeEnabled,
+          // a non-interactive editor stays in view mode, whatever the action or the prop
+          viewModeEnabled: this.isInteractionEnabled()
+            ? (appState.viewModeEnabled ?? prevState.viewModeEnabled)
+            : true,
           theme: appState.theme ?? prevState.theme,
           name: appState.name ?? prevState.name,
         }));
@@ -1864,11 +2459,28 @@ export class DiagramEditor {
   // tools
 
   public setActiveTool(
-    tool: { type: ToolType; locked?: boolean; fromSelection?: boolean },
+    tool: ({ type: ToolType } | { type: "custom"; customType: string }) & {
+      locked?: boolean;
+      fromSelection?: boolean;
+    },
     opts: { keepSelection?: boolean; toggle?: boolean } = {},
   ): void {
-    if (!isEditorTool(tool.type)) {
+    if (tool.type !== "custom" && !isEditorTool(tool.type)) {
       console.warn(`DiagramEditor: the "${String(tool.type)}" tool is not available`);
+      return;
+    }
+    if (!this.isToolSupported(tool.type)) {
+      console.warn(
+        this.isInteractionEnabled()
+          ? `"${tool.type}" tool is disabled via "UIOptions.canvasActions.tools.${tool.type}"`
+          : `"${tool.type}" tool cannot be activated while the editor is non-interactive (see "interaction.enabled.tools")`,
+      );
+      return;
+    }
+    if (this.host.activeTool && !DiagramEditor.isSameTool(this.host.activeTool, tool)) {
+      console.warn(
+        `"${tool.type}" tool activation ignored — the active tool is controlled by the host via "props.activeTool"`,
+      );
       return;
     }
     if (this.drawShape.hasPendingGesture()) {
@@ -1989,16 +2601,16 @@ export class DiagramEditor {
   // ---------------------------------------------------------------------------
   // viewport
 
-  /** Moves the viewport, held to `scrollConstraints`. */
+  /**
+   * Moves the viewport as the user does, held to `scrollConstraints` with
+   * their rubberband give; refused while an animated `setViewport` into a
+   * lock is under way.
+   */
   public translateViewport(
     update: Partial<ViewportState> | ((state: AppState) => Partial<ViewportState> | null),
-  ): void {
-    this.requestUnfollow();
-    this.setState((state) => {
-      const next = typeof update === "function" ? update(state) : update;
-      if (!next) return null;
-      return constrainScrollState({ ...state, ...next });
-    });
+    opts?: { zoomPreConstrained?: boolean; preserveScrollConstraintsSnapBack?: boolean },
+  ): boolean {
+    return this.viewport.translate(update, opts);
   }
 
   /** Fits `target` (every element by default) in the viewport. */
@@ -2070,6 +2682,10 @@ export class DiagramEditor {
   // context menu
 
   private handleContextMenuEvent(event: MouseEvent): void {
+    // with no menu of the editor's, the browser's is not mistaken for one
+    if (!this.isInteractionEnabled()) {
+      return;
+    }
     if (isFromEditorUI(event)) {
       return;
     }
@@ -2436,12 +3052,21 @@ export class DiagramEditor {
       this.invalidateContextMenu = true;
     });
     on(container, "contextmenu", (event) => this.handleContextMenuEvent(event));
-    on(container, "keydown", (event) => this.onKeyDown(event));
+    on(container, "keydown", (event) => {
+      if (!this.host.handleKeyboardGlobally) this.handleKeyDown(event);
+    });
+    const onDocumentKeyDown = (event: KeyboardEvent) => {
+      if (this.host.handleKeyboardGlobally) this.batch(() => this.handleKeyDown(event));
+    };
+    this.ownerDocument.addEventListener("keydown", onDocumentKeyDown);
+    this.listeners.push(() => this.ownerDocument.removeEventListener("keydown", onDocumentKeyDown));
     // a dropped file never makes the page navigate to it
     on(container, "dragover", (event) => event.preventDefault());
     on(container, "drop", (event) => {
       event.preventDefault();
-      void this.handleDrop(event);
+      if (this.isInteractionEnabled() && !this.state.viewModeEnabled) {
+        void this.handleDrop(event);
+      }
     });
     const onDocument = <K extends "copy" | "cut" | "paste">(
       type: K,
@@ -2451,16 +3076,24 @@ export class DiagramEditor {
       document.addEventListener(type, handler);
       this.listeners.push(() => document.removeEventListener(type, handler));
     };
-    onDocument("copy", this.clipboard.onCopy);
-    onDocument("cut", this.clipboard.onCut);
-    onDocument("paste", (event) => void this.clipboard.pasteFromClipboard(event));
+    onDocument("copy", (event) => {
+      if (this.isInteractionEnabled()) this.clipboard.onCopy(event);
+    });
+    onDocument("cut", (event) => {
+      if (this.isInteractionEnabled()) this.clipboard.onCut(event);
+    });
+    onDocument("paste", (event) => {
+      if (this.isInteractionEnabled()) void this.clipboard.pasteFromClipboard(event);
+    });
     this.listeners.push(this.embeds.start());
     on(container, "keyup", (event) => this.onKeyUp(event));
     on(container, "wheel", (event) => this.onWheel(event), { passive: false });
     // the container's place in the page, which a scroll of the page moves, as
     // Excalidraw follows it; a resize is the ResizeObserver's
     const scrollable = getNearestScrollableContainer(container);
-    const onScroll = debounce(() => this.batch(() => this.measure()), SCROLL_TIMEOUT);
+    const onScroll = debounce(() => {
+      if (this.host.detectScroll) this.batch(() => this.measure());
+    }, SCROLL_TIMEOUT);
     scrollable.addEventListener("scroll", onScroll, { passive: true });
     this.listeners.push(() => {
       onScroll.cancel();
@@ -2489,6 +3122,13 @@ export class DiagramEditor {
   // input: wheel and gestures
 
   private onWheel(event: WheelEvent): void {
+    if (!this.isNavigationEnabled()) {
+      // the page scrolls over the editor; only the browser's zoom is held back, unless kept
+      if (!this.isBrowserZoomEnabled() && event[KEYS.CTRL_OR_CMD]) {
+        event.preventDefault();
+      }
+      return;
+    }
     // a panel scrolls itself; only the browser's own zoom is held back
     if (isFromEditorUI(event)) {
       if (event[KEYS.CTRL_OR_CMD]) event.preventDefault();
@@ -2590,6 +3230,9 @@ export class DiagramEditor {
   };
 
   private onTouchStart(event: TouchEvent): void {
+    if (!this.isInteractionEnabled()) {
+      return;
+    }
     // Apple Pencil Scribble turns a held pencil into handwriting otherwise
     if (isIOS) {
       event.preventDefault();
@@ -2637,6 +3280,9 @@ export class DiagramEditor {
   }
 
   private onTouchEnd(event: TouchEvent): void {
+    if (!this.isInteractionEnabled()) {
+      return;
+    }
     this.resetContextMenuTimer();
     if (event.touches.length > 0) {
       this.setState({
@@ -2684,11 +3330,14 @@ export class DiagramEditor {
     if (
       !(
         this.gesture.pointers.size <= 1 &&
-        (event.button === POINTER_BUTTON.WHEEL ||
+        (((event.button === POINTER_BUTTON.WHEEL ||
           event.button === POINTER_BUTTON.SECONDARY ||
           (event.button === POINTER_BUTTON.MAIN && this.spaceHeld) ||
-          isHandToolActive(this.state) ||
-          this.state.viewModeEnabled)
+          isHandToolActive(this.state)) &&
+          // reached while not interactive with a tool `enabled.tools` keeps:
+          // panning is still navigation's
+          (this.isInteractionEnabled() || this.isNavigationEnabled())) ||
+          (this.state.viewModeEnabled && !this.isActiveToolPointerCapturing()))
       )
     ) {
       return false;
@@ -2750,6 +3399,19 @@ export class DiagramEditor {
   // input: pointer
 
   private handleCanvasPointerDown(event: PointerEvent): void {
+    if (!this.isInteractionEnabled() && !this.isToolSupported(this.state.activeTool.type)) {
+      if (this.isLinksEnabled() || this.isEmbedsEnabled()) {
+        // what a link's or an embed's click measures its drag from
+        this.lastPointerDownEvent = event;
+      }
+      if (this.isNavigationEnabled()) {
+        this.updateGestureOnPointerDown(event);
+        if (this.panTeardown === null) {
+          this.startPan(event);
+        }
+      }
+      return;
+    }
     if (!event.ctrlKey) {
       const preferenceEnabled = this.state.bindingPreference === "enabled";
       if (this.state.isBindingEnabled !== preferenceEnabled) {
@@ -2959,7 +3621,12 @@ export class DiagramEditor {
       toolType === "selection"
     ) {
       this.createGenericElementOnPointerDown(toolType, pointerDownState);
+    } else if (toolType === "custom") {
+      this.cursor.applyForTool();
     }
+
+    this.host.onPointerDown?.(this.state.activeTool, pointerDownState);
+    this.pointerDownEmitter.trigger(this.state.activeTool, pointerDownState, event);
 
     if (toolType === "eraser") {
       this.eraserTrail.startPath(pointerDownState.lastCoords.x, pointerDownState.lastCoords.y);
@@ -3006,7 +3673,50 @@ export class DiagramEditor {
     this.maybeCleanupAfterMissingPointerUp(event);
   }
 
+  /** Links and embeds over a non-interactive editor that keeps them: hover. */
+  private handleInteractiveContentPointerMove(event: PointerEvent): void {
+    const scenePointer = viewportCoordsToSceneCoords(event, this.state);
+    const hitElementMightBeLocked = this.getElementAtPosition(scenePointer.x, scenePointer.y, {
+      includeLockedElements: true,
+    });
+    if (this.isEmbedsEnabled()) {
+      const hitElement = hitElementMightBeLocked?.locked ? null : hitElementMightBeLocked;
+      if (this.embeds.handleHover({ hitElement, scenePointer, moveEvent: event })) {
+        return;
+      }
+    }
+    this.hitLinkElement = this.isLinksEnabled()
+      ? this.getElementLinkAtPosition(scenePointer, hitElementMightBeLocked)
+      : undefined;
+    if (!this.applyElementLinkHoverAffordance()) {
+      this.cursor.reset();
+    }
+  }
+
+  /** Links and embeds over a non-interactive editor that keeps them: the click. */
+  private handleInteractiveContentPointerUp(event: PointerEvent): void {
+    this.lastPointerUpEvent = event;
+    if (this.isEmbedsEnabled() && this.embeds.handleCenterClick()) {
+      return;
+    }
+    const scenePointer = viewportCoordsToSceneCoords(event, this.state);
+    if (this.isLinksEnabled() && this.maybeHandleElementLinkClick(event, scenePointer)) {
+      return;
+    }
+    // a click away ends an active embed, as in view mode
+    if (this.state.activeEmbeddable?.state === "active") {
+      this.setState({ activeEmbeddable: null });
+    }
+  }
+
   private handleCanvasPointerUp(event: PointerEvent): void {
+    if (!this.isInteractionEnabled() && !this.isToolSupported(this.state.activeTool.type)) {
+      this.removePointer(event);
+      if (this.isLinksEnabled() || this.isEmbedsEnabled()) {
+        this.handleInteractiveContentPointerUp(event);
+      }
+      return;
+    }
     this.removePointer(event);
     this.lastPointerUpIsDoubleClick =
       this.lastPointerUpEvent !== null &&
@@ -3026,12 +3736,172 @@ export class DiagramEditor {
     if (this.pendingPointerUp) {
       this.pendingPointerUp(event);
     }
-    if (!isEmbedClick && this.state.viewModeEnabled) {
+    if (isEmbedClick) {
+      return;
+    }
+    if (!this.maybeHandleElementLinkClick(event, scenePointer) && this.state.viewModeEnabled) {
       this.setState({ activeEmbeddable: null, selectedElementIds: {} });
     }
   }
 
+  /** The element whose link icon is at a scene point, above whatever is hit there. */
+  public getElementLinkAtPosition(
+    scenePointer: Readonly<{ x: number; y: number }>,
+    hitElementMightBeLocked: NonDeletedExcalidrawElement | null,
+  ): NonDeletedExcalidrawElement | undefined {
+    if (hitElementMightBeLocked?.locked) {
+      return undefined;
+    }
+    const elements = this.scene.getNonDeletedElements();
+    let hitElementIndex = -1;
+    for (let index = elements.length - 1; index >= 0; index--) {
+      const element = elements[index];
+      if (!element) {
+        continue;
+      }
+      if (hitElementMightBeLocked && element.id === hitElementMightBeLocked.id) {
+        hitElementIndex = index;
+      }
+      if (element.link && index >= hitElementIndex && this.isHittingLink(element, scenePointer)) {
+        return element;
+      }
+    }
+    return undefined;
+  }
+
+  /** The pointer over a link icon of an element not selected; whether it is. */
+  private applyElementLinkHoverAffordance(): boolean {
+    if (this.hitLinkElement && !this.state.selectedElementIds[this.hitLinkElement.id]) {
+      this.cursor.set(CURSOR_TYPE.POINTER);
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * A click on a link icon of an element not selected opens its link:
+   * `onLinkOpen` first, which may `preventDefault()`, then a new tab, or this
+   * one for a link to the page itself. Whether the click was a link's.
+   */
+  private maybeHandleElementLinkClick(
+    event: PointerEvent,
+    scenePointer: { x: number; y: number },
+  ): boolean {
+    if (this.editorInterface.isTouchScreen) {
+      const hitElement = this.getElementAtPosition(scenePointer.x, scenePointer.y, {
+        includeLockedElements: true,
+      });
+      this.hitLinkElement = this.isLinksEnabled()
+        ? this.getElementLinkAtPosition(scenePointer, hitElement)
+        : undefined;
+    }
+    if (
+      !this.hitLinkElement ||
+      !this.lastPointerDownEvent ||
+      this.state.selectedElementIds[this.hitLinkElement.id]
+    ) {
+      return false;
+    }
+    this.handleElementLinkClick(event, this.hitLinkElement);
+    return true;
+  }
+
+  private handleElementLinkClick(event: PointerEvent, element: NonDeletedExcalidrawElement): void {
+    const down = this.lastPointerDownEvent;
+    const up = this.lastPointerUpEvent;
+    if (!down || !up) {
+      return;
+    }
+    const dragged = pointDistance(
+      pointFrom(down.clientX, down.clientY),
+      pointFrom(up.clientX, up.clientY),
+    );
+    if (dragged > DRAGGING_THRESHOLD) {
+      return;
+    }
+    const downCoords = viewportCoordsToSceneCoords(down, this.state);
+    const upCoords = viewportCoordsToSceneCoords(up, this.state);
+    if (!this.isHittingLink(element, downCoords) || !this.isHittingLink(element, upCoords)) {
+      return;
+    }
+    if (element.link) {
+      this.openElementLink(element, event);
+    }
+  }
+
+  private isHittingLink(element: NonDeletedExcalidrawElement, point: { x: number; y: number }) {
+    return isPointHittingLink(
+      element,
+      this.scene.getNonDeletedElementsMap(),
+      this.state,
+      pointFrom<GlobalPoint>(point.x, point.y),
+      this.editorInterface.formFactor === "phone",
+    );
+  }
+
+  /**
+   * Tells the host's `onLinkOpen` an element's link is opening; whether it
+   * called `preventDefault()`, keeping the editor from opening it.
+   */
+  public notifyLinkOpen(
+    element: NonDeletedExcalidrawElement,
+    event: MouseEvent | PointerEvent,
+  ): boolean {
+    if (!element.link || !this.host.onLinkOpen) {
+      return false;
+    }
+    const customEvent = wrapEvent(EVENT.EXCALIDRAW_LINK, event);
+    this.host.onLinkOpen({ ...element, link: normalizeLink(element.link) }, customEvent);
+    return customEvent.defaultPrevented;
+  }
+
+  /**
+   * Opens an element's link, `onLinkOpen` deciding first: a link to an
+   * element shows and selects it, another opens in a new tab, or in this one
+   * for the page itself.
+   */
+  public openElementLink(
+    element: NonDeletedExcalidrawElement,
+    event: MouseEvent | PointerEvent,
+  ): void {
+    if (!element.link || this.notifyLinkOpen(element, event)) {
+      return;
+    }
+    const url = normalizeLink(element.link);
+    if (isElementLink(url)) {
+      this.scrollToElementLink(url);
+      return;
+    }
+    const target = isLocalLink(url) ? "_self" : "_blank";
+    const opened = this.ownerWindow.open(undefined, target);
+    // https://mathiasbynens.github.io/rel-noopener/
+    if (opened) {
+      opened.opener = null;
+      opened.location = url;
+    }
+  }
+
+  /** Shows and selects the element or group a link to an element names, or says it is gone. */
+  public scrollToElementLink(link: string): void {
+    const id = parseElementLinkFromURL(link);
+    if (!id) {
+      return;
+    }
+    const targets = this.scene
+      .getNonDeletedElements()
+      .filter((element) => element.id === id || element.groupIds.includes(id));
+    if (targets.length === 0) {
+      this.setState({ toast: { message: { key: "elementLink.notFound" } } });
+      return;
+    }
+    this.scrollToContent(targets, { fit: "contain" });
+    this.selection.select(targets);
+  }
+
   private handleCanvasClick(event: MouseEvent): void {
+    if (!this.isInteractionEnabled()) {
+      return;
+    }
     if (event.button !== POINTER_BUTTON.MAIN) {
       this.lastCompletedCanvasClicks = [];
       return;
@@ -3956,6 +4826,9 @@ export class DiagramEditor {
     SnapCache.setVisibleGaps(null);
     this.savePointer(childEvent.clientX, childEvent.clientY, "up");
 
+    this.host.onPointerUp?.(activeTool, pointerDownState);
+    this.pointerUpEmitter.trigger(this.state.activeTool, pointerDownState, childEvent);
+
     const hitElements = pointerDownState.hit.allHitElements;
     const sceneCoords = viewportCoordsToSceneCoords(
       { clientX: childEvent.clientX, clientY: childEvent.clientY },
@@ -4497,6 +5370,21 @@ export class DiagramEditor {
 
   /** The hover: the cursor, line handles, binding suggestions, and the line being drawn point by point. */
   private handleCanvasPointerMove(event: PointerEvent): void {
+    if (!this.isInteractionEnabled()) {
+      if (this.isToolSupported(this.state.activeTool.type)) {
+        // a presenter's cursor stays with the others between laser strokes
+        this.savePointer(event.clientX, event.clientY, this.state.cursorButton);
+      }
+      if (this.isNavigationEnabled()) {
+        this.updateMultiTouchGesture(event);
+      }
+      if ((this.isLinksEnabled() || this.isEmbedsEnabled()) && this.panTeardown === null) {
+        this.handleInteractiveContentPointerMove(event);
+      }
+      if (!this.isToolSupported(this.state.activeTool.type)) {
+        return;
+      }
+    }
     this.savePointer(event.clientX, event.clientY, this.state.cursorButton);
     this.lastPointerMoveEvent = event;
     this.lastPosition = { x: event.clientX, y: event.clientY };
@@ -4710,8 +5598,16 @@ export class DiagramEditor {
     });
     const hitElement = hitElementMightBeLocked?.locked ? null : hitElementMightBeLocked;
 
-    if (!isEraserActive(this.state)) {
-      this.embeds.handleHover({ hitElement, scenePointer, moveEvent: event });
+    if (
+      !isEraserActive(this.state) &&
+      !this.embeds.handleHover({ hitElement, scenePointer, moveEvent: event })
+    ) {
+      this.hitLinkElement = this.isLinksEnabled()
+        ? this.getElementLinkAtPosition(scenePointer, hitElementMightBeLocked)
+        : undefined;
+    }
+    if (this.applyElementLinkHoverAffordance()) {
+      return;
     }
     if (this.state.activeTool.type === "laser") {
       return;
@@ -4959,6 +5855,7 @@ export class DiagramEditor {
     >,
   ): void {
     if (
+      !this.isInteractionEnabled() ||
       this.state.editingTextElement ||
       !this.shouldHandleBrowserCanvasDoubleClick(event.type) ||
       // alt-clicks cycle the selection (in the crop editor, alt mirrors the
@@ -5188,6 +6085,33 @@ export class DiagramEditor {
 
   // ---------------------------------------------------------------------------
   // input: keyboard
+
+  /**
+   * A key for the editor: everything while interactive; otherwise the page
+   * keys and the navigation actions when navigation is on, and the browser's
+   * zoom keys held back unless `browserZoom` keeps them.
+   */
+  private handleKeyDown(event: KeyboardEvent): void {
+    if (this.isInteractionEnabled()) {
+      this.onKeyDown(event);
+      return;
+    }
+    if (this.isNavigationEnabled()) {
+      if (this.maybeHandlePageScrollKeyDown(event)) {
+        event.preventDefault();
+        return;
+      }
+      this.actionManager.handleKeyDown(event);
+      return;
+    }
+    if (
+      !this.isBrowserZoomEnabled() &&
+      event[KEYS.CTRL_OR_CMD] &&
+      (event.key === "-" || event.key === "=" || event.key === "+" || event.key === "0")
+    ) {
+      event.preventDefault();
+    }
+  }
 
   private onKeyDown(event: KeyboardEvent): void {
     // CapsLock inverts the case of letters; the shortcuts read the key as if
@@ -5628,6 +6552,9 @@ export class DiagramEditor {
   }
 
   private onKeyUp(event: KeyboardEvent): void {
+    if (!this.isInteractionEnabled()) {
+      return;
+    }
     if (isFromEditorUI(event) && CONTROL_KEYS.has(event.key)) {
       return;
     }
@@ -5758,6 +6685,11 @@ export class DiagramEditor {
       state.selectedElementsAreBeingDragged,
       state.frameToHighlight?.id,
       state.editingGroupId,
+      state.frameRendering.enabled,
+      state.frameRendering.clip,
+      state.frameRendering.name,
+      state.frameRendering.outline,
+      this.isLinksEnabled(),
       scale,
     ].join("|");
     if (staticKey !== this.lastStaticKey || this.renderable === null) {
@@ -5768,6 +6700,9 @@ export class DiagramEditor {
         elementsPendingErasure: this.elementsPendingErasure,
         embedsValidationStatus: this.embeds.embedsValidationStatus,
         pendingFlowchartNodes: this.flowchart.pendingNodes,
+        renderLinks: this.isLinksEnabled(),
+        elementRenderOverrides: this.elementRenderOverrides,
+        elementRenderOffsets: this.elementRenderOffsets,
       });
     }
     const renderable = this.renderable;
@@ -5811,7 +6746,7 @@ export class DiagramEditor {
       renderConfig: {
         ...getCollaboratorsRenderConfig(state),
         selectionColor: this.selectionColor(container),
-        renderScrollbars: false,
+        renderScrollbars: this.host.renderScrollbars,
         lastViewportPosition: this.lastPosition,
       },
       editorInterface: this.editorInterface,
@@ -5890,8 +6825,34 @@ export class DiagramEditor {
     if (canvas.style.height !== cssHeight) canvas.style.height = cssHeight;
   }
 
+  /**
+   * As Excalidraw's unmount does: `isDestroyed` turns true and the getters
+   * and subscriptions throw rather than answer with what is no longer there.
+   */
+  private markApiDestroyed(): void {
+    const api = this.api as unknown as Record<string, unknown>;
+    api.isDestroyed = true;
+    for (const key of Object.keys(api)) {
+      if (
+        (key.startsWith("get") || key === "onStateChange" || key === "onEvent") &&
+        typeof api[key] === "function"
+      ) {
+        api[key] = () => {
+          throw new Error(
+            "ExcalidrawAPI is no longer usable after the editor has been unmounted and will return invalid/empty data. You should check for `ExcalidrawAPI.isDestroyed` before calling get* methods on subscribing to state/event changes.",
+          );
+        };
+      }
+    }
+  }
+
   public destroy(): void {
     if (this.destroyed) return;
+    this.markApiDestroyed();
+    this.lifecycleEvents.emit("editor:unmount");
+    this.elementRenderOverrides = new Map();
+    this.elementRenderOffsets = new Map();
+    this.viewport.destroy();
     this.maybeCleanupAfterMissingPointerUp(null);
     this.toolDrag.cancel();
     this.library.destroy();
@@ -5915,6 +6876,11 @@ export class DiagramEditor {
     this.pointerUpdateEmitter.clear();
     this.scrollChangeEmitter.clear();
     this.userFollowEmitter.clear();
+    this.pointerDownEmitter.clear();
+    this.pointerUpEmitter.clear();
+    this.store.onStoreIncrementEmitter.clear();
+    this.appStateObserver.clear();
+    this.lifecycleEvents.clear();
     this.announceEmitter.clear();
     this.textEditEmitter.clear();
     this.textEditEndEmitter.clear();

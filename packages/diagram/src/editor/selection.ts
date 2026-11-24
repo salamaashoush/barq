@@ -507,7 +507,12 @@ export class EditorSelection {
    */
   select = (elementsOrIds: ElementsOrIds, opts: SelectOptions = {}) => {
     const elements = this.resolve(elementsOrIds, opts.includeLocked);
-    this.beforeChange(opts);
+    this.beforeChange(
+      // a click inside the image in the crop editor selects it again
+      elements.length === 1 && elements[0]?.id === this.app.state.croppingElementId,
+      opts,
+      elements,
+    );
     this.app.setState((prevState) =>
       this.withFollowingState(
         prevState,
@@ -526,7 +531,7 @@ export class EditorSelection {
    */
   add = (elementsOrIds: ElementsOrIds, opts: AddOptions = {}) => {
     const elements = this.resolve(elementsOrIds, opts.includeLocked);
-    this.beforeChange(opts);
+    this.beforeChange(false, opts, elements);
     this.app.setState((prevState) =>
       this.withFollowingState(
         prevState,
@@ -545,7 +550,7 @@ export class EditorSelection {
    */
   remove = (elementsOrIds: ElementsOrIds, opts: SelectionChangeOptions = {}) => {
     const elements = this.resolve(elementsOrIds, true);
-    this.beforeChange(opts);
+    this.beforeChange(false, opts);
     this.app.setState((prevState) =>
       this.withFollowingState(
         prevState,
@@ -558,8 +563,9 @@ export class EditorSelection {
     );
   };
 
-  /** Clears the selection, leaving the edited group. */
+  /** Clears the selection, leaving the edited group and ending cropping. */
   clear = (opts: SelectionChangeOptions = {}) => {
+    this.app.finishImageCropping();
     if (opts.captureUpdate) {
       this.app.store.scheduleAction(opts.captureUpdate);
     }
@@ -572,8 +578,37 @@ export class EditorSelection {
     });
   };
 
-  /** Records the change for undo as asked. */
-  private beforeChange({ captureUpdate }: SelectionChangeOptions) {
+  /**
+   * Ends what changing the selection ends, cropping (unless
+   * `keepsCroppedImage`) and text editing (unless the edited text or its
+   * container is among `elements`), and records the change for undo as asked.
+   */
+  private beforeChange(
+    keepsCroppedImage: boolean,
+    { captureUpdate }: SelectionChangeOptions,
+    elements?: readonly NonDeletedExcalidrawElement[],
+  ) {
+    const { editingTextElement } = this.app.state;
+    if (
+      elements &&
+      editingTextElement &&
+      !elements.some(
+        (element) =>
+          element.id === editingTextElement.id || element.id === editingTextElement.containerId,
+      )
+    ) {
+      // after the current event, whose own blur may end it first, unless
+      // another edit started meanwhile
+      const submit = this.app.text.textWysiwygSubmitHandler;
+      queueMicrotask(() => {
+        if (submit && this.app.text.textWysiwygSubmitHandler === submit) {
+          submit();
+        }
+      });
+    }
+    if (!keepsCroppedImage) {
+      this.app.finishImageCropping();
+    }
     if (captureUpdate) {
       this.app.store.scheduleAction(captureUpdate);
     }

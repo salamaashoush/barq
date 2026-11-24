@@ -89,6 +89,8 @@ export const actionZoomIn: Action<ZoomAnchor> = {
   label: "buttons.zoomIn",
   announcement: "Zoomed in",
   viewMode: true,
+  navigation: true,
+  predicate: (_elements, _appState, app) => app.isNavigationEnabled(),
   perform: (_elements, appState, anchor, app) => {
     app.requestUnfollow();
     return zoomTo(appState, appState.zoom.value + ZOOM_STEP, anchor);
@@ -104,6 +106,8 @@ export const actionZoomOut: Action<ZoomAnchor> = {
   label: "buttons.zoomOut",
   announcement: "Zoomed out",
   viewMode: true,
+  navigation: true,
+  predicate: (_elements, _appState, app) => app.isNavigationEnabled(),
   perform: (_elements, appState, anchor, app) => {
     app.requestUnfollow();
     return zoomTo(appState, appState.zoom.value - ZOOM_STEP, anchor);
@@ -119,6 +123,8 @@ export const actionResetZoom: Action<ZoomAnchor> = {
   label: "buttons.resetZoom",
   announcement: "Zoom reset",
   viewMode: true,
+  navigation: true,
+  predicate: (_elements, _appState, app) => app.isNavigationEnabled(),
   perform: (_elements, appState, anchor, app) => {
     app.requestUnfollow();
     return zoomTo(
@@ -168,6 +174,8 @@ export const actionZoomToFit: Action = {
   label: "helpDialog.zoomToFit",
   announcement: "Zoomed to fit",
   viewMode: true,
+  navigation: true,
+  predicate: (_elements, _appState, app) => app.isNavigationEnabled(),
   perform: (elements, appState, _formData, app) => {
     app.requestUnfollow();
     return fitTo(
@@ -188,6 +196,8 @@ export const actionZoomToFitSelectionInViewport: Action = {
   label: "labels.zoomToFitViewport",
   announcement: "Zoomed to selection",
   viewMode: true,
+  navigation: true,
+  predicate: (_elements, _appState, app) => app.isNavigationEnabled(),
   perform: (elements, appState, _formData, app) => {
     app.requestUnfollow();
     return fitTo(
@@ -206,6 +216,8 @@ export const actionZoomToFitSelection: Action = {
   label: "helpDialog.zoomToSelection",
   announcement: "Zoomed to selection",
   viewMode: true,
+  navigation: true,
+  predicate: (_elements, _appState, app) => app.isNavigationEnabled(),
   perform: (elements, appState, _formData, app) => {
     app.requestUnfollow();
     return fitTo(

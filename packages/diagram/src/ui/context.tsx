@@ -1,4 +1,4 @@
-import { type Child, createContext, getContext } from "@barqjs/core";
+import { type Accessor, type Child, createContext, createSignal, getContext } from "@barqjs/core";
 
 import { isDarwin } from "@excalidraw/common";
 
@@ -9,8 +9,10 @@ import type { Translate } from "../i18n.ts";
 import type { TextToDiagramOptions } from "../ttd/types.ts";
 import type { DiagramToCodeOptions } from "../editor/magic-frame.ts";
 import type { Action, ActionLabel, ActionName } from "../editor/types.ts";
+import { isDefaultUIEnabled, isUIControlEnabled } from "../editor/ui-options.ts";
 import type { ResolvedUIOptions } from "../editor/ui-options.ts";
-import type { AppState, UserToFollow } from "../types.ts";
+import type { AppState, UIConfig, UIControl, UserToFollow } from "../types.ts";
+import type { HostSlots } from "./host-children.ts";
 import type { EditorStore } from "./store.ts";
 import type { ViewportStatusFrame } from "./viewport-status-frame.tsx";
 
@@ -43,6 +45,12 @@ export interface UIHost {
   viewportStatusFrame: ViewportStatusFrame | null;
   /** Below the user list, in its menu on a desktop and in the main menu on a phone. */
   currentUserControls?: (isMobile: boolean) => Child;
+  /** Excalidraw's `ui`: whether the default UI renders, or which of its controls. */
+  ui?: boolean | UIConfig;
+  /** What the host's children hand to the UI's places: the main menu's entries, the footer, ... */
+  slots: Partial<HostSlots>;
+  /** Excalidraw's `showDeprecatedFonts`: the font picker offers the fonts Excalidraw retired. */
+  showDeprecatedFonts: boolean;
 }
 
 export interface DiagramUI {
@@ -66,6 +74,16 @@ export interface DiagramUI {
   shortcut: (name: ShortcutName, index?: number) => string;
   /** Gives the keyboard back to the canvas. */
   focusCanvas: () => void;
+  /** Whether the default UI renders, under `ui`. */
+  defaultUIEnabled: () => boolean;
+  /** Whether a default control renders, under `ui`. */
+  uiControlEnabled: (control: UIControl) => boolean;
+  /** The sidebar docked beside the canvas, whose room the rest of the UI gives up. */
+  dockedSidebar: Accessor<string | null>;
+  /** Sets the docked sidebar; `null` from `owner` clears it only while it is `owner`'s. */
+  setDockedSidebar: (name: string | null, owner: string) => void;
+  /** What the host gave as children that renders as it is, in the UI's layer. */
+  hostChildren: () => readonly unknown[];
 }
 
 export const DiagramUIContext = createContext<DiagramUI | null>(null);
@@ -85,8 +103,10 @@ export const createDiagramUI = (options: {
   langCode: () => string;
   rtl: () => boolean;
   host: () => UIHost;
+  hostChildren?: () => readonly unknown[];
 }): DiagramUI => {
   const { store, t } = options;
+  const [dockedSidebar, setDocked] = createSignal<string | null>(null);
   const resolveLabel = (label: ActionLabel | undefined): string => {
     if (label === undefined) return "";
     if (typeof label === "string") return t(label);
@@ -99,13 +119,13 @@ export const createDiagramUI = (options: {
     run: (action, value = null) => {
       const editor = store.editor;
       if (editor === null) return;
-      editor.batch(() => editor.actionManager.executeAction(action, value));
+      editor.batch(() => editor.actionManager.executeAction(action, value, "ui"));
     },
     runNamed: (name) => {
       const editor = store.editor;
       const action = editor?.actionManager.actions.get(name);
       if (editor && action) {
-        editor.batch(() => editor.actionManager.executeAction(action));
+        editor.batch(() => editor.actionManager.executeAction(action, null, "ui"));
       }
     },
     isEnabled: (action) => {
@@ -127,5 +147,12 @@ export const createDiagramUI = (options: {
     shortcut: (name, index = 0) =>
       getShortcutFromShortcutName(name, t, index, store.ready() && isDarwin),
     focusCanvas: () => store.editor?.focusContainer(),
+    defaultUIEnabled: () => isDefaultUIEnabled(options.host().ui),
+    uiControlEnabled: (control) => isUIControlEnabled(control, options.host().ui),
+    dockedSidebar,
+    setDockedSidebar: (name, owner) => {
+      if (name !== null || dockedSidebar() === owner) setDocked(name);
+    },
+    hostChildren: options.hostChildren ?? (() => []),
   };
 };

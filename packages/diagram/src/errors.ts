@@ -24,3 +24,24 @@ export class ImageSceneDataError extends Error {
     this.code = code;
   }
 }
+
+/** A request that failed, with its HTTP status: a text-to-diagram backend's error. */
+export class RequestError extends Error {
+  public status: number;
+  public data: unknown;
+
+  public constructor({
+    message = "Something went wrong",
+    status = 500,
+    data,
+  }: { message?: string; status?: number; data?: unknown } = {}) {
+    super(message);
+    this.name = "RequestError";
+    this.status = status;
+    this.data = data;
+  }
+
+  public toObject(): { name: string; status: number; message: string } {
+    return { name: this.name, status: this.status, message: this.message };
+  }
+}

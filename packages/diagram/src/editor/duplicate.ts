@@ -7,6 +7,7 @@ import {
   duplicateElements,
   isBindableElement,
   newElementWith,
+  reconcileDuplicatedElements,
   syncMovedIndices,
   updateBoundElements,
 } from "@excalidraw/element";
@@ -14,10 +15,44 @@ import {
 import { getSelectionStateForElements } from "./selection.ts";
 
 import type { ListMarkerAdvance } from "@excalidraw/element";
-import type { ExcalidrawElement, ExcalidrawTextElement } from "@excalidraw/element/types";
+import type {
+  ExcalidrawElement,
+  ExcalidrawTextElement,
+  NonDeletedExcalidrawElement,
+} from "@excalidraw/element/types";
 
 import type { DiagramEditor } from "./editor.ts";
 import type { PointerDownState } from "./types.ts";
+
+type Duplication = Pick<
+  ReturnType<typeof duplicateElements>,
+  | "duplicatedElements"
+  | "duplicateElementsMap"
+  | "origElementsMap"
+  | "origIdToDuplicateId"
+  | "duplicateIdToOrigId"
+>;
+
+/**
+ * Hands a duplication to the host's `onDuplicate`, if any, and folds what it
+ * returned back in: the next elements, and the duplicates it did not veto.
+ */
+export const runOnDuplicate = (
+  editor: DiagramEditor,
+  duplication: Duplication,
+  nextElements: ExcalidrawElement[],
+  prevElements: readonly ExcalidrawElement[],
+): { elements: ExcalidrawElement[]; duplicatedElements: NonDeletedExcalidrawElement[] } =>
+  reconcileDuplicatedElements(
+    editor.host.onDuplicate?.(nextElements, prevElements, {
+      duplicateElements: duplication.duplicateElementsMap,
+      originalElements: duplication.origElementsMap,
+      origIdToDuplicateId: duplication.origIdToDuplicateId,
+      duplicateIdToOrigId: duplication.duplicateIdToOrigId,
+    }),
+    nextElements,
+    duplication.duplicatedElements,
+  );
 
 /**
  * Duplicates the selection being dragged (alt-drag): the originals go back to
@@ -63,17 +98,35 @@ export const duplicateDraggedSelection = (
       seed: randomInteger(),
     }),
   });
-  const { origIdToDuplicateId, duplicatedElements } = duplication;
+  const { origIdToDuplicateId, origElementsMap } = duplication;
 
-  const nextElements = duplication.elementsWithDuplicates.map((element) => {
+  const mappedElements = duplication.elementsWithDuplicates.map((element) => {
     if (idsOfElementsToDuplicate.has(element.id)) {
       const original = pointerDownState.originalElements.get(element.id);
       if (original) {
-        return newElementWith(element, { x: original.x, y: original.y });
+        const reset = newElementWith(element, { x: original.x, y: original.y });
+        // the host sees the originals as they are in the next elements
+        if (origElementsMap.has(element.id)) {
+          origElementsMap.set(element.id, reset);
+        }
+        return reset;
       }
     }
     return element;
   });
+
+  const { elements: nextElements, duplicatedElements } = runOnDuplicate(
+    editor,
+    duplication,
+    mappedElements,
+    elements,
+  );
+
+  // the host vetoed it: the drag goes on with the originals
+  if (duplicatedElements.length === 0) {
+    pointerDownState.hit.editedTextId = null;
+    return;
+  }
 
   const duplicateElementsMap = arrayToMap(duplicatedElements);
   const elementsWithIndices = syncMovedIndices(nextElements, duplicateElementsMap);

@@ -6,7 +6,9 @@
 
 import { describe, expect, test } from "bun:test";
 import { UserIdleState } from "@excalidraw/common";
-import { getVisibleSceneBounds, newElementWith, newImageElement } from "@excalidraw/element";
+import { newElementWith, newImageElement } from "@excalidraw/element";
+
+import { getVisibleSceneBounds } from "../viewport.ts";
 
 import { generateEncryptionKey } from "../data/encryption.ts";
 import { actionGoToCollaborator } from "../editor/actions/navigate.ts";

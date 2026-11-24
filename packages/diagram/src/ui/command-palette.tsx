@@ -1,3 +1,4 @@
+import type { JSX } from "@barqjs/web";
 import { For, Show, createMemo, createSignal } from "@barqjs/core";
 import {
   CommandDialog,
@@ -14,7 +15,14 @@ import { actionChangeViewBackgroundColor, actionClearCanvas } from "../editor/ac
 import { actionToggleSearchMenu } from "../editor/actions/search.ts";
 import { actionToggleTheme, actionToggleShapeSwitch } from "../editor/actions/toggles.ts";
 import { useDiagramUI } from "./context.tsx";
+import { hostSlot, isHostChild } from "./host-children.ts";
 import { isShortcutName } from "./shortcuts.ts";
+
+import type { Child } from "@barqjs/core";
+import type { ExcalidrawElement } from "@excalidraw/element/types";
+import type { ActionManager } from "../editor/actions/manager.ts";
+import type { DiagramEditor } from "../editor/editor.ts";
+import type { AppState } from "../types.ts";
 
 import type { ActionName, Action } from "../editor/types.ts";
 import type { TranslationKey } from "../i18n.ts";
@@ -24,13 +32,58 @@ import type { ToolType } from "../types.ts";
 const CATEGORIES = ["app", "export", "editor", "tools", "elements", "links", "library"] as const;
 type Category = (typeof CATEGORIES)[number];
 
+/**
+ * A command a host adds to the palette, Excalidraw's `CommandPaletteItem`.
+ * `category` is one of the palette's (`"app"`, `"export"`, `"editor"`,
+ * `"tools"`, `"elements"`, `"links"`, `"library"`) or a heading of its own.
+ */
+export interface CommandPaletteItem {
+  label: string;
+  /** Matched as well as the label, not shown. */
+  keywords?: string[];
+  category: string;
+  /** Its place within the category, lower first. */
+  order?: number;
+  /** Whether it is offered now. @default true */
+  predicate?:
+    | boolean
+    | ((
+        elements: readonly ExcalidrawElement[],
+        appState: AppState,
+        editor: DiagramEditor,
+      ) => boolean);
+  shortcut?: string | null;
+  /** `false` keeps it out of view mode. @default true */
+  viewMode?: boolean;
+  icon?: Child;
+  perform: (data: { actionManager: ActionManager; event: Event | null }) => void;
+}
+
 interface Command {
   key: string;
   label: string;
-  category: Category;
+  category: string;
+  order?: number;
   shortcut: string;
   keywords: readonly string[];
   perform: () => void;
+}
+
+/**
+ * Excalidraw's `CommandPalette`, given to `<DiagramEditor>` as a child: its
+ * `customCommandPaletteItems` join the palette's commands.
+ */
+export function CommandPalette(props: {
+  customCommandPaletteItems?: CommandPaletteItem[];
+}): JSX.Element {
+  if (isHostChild()) {
+    return hostSlot("commandPalette", {
+      get customCommandPaletteItems() {
+        return props.customCommandPaletteItems;
+      },
+    });
+  }
+  return <CommandPaletteDialog customCommandPaletteItems={props.customCommandPaletteItems} />;
 }
 
 const ELEMENT_ACTIONS: readonly ActionName[] = [
@@ -127,7 +180,7 @@ const PALETTE_TOOLS: readonly ToolType[] = [
  */
 let lastUsedKey: string | null = null;
 
-export function CommandPalette() {
+export function CommandPaletteDialog(props: { customCommandPaletteItems?: CommandPaletteItem[] }) {
   const ui = useDiagramUI();
   const t = ui.t;
   const store = ui.store;
@@ -282,7 +335,26 @@ export function CommandPalette() {
           }
         : null,
     ];
+    const custom: Command[] = (props.customCommandPaletteItems ?? [])
+      .filter(
+        (item) =>
+          !(viewMode && item.viewMode === false) &&
+          (typeof item.predicate === "function"
+            ? item.predicate(editor.scene.getElementsIncludingDeleted(), editor.state, editor)
+            : item.predicate !== false),
+      )
+      .map((item, index) => ({
+        key: `custom:${index}:${item.label}`,
+        label: item.label,
+        category: item.category,
+        order: item.order,
+        shortcut: item.shortcut ?? "",
+        keywords: item.keywords ?? [],
+        perform: () =>
+          editor.batch(() => item.perform({ actionManager: editor.actionManager, event: null })),
+      }));
     return [
+      ...custom,
       ...extra.filter((command): command is Command => command !== null),
       ...named(EXPORT_ACTIONS, "export"),
       ...named(EDITOR_ACTIONS, "editor"),
@@ -321,14 +393,19 @@ export function CommandPalette() {
     </CommandItem>
   );
 
-  const grouped = createMemo(() =>
-    CATEGORIES.map((category) => ({
-      category,
-      commands: commands().filter(
-        (command) => command.category === category && command.key !== recent()?.key,
-      ),
-    })).filter((group) => group.commands.length > 0),
-  );
+  const grouped = createMemo(() => {
+    const own = commands()
+      .map((command) => command.category)
+      .filter((category) => !(CATEGORIES as readonly string[]).includes(category));
+    return [...CATEGORIES, ...new Set(own)]
+      .map((category) => ({
+        category,
+        commands: commands()
+          .filter((command) => command.category === category && command.key !== recent()?.key)
+          .toSorted((a, b) => (a.order ?? 0) - (b.order ?? 0)),
+      }))
+      .filter((group) => group.commands.length > 0);
+  });
 
   return (
     <CommandDialog
@@ -358,8 +435,14 @@ export function CommandPalette() {
           )}
         </Show>
         <For each={grouped()}>
-          {(group: { category: Category; commands: Command[] }) => (
-            <CommandGroup heading={t(`commandPalette.categories.${group.category}`)}>
+          {(group: { category: string; commands: Command[] }) => (
+            <CommandGroup
+              heading={
+                (CATEGORIES as readonly string[]).includes(group.category)
+                  ? t(`commandPalette.categories.${group.category as Category}`)
+                  : group.category
+              }
+            >
               <For each={group.commands}>{(command: Command) => <Item command={command} />}</For>
             </CommandGroup>
           )}

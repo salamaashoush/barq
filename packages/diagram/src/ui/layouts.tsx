@@ -148,7 +148,7 @@ function HistoryButtons() {
  * mode and the library at its end, and along the bottom the properties, undo
  * and redo over the toolbar, every control a finger's size.
  */
-export function PhoneChrome(props: { mainMenu?: () => Child; scrollBack: Child }) {
+export function PhoneChrome(props: { scrollBack: Child }) {
   const ui = useDiagramUI();
   const store = ui.store;
   const zen = () => store.state("zenModeEnabled");
@@ -159,18 +159,18 @@ export function PhoneChrome(props: { mainMenu?: () => Child; scrollBack: Child }
         <div>
           {ui.host().renderTopLeftUI?.(true, store.snapshot)}
           <Show when={!zen()}>
-            <MainMenuButton items={props.mainMenu} />
+            <MainMenuButton />
           </Show>
         </div>
         <div class={topBarEnd}>
           <div class={topBarRow}>
             {ui.host().renderTopRightUI?.(true, store.snapshot) ?? (
-              <Show when={!viewMode()}>
+              <Show when={!viewMode() && ui.defaultUIEnabled()}>
                 <PenModeButton />
                 <SidebarTrigger />
               </Show>
             )}
-            <Show when={viewMode() && ui.isEnabled(actionToggleViewMode)}>
+            <Show when={ui.defaultUIEnabled() && viewMode() && ui.isEnabled(actionToggleViewMode)}>
               <div class={island}>
                 <button
                   type="button"
@@ -185,7 +185,9 @@ export function PhoneChrome(props: { mainMenu?: () => Child; scrollBack: Child }
               </div>
             </Show>
           </div>
-          <StatsPanel />
+          <Show when={ui.defaultUIEnabled()}>
+            <StatsPanel />
+          </Show>
         </div>
       </div>
       <Show when={ui.host().viewportStatusFrame?.label} keyed>
@@ -195,8 +197,8 @@ export function PhoneChrome(props: { mainMenu?: () => Child; scrollBack: Child }
           </div>
         )}
       </Show>
-      <Show when={!viewMode() && !zen()}>
-        <div class={bottomBar} data-testid="phone-bottom-bar">
+      <Show when={!viewMode() && !zen() && ui.defaultUIEnabled()}>
+        <div class={bottomBar} data-viewport-ui="bottom" data-testid="phone-bottom-bar">
           {props.scrollBack}
           <div class={actionsRow}>
             <PropertiesDrawer />

@@ -19,7 +19,7 @@ const key = (target: Element, init: KeyboardEventInit) =>
 
 describe("welcome screen", () => {
   test("shows Excalidraw's heading, menu and hints over an empty scene", async () => {
-    const { api } = await mountEditor({ welcomeScreen: true });
+    const { api } = await mountEditor({}, () => <WelcomeScreen />);
     const welcome = screen.getByTestId("welcome-screen");
     expect(screen.getByTestId("welcome-heading").textContent).toBe("Diagrams. Made. Simple.");
     expect(screen.getByTestId("welcome-load").textContent).toContain("Open");
@@ -34,7 +34,7 @@ describe("welcome screen", () => {
   });
 
   test("a drawing tool hides it until the selection tool is back, and an element for good", async () => {
-    const { api, region } = await mountEditor({ welcomeScreen: true });
+    const { api, region } = await mountEditor({}, () => <WelcomeScreen />);
     key(region, { key: "r", code: "KeyR" });
     await settle();
     expect(screen.queryByTestId("welcome-screen")).toBeNull();
@@ -58,36 +58,35 @@ describe("welcome screen", () => {
     expect(screen.queryByTestId("welcome-screen")).toBeNull();
   });
 
-  test("is off without the prop and over a scene with elements", async () => {
+  test("is off without a WelcomeScreen child", async () => {
     await mountEditor();
     expect(screen.queryByTestId("welcome-screen")).toBeNull();
   });
 
   test("a scene with elements shows none", async () => {
-    await mountEditor({ welcomeScreen: true, initialData: { elements: [rectangle("A", 0, 0)] } });
+    await mountEditor({ initialData: { elements: [rectangle("A", 0, 0)] } }, () => (
+      <WelcomeScreen />
+    ));
     expect(screen.queryByTestId("welcome-screen")).toBeNull();
   });
 
   test("an app composes its own from the parts", async () => {
     render(() => (
-      <DiagramEditor
-        height={800}
-        welcomeScreen={
-          <>
-            <WelcomeScreen.Center>
-              <WelcomeScreen.Center.Logo>Acme</WelcomeScreen.Center.Logo>
-              <WelcomeScreen.Center.Heading>Sketch the release</WelcomeScreen.Center.Heading>
-              <WelcomeScreen.Center.Menu>
-                <WelcomeScreen.Center.MenuItemHelp />
-                <WelcomeScreen.Center.MenuItemLink href="https://example.com/docs">
-                  Docs
-                </WelcomeScreen.Center.MenuItemLink>
-              </WelcomeScreen.Center.Menu>
-            </WelcomeScreen.Center>
-            <WelcomeScreen.Hints.ToolbarHint>Start here</WelcomeScreen.Hints.ToolbarHint>
-          </>
-        }
-      />
+      <DiagramEditor height={800}>
+        <WelcomeScreen>
+          <WelcomeScreen.Center>
+            <WelcomeScreen.Center.Logo>Acme</WelcomeScreen.Center.Logo>
+            <WelcomeScreen.Center.Heading>Sketch the release</WelcomeScreen.Center.Heading>
+            <WelcomeScreen.Center.Menu>
+              <WelcomeScreen.Center.MenuItemHelp />
+              <WelcomeScreen.Center.MenuItemLink href="https://example.com/docs">
+                Docs
+              </WelcomeScreen.Center.MenuItemLink>
+            </WelcomeScreen.Center.Menu>
+          </WelcomeScreen.Center>
+          <WelcomeScreen.Hints.ToolbarHint>Start here</WelcomeScreen.Hints.ToolbarHint>
+        </WelcomeScreen>
+      </DiagramEditor>
     ));
     await settle();
     expect(screen.getByTestId("welcome-heading").textContent).toBe("Sketch the release");

@@ -9,7 +9,6 @@ import {
   getLinkIdAndTypeFromSelection,
   isElementLink,
   isEmbeddableElement,
-  parseElementLinkFromURL,
 } from "@excalidraw/element";
 import {
   ELEMENT_LINK_KEY,
@@ -26,7 +25,6 @@ import { diagramLayer as d } from "./layer.ts";
 import { acrossWidth, floating, iconButton, island, takesPointer, textInput } from "./styles.ts";
 
 import type { NonDeletedExcalidrawElement } from "@excalidraw/element/types";
-import type { DiagramEditor } from "../editor/editor.ts";
 
 const popup = d(island, floating, gap[1], { maxWidth: "min(360px, calc(100% - 16px))" });
 
@@ -43,24 +41,6 @@ const dialog = d(island, floating, acrossWidth, layout.column, gap[2], takesPoin
 });
 
 const dialogRow = d(layout.row, layout.end, gap[2]);
-
-/** The link an element link points at, as Excalidraw scrolls to it: the element, or the group. */
-const scrollToElementLink = (editor: DiagramEditor, link: string): boolean => {
-  const id = parseElementLinkFromURL(link);
-  if (!id) return false;
-  const targets = editor.scene
-    .getNonDeletedElements()
-    .filter((element) => element.id === id || element.groupIds.includes(id));
-  if (targets.length === 0) {
-    editor.batch(() => editor.setState({ toast: { message: { key: "elementLink.notFound" } } }));
-    return true;
-  }
-  editor.batch(() => {
-    editor.scrollToContent(targets, { fit: "contain" });
-    editor.selection.select(targets);
-  });
-  return true;
-};
 
 const PADDING = 12;
 
@@ -141,9 +121,12 @@ export function HyperlinkPopup() {
                   onClick={(event: MouseEvent) => {
                     const link = element()!.link ?? "";
                     const editor = store.editor;
-                    if (editor && isElementLink(link)) {
+                    if (!editor) return;
+                    if (editor.notifyLinkOpen(element()!, event)) {
                       event.preventDefault();
-                      scrollToElementLink(editor, link);
+                    } else if (isElementLink(link)) {
+                      event.preventDefault();
+                      editor.batch(() => editor.scrollToElementLink(link));
                     }
                   }}
                   data-testid="hyperlink-link"

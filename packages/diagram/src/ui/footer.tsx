@@ -1,4 +1,5 @@
-import { Show, createMemo } from "@barqjs/core";
+import type { JSX } from "@barqjs/web";
+import { type Child, Show, createMemo } from "@barqjs/core";
 import { CircleHelp } from "@barqjs/lucide/icons/circle-help";
 import { Map as MapIcon } from "@barqjs/lucide/icons/map";
 import { Redo2 } from "@barqjs/lucide/icons/redo-2";
@@ -11,6 +12,7 @@ import { MAX_ZOOM, MIN_ZOOM } from "@excalidraw/common";
 import { actionResetZoom, actionZoomIn, actionZoomOut } from "../editor/actions/canvas.ts";
 import { actionToggleMinimap, actionShortcuts } from "../editor/actions/toggles.ts";
 import { useDiagramUI } from "./context.tsx";
+import { hostSlot, isHostChild } from "./host-children.ts";
 import { iconButton, island } from "./styles.ts";
 import { space, type } from "@barqjs/arc/style";
 
@@ -38,54 +40,56 @@ export function FooterStart() {
 
   return (
     <>
-      <div class={island} role="group" aria-label={t("labels.zoom")} data-testid="zoom-actions">
-        <button
-          type="button"
-          class={iconButton}
-          aria-label={t("buttons.zoomOut")}
-          title={`${t("buttons.zoomOut")} — ${ui.shortcut("zoomOut")}`}
-          aria-keyshortcuts="Control+-"
-          disabled={zoom() <= MIN_ZOOM}
-          onClick={() => ui.run(actionZoomOut)}
-        >
-          <ZoomOut aria-hidden="true" />
-        </button>
-        <button
-          type="button"
-          class={zoomLevel}
-          aria-label={`${t("buttons.resetZoom")}: ${level()}`}
-          title={`${t("buttons.resetZoom")} — ${ui.shortcut("resetZoom")}`}
-          aria-keyshortcuts="Control+0"
-          onClick={() => ui.run(actionResetZoom)}
-          data-testid="zoom-level"
-        >
-          {level()}
-        </button>
-        <button
-          type="button"
-          class={iconButton}
-          aria-label={t("buttons.zoomIn")}
-          title={`${t("buttons.zoomIn")} — ${ui.shortcut("zoomIn")}`}
-          aria-keyshortcuts="Control+="
-          disabled={zoom() >= MAX_ZOOM}
-          onClick={() => ui.run(actionZoomIn)}
-        >
-          <ZoomIn aria-hidden="true" />
-        </button>
-        <Show when={minimapOffered()}>
-          <Toggle
+      <Show when={ui.uiControlEnabled("zoom")}>
+        <div class={island} role="group" aria-label={t("labels.zoom")} data-testid="zoom-actions">
+          <button
+            type="button"
             class={iconButton}
-            isSelected={ui.store.state("minimapEnabled")}
-            onChange={() => ui.run(actionToggleMinimap)}
-            aria-label={t("labels.minimap")}
-            title={t("labels.minimap")}
-            data-testid="button-minimap"
+            aria-label={t("buttons.zoomOut")}
+            title={`${t("buttons.zoomOut")} — ${ui.shortcut("zoomOut")}`}
+            aria-keyshortcuts="Control+-"
+            disabled={zoom() <= MIN_ZOOM}
+            onClick={() => ui.run(actionZoomOut)}
           >
-            <MapIcon aria-hidden="true" />
-          </Toggle>
-        </Show>
-      </div>
-      <Show when={!ui.store.state("viewModeEnabled")}>
+            <ZoomOut aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            class={zoomLevel}
+            aria-label={`${t("buttons.resetZoom")}: ${level()}`}
+            title={`${t("buttons.resetZoom")} — ${ui.shortcut("resetZoom")}`}
+            aria-keyshortcuts="Control+0"
+            onClick={() => ui.run(actionResetZoom)}
+            data-testid="zoom-level"
+          >
+            {level()}
+          </button>
+          <button
+            type="button"
+            class={iconButton}
+            aria-label={t("buttons.zoomIn")}
+            title={`${t("buttons.zoomIn")} — ${ui.shortcut("zoomIn")}`}
+            aria-keyshortcuts="Control+="
+            disabled={zoom() >= MAX_ZOOM}
+            onClick={() => ui.run(actionZoomIn)}
+          >
+            <ZoomIn aria-hidden="true" />
+          </button>
+          <Show when={minimapOffered()}>
+            <Toggle
+              class={iconButton}
+              isSelected={ui.store.state("minimapEnabled")}
+              onChange={() => ui.run(actionToggleMinimap)}
+              aria-label={t("labels.minimap")}
+              title={t("labels.minimap")}
+              data-testid="button-minimap"
+            >
+              <MapIcon aria-hidden="true" />
+            </Toggle>
+          </Show>
+        </div>
+      </Show>
+      <Show when={ui.defaultUIEnabled() && !ui.store.state("viewModeEnabled")}>
         <div class={island} role="group" aria-label={`${t("buttons.undo")} / ${t("buttons.redo")}`}>
           <button
             type="button"
@@ -135,5 +139,21 @@ export function FooterEnd() {
         <CircleHelp aria-hidden="true" />
       </button>
     </div>
+  );
+}
+
+/**
+ * Excalidraw's `Footer`, given to `<DiagramEditor>` as a child: what it holds
+ * shows in the middle of the footer, between zoom and help.
+ */
+export function Footer(props: { children?: Child }): JSX.Element {
+  return isHostChild() ? (
+    hostSlot("footer", {
+      get children() {
+        return props.children;
+      },
+    })
+  ) : (
+    <>{props.children}</>
   );
 }

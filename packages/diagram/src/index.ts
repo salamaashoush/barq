@@ -10,6 +10,46 @@ export { DiagramViewer } from "./viewer.tsx";
 export { DiagramEditor } from "./diagram-editor.tsx";
 export type { DiagramEditorProps } from "./diagram-editor.tsx";
 export { MainMenu } from "./ui/main-menu.tsx";
+export { Footer } from "./ui/footer.tsx";
+export { DefaultSidebar, Sidebar } from "./ui/sidebar.tsx";
+export type { SidebarProps, SidebarTriggerProps } from "./ui/sidebar.tsx";
+export type { DefaultSidebarProps } from "./ui/host-children.ts";
+export { Button, Ellipsify } from "./ui/parts.tsx";
+export type { ButtonProps } from "./ui/parts.tsx";
+export { Stats } from "./ui/stats.tsx";
+export { TTDDialog, TTDDialogTrigger } from "./ui/ttd-dialog.tsx";
+export { TTDStreamFetch, parseSSEStream } from "./ttd/stream-fetch.ts";
+export type { StreamChunk, StreamingOptions } from "./ttd/stream-fetch.ts";
+export type {
+  ChatMessage,
+  LLMMessage,
+  SavedChat,
+  SavedChats,
+  TTDPersistenceAdapter,
+  TextSubmitRequest,
+  TextSubmitResult,
+  TextToDiagramOptions,
+} from "./ttd/types.ts";
+export { DiagramToCodePlugin } from "./ui/diagram-to-code-plugin.tsx";
+export type { DiagramToCodeOptions, GenerateDiagramToCode } from "./editor/magic-frame.ts";
+export { CommandPalette } from "./ui/command-palette.tsx";
+export type { CommandPaletteItem } from "./ui/command-palette.tsx";
+export {
+  ExcalidrawAPIContext,
+  ExcalidrawAPIProvider,
+  useEditorInterface,
+  useExcalidrawAPI,
+  useExcalidrawStateValue,
+  useI18n,
+  useOnExcalidrawStateChange,
+  useStylesPanelMode,
+} from "./ui/hooks.ts";
+export type { ExcalidrawAPIHandle } from "./ui/hooks.ts";
+export {
+  renderSpreadsheet,
+  tryParseSpreadsheet,
+  isSpreadsheetValidForChartType,
+} from "./charts/index.ts";
 export { LiveCollaborationTrigger } from "./ui/live-collaboration-trigger.tsx";
 export type { LiveCollaborationTriggerProps } from "./ui/live-collaboration-trigger.tsx";
 export type { ViewportStatusFrame } from "./ui/viewport-status-frame.tsx";
@@ -36,9 +76,13 @@ export type { Language, TranslationKey } from "./i18n.ts";
 export type {
   DiagramChangeListener,
   DiagramEditorApi,
+  DiagramEditorEventMap,
   SceneData,
   TextEditRequest,
 } from "./editor/editor.ts";
+export type { OnStateChange } from "./editor/state-observer.ts";
+export type { PointerDownState } from "./editor/types.ts";
+export { RequestError } from "./errors.ts";
 export type { DiagramViewerApi, DiagramViewerProps } from "./viewer.tsx";
 
 export { SceneCanvas } from "./scene-canvas.ts";
@@ -125,12 +169,19 @@ export {
 } from "./app-state.ts";
 export { getNormalizedZoom } from "./scene/normalize.ts";
 export {
+  DEFAULT_OVERSCROLL,
   centerScrollOn,
   constrainScrollState,
   getScrollToContentState,
+  getVisibleSceneBounds,
   zoomToFitBounds,
 } from "./viewport.ts";
-export type { ViewportFit } from "./viewport.ts";
+export type {
+  AnimationOptions,
+  SetViewportOptions,
+  SetViewportRect,
+  ViewportFit,
+} from "./viewport.ts";
 
 export { renderStaticScene } from "./renderer/static-scene.ts";
 export { renderSceneToSvg } from "./renderer/static-svg-scene.ts";
@@ -155,7 +206,6 @@ export { CanvasError, ImageSceneDataError } from "./errors.ts";
 export {
   convertToExcalidrawElements,
   getCommonBounds,
-  getVisibleSceneBounds,
   getNonDeletedElements,
   getSceneVersion,
   getTextFromElements,
@@ -165,9 +215,37 @@ export {
   isLinearElement,
   newElementWith,
   bumpVersion,
+  mutateElement,
+  CaptureUpdateAction,
+  elementsOverlappingBBox,
+  isElementLink,
+  setCustomTextMetricsProvider,
 } from "@excalidraw/element";
-export type { ExcalidrawElementSkeleton } from "@excalidraw/element";
-export { FONT_FAMILY, MIME_TYPES, THEME, UserIdleState } from "@excalidraw/common";
+export type {
+  CaptureUpdateActionType,
+  DurableIncrement,
+  EphemeralIncrement,
+  ExcalidrawElementSkeleton,
+  OnDuplicateData,
+  StoreDelta,
+} from "@excalidraw/element";
+export type { RenderEnvironment } from "@excalidraw/element/renderEnvironment";
+export {
+  DEFAULT_LASER_COLOR,
+  FONT_FAMILY,
+  MIME_TYPES,
+  ROUNDNESS,
+  THEME,
+  UserIdleState,
+  applyDarkModeFilter,
+  getFormFactor,
+  getStrokeWidthByKey,
+  normalizeLink,
+  sceneCoordsToViewportCoords,
+  throttleRAF,
+  viewportCoordsToSceneCoords,
+} from "@excalidraw/common";
+export type { EditorInterface } from "@excalidraw/common";
 export type {
   ExcalidrawElement,
   NonDeletedExcalidrawElement,
@@ -181,12 +259,23 @@ export type {
   Collaborator,
   CollaboratorPointer,
   DataURL,
+  ElementRenderOverride,
+  ElementRenderOverrides,
+  ForcedActiveTool,
+  ImageOptions,
+  InteractionConfig,
   LibraryItem,
   LibraryItems,
   NormalizedZoomValue,
   OnUserFollowedPayload,
   PointerUpdatePayload,
   SocketId,
+  UIConfig,
+  UIControl,
   UserToFollow,
+  ViewportOffsets,
+  ViewportOffsetsOptions,
+  ViewportUIDock,
+  ViewportUIName,
   Zoom,
 } from "./types.ts";

@@ -249,8 +249,12 @@ export class EditorImages {
     }
 
     // the id is the original's digest, before any resizing, so it is portable
-    const fileId = await generateIdFromFile(imageFile);
+    const fileId = ((await this.app.host.generateIdForFile?.(imageFile)) ??
+      (await generateIdFromFile(imageFile))) as FileId | null;
     if (!fileId) {
+      console.warn(
+        "Couldn't generate file id or the supplied `generateIdForFile` didn't resolve to one.",
+      );
       throw new LocalizedError({ key: "errors.imageInsertError" });
     }
 

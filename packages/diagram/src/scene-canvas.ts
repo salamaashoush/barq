@@ -1,4 +1,5 @@
 import { getRenderEnvironment } from "@excalidraw/element/renderEnvironment";
+import type { RenderEnvironment } from "@excalidraw/element/renderEnvironment";
 import {
   Scene,
   ShapeCache,
@@ -16,7 +17,14 @@ import rough from "roughjs/bin/rough";
 import { Fonts } from "./fonts/fonts.ts";
 import { renderStaticScene } from "./renderer/static-scene.ts";
 import { Renderer } from "./scene/renderer.ts";
-import type { AppState, BinaryFiles, EmbedsValidationStatus, ImageCache } from "./types.ts";
+import type {
+  AppState,
+  BinaryFiles,
+  ElementRenderOffsets,
+  ElementRenderOverrides,
+  EmbedsValidationStatus,
+  ImageCache,
+} from "./types.ts";
 
 /** What an editor draws beyond the scene: the selection, and the grid. */
 export interface SceneCanvasFrame {
@@ -28,6 +36,12 @@ export interface SceneCanvasFrame {
   pendingFlowchartNodes?: NonDeletedExcalidrawElement[] | null;
   /** Which embeddables' links validated: the others are drawn as placeholders. */
   embedsValidationStatus?: EmbedsValidationStatus;
+  /** The link icons in the elements' corners, which a click opens. */
+  renderLinks?: boolean;
+  /** The host's transient opacities and offsets, drawn without touching the document. */
+  elementRenderOverrides?: ElementRenderOverrides;
+  /** Their offsets alone: elements they move into the viewport are drawn, those moved out not. */
+  elementRenderOffsets?: ElementRenderOffsets;
 }
 
 /** The elements a frame draws, which the editor's other layers draw from too. */
@@ -45,6 +59,8 @@ export class SceneCanvas {
   public readonly renderer: Renderer;
   public readonly fonts: Fonts;
   public readonly rc: RoughCanvas;
+  /** Where canvases and images are made: the browser's unless the host gives one. */
+  public renderEnvironment: RenderEnvironment | undefined;
   private files: BinaryFiles = {};
   private appState: AppState | null = null;
   private frame: SceneCanvasFrame | undefined;
@@ -87,7 +103,7 @@ export class SceneCanvas {
       fileIds,
       files: this.files,
       imageCache: this.imageCache,
-      createImage: () => getRenderEnvironment().createImage(),
+      createImage: () => getRenderEnvironment(this.renderEnvironment).createImage(),
     });
     if (updatedFiles.size === 0) return;
     // An image element drawn before its file decoded is cached as its
@@ -113,7 +129,7 @@ export class SceneCanvas {
       fileIds: [...fileIds],
       files,
       imageCache: this.imageCache,
-      createImage: () => getRenderEnvironment().createImage(),
+      createImage: () => getRenderEnvironment(this.renderEnvironment).createImage(),
     });
     if (result.updatedFiles.size > 0) {
       for (const element of this.elements) {
@@ -163,7 +179,17 @@ export class SceneCanvas {
       selectedElementsAreBeingDragged: appState.selectedElementsAreBeingDragged,
       frameToHighlight: appState.frameToHighlight,
     });
-    const { elementsMap, visibleElements } = renderable;
+    const { elementsMap } = renderable;
+    const offsets = frame?.elementRenderOffsets;
+    const visibleElements =
+      offsets && offsets.size > 0
+        ? this.renderer.getVisibleElementsWithRenderOffsets(
+            renderable.visibleElements,
+            elementsMap,
+            appState,
+            offsets,
+          )
+        : renderable.visibleElements;
 
     renderStaticScene({
       canvas: this.canvas,
@@ -178,12 +204,14 @@ export class SceneCanvas {
         scale,
         imageCache: this.imageCache,
         renderGrid: frame?.renderGrid ?? false,
-        renderLinks: false,
+        renderLinks: frame?.renderLinks ?? false,
         isExporting: false,
         embedsValidationStatus: frame?.embedsValidationStatus ?? new Map(),
         elementsPendingErasure: new Set(frame?.elementsPendingErasure),
         pendingFlowchartNodes: frame?.pendingFlowchartNodes ?? null,
         theme: appState.theme,
+        elementRenderOverrides: frame?.elementRenderOverrides,
+        renderEnvironment: this.renderEnvironment,
       },
     });
     return renderable;

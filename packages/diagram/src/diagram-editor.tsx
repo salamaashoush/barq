@@ -2,15 +2,19 @@ import {
   type Child,
   For,
   Show,
+  children,
+  createMemo,
   createRenderEffect,
   createSignal,
   createUniqueId,
+  getContext,
   onCleanup,
+  provide,
   untrack,
 } from "@barqjs/core";
 import { useColorScheme } from "@barqjs/primitives/color-scheme";
 import { type JSX, isServer } from "@barqjs/web";
-import { THEME } from "@excalidraw/common";
+import { DEFAULT_IMAGE_OPTIONS, THEME } from "@excalidraw/common";
 
 import type { Theme } from "@excalidraw/element/types";
 
@@ -26,27 +30,37 @@ import {
   loadLanguage,
   translate,
 } from "./i18n.ts";
-import { createDiagramUI, type RenderSlot } from "./ui/context.tsx";
+import { DiagramUIContext, createDiagramUI, type RenderSlot } from "./ui/context.tsx";
+import { HostChildrenContext, collectHostChildren } from "./ui/host-children.ts";
+import { ExcalidrawAPIContext } from "./ui/hooks.ts";
 import { EditorUI } from "./ui/editor-ui.tsx";
 import { EmbedLayer, type RenderEmbeddable } from "./ui/embeds.tsx";
 import { EditorStore } from "./ui/store.ts";
 
+import type { OnDuplicateData, DurableIncrement, EphemeralIncrement } from "@excalidraw/element";
+import type { RenderEnvironment } from "@excalidraw/element/renderEnvironment";
+import type { ExcalidrawElement, NonDeletedExcalidrawElement } from "@excalidraw/element/types";
+import type { ClipboardData } from "./clipboard.ts";
 import type { DiagramScene } from "./data/types.ts";
-import type { TextToDiagramOptions } from "./ttd/types.ts";
-import type { DiagramToCodeOptions } from "./editor/magic-frame.ts";
 import type { Embed, EmbeddableSandbox, ValidateEmbeddable } from "./editor/embeds.ts";
 import type {
   DiagramChangeListener,
   DiagramEditorApi,
+  DiagramEditorOptions,
   FrameName,
   TextEditRequest,
 } from "./editor/editor.ts";
+import type { PointerDownState } from "./editor/types.ts";
 import type { ViewportStatusFrame } from "./ui/viewport-status-frame.tsx";
 import type {
   AppState,
+  ForcedActiveTool,
+  ImageOptions,
+  InteractionConfig,
   LibraryItems,
   OnUserFollowedPayload,
   PointerUpdatePayload,
+  UIConfig,
   UserToFollow,
   Zoom,
 } from "./types.ts";
@@ -79,10 +93,85 @@ export interface DiagramEditorProps {
   class?: string;
   /** Called once the editor is mounted, with its API. */
   api?: (api: DiagramEditorApi) => void;
-  /** Excalidraw's name for `api`. */
-  excalidrawAPI?: (api: DiagramEditorApi) => void;
+  /** Excalidraw's `onExcalidrawAPI`: the API once the editor is mounted, and `null` once it is gone. */
+  onExcalidrawAPI?: (api: DiagramEditorApi | null) => void;
+  /** Excalidraw's `onMount`: the API and the editor's container, once mounted. */
+  onMount?: (payload: { excalidrawAPI: DiagramEditorApi; container: HTMLElement }) => void;
+  /** Excalidraw's `onUnmount`. */
+  onUnmount?: () => void;
+  /** Excalidraw's `onInitialize`: the initial scene is loaded. */
+  onInitialize?: (api: DiagramEditorApi) => void;
   /** Called on every change, with the elements, the app state and the files. */
   onChange?: DiagramChangeListener;
+  /** Excalidraw's `onIncrement`: the store's increments, durable and ephemeral; read once, at mount. */
+  onIncrement?: (event: DurableIncrement | EphemeralIncrement) => void;
+  /** Excalidraw's `initialState`: the viewport the initial scene opens at, as `setViewport` takes it. */
+  initialState?: DiagramEditorOptions["initialState"];
+  /** The document the editor lives in, when it is not the page's (an iframe's). Read once. */
+  ownerDocument?: Document;
+  /**
+   * Where the renderer and the exports make canvases and images and measure
+   * text, read once; every render cache is keyed by it, so it is one object
+   * for the editor's life. @default the owner window's
+   */
+  renderEnvironment?: RenderEnvironment;
+  /**
+   * Excalidraw's `interaction`: `false` takes no input but the API's (the
+   * editor is in view mode); a config keeps links, embeds, navigation, the
+   * browser's zoom or tools enabled. @default true
+   */
+  interaction?: boolean | InteractionConfig;
+  /**
+   * Excalidraw's `activeTool`: the tool the host forces; the user and
+   * `setActiveTool` cannot switch from it, it stays after use, and what it
+   * draws is not selected.
+   */
+  activeTool?: ForcedActiveTool;
+  /** Snapping to objects. */
+  objectsSnapModeEnabled?: boolean;
+  /** Excalidraw's `imageOptions`: inserted images' longest side and size. @default 1440 and 4 MiB */
+  imageOptions?: ImageOptions;
+  /** Excalidraw's `detectScroll`: the page's scroll moves the editor's offsets. @default true */
+  detectScroll?: boolean;
+  /** Excalidraw's `handleKeyboardGlobally`: keys pressed anywhere in the page reach the editor. */
+  handleKeyboardGlobally?: boolean;
+  /** Focuses the editor once it is mounted. */
+  autoFocus?: boolean;
+  /** Excalidraw's `generateIdForFile`: an inserted image's file id. @default the file's digest */
+  generateIdForFile?: (file: File) => string | Promise<string>;
+  /** Excalidraw's `onPaste`: returning `false` keeps the paste from the editor. */
+  onPaste?: (data: ClipboardData, event: ClipboardEvent | null) => Promise<boolean> | boolean;
+  /**
+   * Excalidraw's `onDuplicate`: sees each duplication (a drag, Ctrl+D, a
+   * paste, the library) and returns the elements to use instead, or `false`
+   * to cancel it.
+   */
+  onDuplicate?: (
+    nextElements: readonly ExcalidrawElement[],
+    prevElements: readonly ExcalidrawElement[],
+    data: OnDuplicateData,
+  ) => ExcalidrawElement[] | void | false;
+  /** Excalidraw's `onLinkOpen`: an element's link is opening; `preventDefault()` keeps it from the editor. */
+  onLinkOpen?: (
+    element: NonDeletedExcalidrawElement,
+    event: CustomEvent<{ nativeEvent: MouseEvent | PointerEvent }>,
+  ) => void;
+  /** Excalidraw's `onPointerDown` on the canvas. */
+  onPointerDown?: (activeTool: AppState["activeTool"], pointerDownState: PointerDownState) => void;
+  /** Excalidraw's `onPointerUp` after a press on the canvas. */
+  onPointerUp?: (activeTool: AppState["activeTool"], pointerDownState: PointerDownState) => void;
+  /** Excalidraw's `showDeprecatedFonts`: the font picker offers the fonts Excalidraw retired. */
+  showDeprecatedFonts?: boolean;
+  /** Excalidraw's `renderScrollbars`: scrollbars along the canvas's edges. */
+  renderScrollbars?: boolean;
+  /**
+   * Excalidraw's children: `MainMenu`, `WelcomeScreen`, `Footer`,
+   * `DefaultSidebar` (and its `Trigger` and `TabTriggers`), `TTDDialog`,
+   * `TTDDialogTrigger`, `DiagramToCodePlugin` and `CommandPalette` go into
+   * the UI's places; anything else, a `Sidebar` included, renders in the UI's
+   * layer.
+   */
+  children?: Child;
   /**
    * The UI's language, one of Excalidraw's locale codes (`"ar-SA"`,
    * `"de-DE"`); loaded when first asked for. @default "en"
@@ -96,32 +185,16 @@ export interface DiagramEditorProps {
   renderTopRightUI?: RenderSlot;
   /** Rendered in the stats panel, below the general stats. */
   renderCustomStats?: (elements: readonly unknown[], appState: AppState) => Child;
-  /**
-   * The main menu's entries in place of the defaults, built from `MainMenu`:
-   * a function, called inside the menu, whose parts read the editor.
-   */
-  mainMenu?: () => Child;
-  /**
-   * Excalidraw's welcome screen over an empty scene: `true` for its heading,
-   * menu and hints, or the `WelcomeScreen` parts to show instead.
-   */
-  welcomeScreen?: true | Child;
   /** Excalidraw's `aiEnabled`: the text-to-diagram and wireframe entries. @default true */
   aiEnabled?: boolean;
-  /**
-   * The app's text-to-diagram backend, Excalidraw's `<TTDDialog>` props: the
-   * dialog's chat tab is offered with it, when `aiEnabled`, and not without.
-   */
-  textToDiagram?: TextToDiagramOptions;
-  /**
-   * The app's wireframe-to-code backend, Excalidraw's `<DiagramToCodePlugin>`:
-   * the magic frame is offered with it, when `aiEnabled`, and not without.
-   */
-  diagramToCode?: DiagramToCodeOptions;
   /** Excalidraw's `generateLinkForSelection`, for the link "copy link to element" copies. */
   generateLinkForSelection?: (id: string, type: "element" | "group") => string;
-  /** `false` renders the canvas alone, without the toolbar, the panels or the menus. @default true */
-  ui?: boolean;
+  /**
+   * Excalidraw's `ui`: `false` renders the canvas without the default UI
+   * (the host's children and render props stay); `{ enabled }` keeps some
+   * default controls, `{ disabled }` removes some. @default true
+   */
+  ui?: boolean | UIConfig;
   /** Excalidraw's `onLibraryChange`: called with the library's items after each change. */
   onLibraryChange?: (libraryItems: LibraryItems) => void;
   /** Excalidraw's `libraryReturnUrl`: where the library site sends an installed library back to. @default the page's address */
@@ -196,6 +269,13 @@ const initialUIState = (
     viewModeEnabled: props.viewModeEnabled ?? false,
     zenModeEnabled: props.zenModeEnabled ?? restored.zenModeEnabled ?? false,
     gridModeEnabled: props.gridModeEnabled ?? restored.gridModeEnabled ?? false,
+  };
+};
+
+const applyImageOptions = (editor: Editor, options: ImageOptions | undefined): void => {
+  editor.images.options = {
+    maxWidthOrHeight: options?.maxWidthOrHeight ?? DEFAULT_IMAGE_OPTIONS.maxWidthOrHeight,
+    maxFileSizeBytes: options?.maxFileSizeBytes ?? DEFAULT_IMAGE_OPTIONS.maxFileSizeBytes,
   };
 };
 
@@ -280,7 +360,13 @@ export function DiagramEditor(props: DiagramEditorProps): JSX.Element {
   );
   const uiOptions = () =>
     resolveUIOptions(props.UIOptions, { theme: props.theme, onThemeChange: props.onThemeChange });
+  const apiProvider = getContext(ExcalidrawAPIContext);
+  // the children are read where they can find the editor's UI, and those
+  // that go into the UI's places hand their props over
+  // read once the UI they render with exists, which reads them back through these
+  const slots = () => hostGiven().slots;
   const ui = createDiagramUI({
+    hostChildren: () => hostGiven().rest,
     store,
     t: (path, replacement, fallback) => translate(langData(), path, replacement, fallback),
     langCode: shownLang,
@@ -291,8 +377,8 @@ export function DiagramEditor(props: DiagramEditorProps): JSX.Element {
       renderTopRightUI: props.renderTopRightUI,
       renderCustomStats: props.renderCustomStats,
       aiEnabled: props.aiEnabled !== false,
-      textToDiagram: props.textToDiagram,
-      diagramToCode: props.diagramToCode,
+      textToDiagram: slots().ttdDialog,
+      diagramToCode: slots().diagramToCode,
       theme: props.theme,
       libraryReturnUrl: props.libraryReturnUrl,
       libraryPublishEndpoint: props.libraryPublishEndpoint,
@@ -306,8 +392,26 @@ export function DiagramEditor(props: DiagramEditorProps): JSX.Element {
           ? (given as (isMobile: boolean) => Child)(isMobile)
           : given;
       },
+      ui: props.ui,
+      slots: slots(),
+      showDeprecatedFonts: props.showDeprecatedFonts === true,
     }),
   });
+  let hostChildren: ReturnType<typeof children> | undefined;
+  provide(
+    HostChildrenContext,
+    () => true,
+    () =>
+      provide(
+        DiagramUIContext,
+        () => ui,
+        () => {
+          hostChildren = children(() => props.children);
+          return null;
+        },
+      ),
+  );
+  const hostGiven = createMemo(() => collectHostChildren(hostChildren?.toArray() ?? []));
 
   const editorHost = () => ({
     UIOptions: uiOptions(),
@@ -315,7 +419,7 @@ export function DiagramEditor(props: DiagramEditorProps): JSX.Element {
     zenModeControlled: props.zenModeEnabled !== undefined,
     onThemeChange: props.onThemeChange,
     aiEnabled: props.aiEnabled !== false,
-    diagramToCode: props.diagramToCode,
+    diagramToCode: slots().diagramToCode,
     generateLinkForSelection: props.generateLinkForSelection,
     onExport: props.onExport,
     name: props.name,
@@ -327,6 +431,20 @@ export function DiagramEditor(props: DiagramEditorProps): JSX.Element {
     onPointerUpdate: props.onPointerUpdate,
     onScrollChange: props.onScrollChange,
     onUserFollow: props.onUserFollow,
+    langCode: langCode(),
+    viewModeEnabled: props.viewModeEnabled,
+    interaction: props.interaction,
+    activeTool: props.activeTool,
+    onPaste: props.onPaste,
+    onDuplicate: props.onDuplicate,
+    onLinkOpen: props.onLinkOpen,
+    onPointerDown: props.onPointerDown,
+    onPointerUp: props.onPointerUp,
+    generateIdForFile: props.generateIdForFile,
+    handleKeyboardGlobally: props.handleKeyboardGlobally === true,
+    detectScroll: props.detectScroll !== false,
+    renderScrollbars: props.renderScrollbars === true,
+    ui: props.ui,
   });
 
   const attach = (host: HTMLDivElement): (() => void) => {
@@ -343,12 +461,20 @@ export function DiagramEditor(props: DiagramEditorProps): JSX.Element {
       interactiveCanvas,
       svgLayer: host.querySelector("svg"),
       initialData: data instanceof Promise ? null : data,
+      initialState: untrack(() => props.initialState),
       theme: untrack(theme),
       viewModeEnabled: untrack(() => props.viewModeEnabled),
       gridModeEnabled: untrack(() => props.gridModeEnabled),
+      objectsSnapModeEnabled: untrack(() => props.objectsSnapModeEnabled),
+      ownerDocument: untrack(() => props.ownerDocument),
+      renderEnvironment: untrack(() => props.renderEnvironment),
       host: untrack(editorHost),
     });
     editor = created;
+    applyImageOptions(
+      created,
+      untrack(() => props.imageOptions),
+    );
     if (untrack(() => props.zenModeEnabled) !== undefined) {
       created.batch(() =>
         created.setState({ zenModeEnabled: untrack(() => props.zenModeEnabled) }),
@@ -395,9 +521,27 @@ export function DiagramEditor(props: DiagramEditorProps): JSX.Element {
     const offFrameNames = created.onFrameNamesChange((frames) =>
       queueMicrotask(() => setFrameNames(frames)),
     );
+    const onIncrement = untrack(() => props.onIncrement);
+    const offIncrement = onIncrement ? created.api.onIncrement(onIncrement) : () => {};
+    const offInitialize = created.api.onEvent("editor:initialize", (api) =>
+      untrack(() => props.onInitialize)?.(api),
+    );
+    if (untrack(() => props.autoFocus)) {
+      // once the region is in the page, which it may not be yet as the ref runs
+      queueMicrotask(() => {
+        if (!created.isDestroyed) created.focusContainer();
+      });
+    }
     untrack(() => props.api)?.(created.api);
-    untrack(() => props.excalidrawAPI)?.(created.api);
+    untrack(() => props.onMount)?.({ excalidrawAPI: created.api, container: host });
+    untrack(() => props.onExcalidrawAPI)?.(created.api);
+    // written outside whatever is running, as the announcements are
+    queueMicrotask(() => {
+      if (!created.isDestroyed) apiProvider?.setApi(created.api);
+    });
     return () => {
+      offIncrement();
+      offInitialize();
       detachStore();
       offAnnounce();
       offChange();
@@ -408,6 +552,11 @@ export function DiagramEditor(props: DiagramEditorProps): JSX.Element {
       offEmbeds();
       created.destroy();
       if (editor === created) editor = null;
+      untrack(() => props.onUnmount)?.();
+      untrack(() => props.onExcalidrawAPI)?.(null);
+      queueMicrotask(() => {
+        if (apiProvider?.api() === created.api) apiProvider.setApi(null);
+      });
     };
   };
 
@@ -419,7 +568,23 @@ export function DiagramEditor(props: DiagramEditorProps): JSX.Element {
       () => props.viewModeEnabled,
       (next, previous) => {
         if (previous === undefined && next === undefined) return;
-        editor?.batch(() => editor?.setState({ viewModeEnabled: next ?? false }));
+        // a non-interactive editor stays in view mode
+        editor?.batch(() =>
+          editor?.setState({ viewModeEnabled: (next ?? false) || !editor.isInteractionEnabled() }),
+        );
+      },
+    );
+    createRenderEffect(
+      () => props.objectsSnapModeEnabled,
+      (next, previous) => {
+        if (previous === undefined && next === undefined) return;
+        editor?.batch(() => editor?.setState({ objectsSnapModeEnabled: next ?? false }));
+      },
+    );
+    createRenderEffect(
+      () => ({ ...props.imageOptions }),
+      (next) => {
+        if (editor) applyImageOptions(editor, next);
       },
     );
     createRenderEffect(
@@ -532,9 +697,7 @@ export function DiagramEditor(props: DiagramEditorProps): JSX.Element {
       <div role="status" aria-live="polite" aria-atomic="true" style={SR_ONLY}>
         {announcement()}
       </div>
-      <Show when={props.ui !== false}>
-        <EditorUI ui={ui} mainMenu={props.mainMenu} welcomeScreen={props.welcomeScreen} />
-      </Show>
+      <EditorUI ui={ui} />
     </div>
   );
 }

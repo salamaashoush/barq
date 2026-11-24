@@ -8,6 +8,7 @@ import { describe, expect, test } from "bun:test";
 import { screen } from "@barqjs/testing";
 
 import { mountEditor, rectangle, select, settle, setupUITests } from "./test-ui.tsx";
+import { DiagramToCodePlugin } from "../index.ts";
 
 import type { ExcalidrawIframeElement } from "@excalidraw/element/types";
 import type { DiagramEditorApi } from "../index.ts";
@@ -40,10 +41,12 @@ describe("magic frame", () => {
         finish = (html) => resolve({ html });
       });
     };
-    const { api } = await mountEditor({
-      initialData: { elements: [rectangle("A", 100, 100), rectangle("B", 300, 100)] },
-      diagramToCode: { generate },
-    });
+    const { api } = await mountEditor(
+      {
+        initialData: { elements: [rectangle("A", 100, 100), rectangle("B", 300, 100)] },
+      },
+      () => <DiagramToCodePlugin generate={generate} />,
+    );
     await select(api, "A", "B");
     await pickMagicFrame();
     const frame = api.getSceneElements().find((element) => element.type === "magicframe");
@@ -76,15 +79,21 @@ describe("magic frame", () => {
   });
 
   test("a failed generation shows its error; an empty frame says so", async () => {
-    const { api } = await mountEditor({
-      initialData: {
-        elements: [
-          rectangle("A", 100, 100),
-          { type: "magicframe", id: "M", x: 600, y: 300, width: 200, height: 200 } as never,
-        ],
+    const { api } = await mountEditor(
+      {
+        initialData: {
+          elements: [
+            rectangle("A", 100, 100),
+            { type: "magicframe", id: "M", x: 600, y: 300, width: 200, height: 200 } as never,
+          ],
+        },
       },
-      diagramToCode: { generate: () => Promise.reject(new Error("Backend down")) },
-    });
+      () => (
+        <DiagramToCodePlugin
+          generate={({ frame }) => Promise.reject(new Error(`Backend down for ${frame.type}`))}
+        />
+      ),
+    );
     await select(api, "A");
     await pickMagicFrame();
     await settle();
@@ -106,7 +115,9 @@ describe("magic frame", () => {
   });
 
   test("aiEnabled false hides it even with a backend", async () => {
-    await mountEditor({ aiEnabled: false, diagramToCode: { generate: () => ({ html: PAGE }) } });
+    await mountEditor({ aiEnabled: false }, () => (
+      <DiagramToCodePlugin generate={({ children }) => ({ html: `${PAGE}${children.length}` })} />
+    ));
     screen.getByTestId("toolbar-extra-tools").click();
     await settle();
     expect(screen.queryByTestId("toolbar-magicframe")).toBeNull();

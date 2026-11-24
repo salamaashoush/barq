@@ -8,12 +8,11 @@
 
 import { afterEach, describe, expect, test } from "bun:test";
 import { UserIdleState } from "@excalidraw/common";
-import { getVisibleSceneBounds } from "@excalidraw/element";
 
 import { getClientColor, getCollaboratorsRenderConfig } from "../clients.ts";
 import { createIdleDetector } from "../idle.ts";
 import { contextOf } from "../test-canvas.ts";
-import { zoomToFitBounds } from "../viewport.ts";
+import { getVisibleSceneBounds, zoomToFitBounds } from "../viewport.ts";
 import { actionGoToCollaborator } from "./actions/navigate.ts";
 import { actionZoomIn } from "./actions/canvas.ts";
 import { API, Keyboard, h, mouse, renderEditor, unmountEditors, wheel } from "./test-editor.ts";

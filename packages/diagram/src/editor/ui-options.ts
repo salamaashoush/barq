@@ -1,15 +1,27 @@
 import type { EditorInterface } from "@excalidraw/common";
-import type { NonDeletedExcalidrawElement, Theme } from "@excalidraw/element/types";
+import type { OnDuplicateData } from "@excalidraw/element";
+import type {
+  ExcalidrawElement,
+  NonDeletedExcalidrawElement,
+  Theme,
+} from "@excalidraw/element/types";
+
+import type { ClipboardData } from "../clipboard.ts";
 
 import type {
   AppState,
   BinaryFiles,
+  ForcedActiveTool,
+  InteractionConfig,
   OnUserFollowedPayload,
   PointerUpdatePayload,
+  UIConfig,
+  UIControl,
   UserToFollow,
   Zoom,
 } from "../types.ts";
 import type { OnExport } from "./actions/export.ts";
+import type { PointerDownState } from "./types.ts";
 import type { DiagramToCodeOptions } from "./magic-frame.ts";
 import type { EmbeddableSandbox, ValidateEmbeddable } from "./embeds.ts";
 
@@ -107,6 +119,8 @@ export interface EditorHost {
   UIOptions: ResolvedUIOptions;
   /** `viewModeEnabled` is a prop: the view mode toggle is hidden. */
   viewModeControlled: boolean;
+  /** The `viewModeEnabled` prop, which a non-interactive editor overrides and gives back. */
+  viewModeEnabled?: boolean;
   /** `zenModeEnabled` is a prop: the zen mode toggle is hidden. */
   zenModeControlled: boolean;
   /** Called instead of changing the theme, when the host owns it. */
@@ -140,6 +154,42 @@ export interface EditorHost {
   onScrollChange?: (scrollX: number, scrollY: number, zoom: Zoom) => void;
   /** Excalidraw's `onUserFollow`: a request to follow a collaborator, or to stop. */
   onUserFollow?: (payload: OnUserFollowedPayload) => void;
+  /** The UI's language, Excalidraw's `langCode`: a right-to-left one mirrors the measured UI's sides. */
+  langCode?: string;
+  /** Excalidraw's `interaction`: `false`, or what stays enabled, makes the editor take no input. @default true */
+  interaction?: boolean | InteractionConfig;
+  /** Excalidraw's `activeTool`: the tool the host forces, which the user cannot switch from. */
+  activeTool?: ForcedActiveTool;
+  /** Excalidraw's `onPaste`: returning `false` keeps the paste from the editor. */
+  onPaste?: (data: ClipboardData, event: ClipboardEvent | null) => Promise<boolean> | boolean;
+  /**
+   * Excalidraw's `onDuplicate`: sees each duplication (drag, keys, paste,
+   * library) and returns the elements to use instead, or `false` to cancel it.
+   */
+  onDuplicate?: (
+    nextElements: readonly ExcalidrawElement[],
+    prevElements: readonly ExcalidrawElement[],
+    data: OnDuplicateData,
+  ) => ExcalidrawElement[] | void | false;
+  /** Excalidraw's `onLinkOpen`: an element's link opened; `preventDefault()` keeps the editor from opening it. */
+  onLinkOpen?: (
+    element: NonDeletedExcalidrawElement,
+    event: CustomEvent<{ nativeEvent: MouseEvent | PointerEvent }>,
+  ) => void;
+  /** Excalidraw's `onPointerDown` on the canvas. */
+  onPointerDown?: (activeTool: AppState["activeTool"], pointerDownState: PointerDownState) => void;
+  /** Excalidraw's `onPointerUp` after a press on the canvas. */
+  onPointerUp?: (activeTool: AppState["activeTool"], pointerDownState: PointerDownState) => void;
+  /** Excalidraw's `generateIdForFile`: an inserted image's file id. @default the file's digest */
+  generateIdForFile?: (file: File) => string | Promise<string>;
+  /** Excalidraw's `handleKeyboardGlobally`: keys pressed anywhere in the document reach the editor. */
+  handleKeyboardGlobally: boolean;
+  /** Excalidraw's `detectScroll`: the page's scroll moves the editor's offsets. @default true */
+  detectScroll: boolean;
+  /** Excalidraw's `renderScrollbars`. */
+  renderScrollbars: boolean;
+  /** Excalidraw's `ui`: whether the default UI renders, or which of its controls. @default true */
+  ui?: boolean | UIConfig;
 }
 
 export const defaultEditorHost = (): EditorHost => ({
@@ -149,4 +199,24 @@ export const defaultEditorHost = (): EditorHost => ({
   aiEnabled: true,
   isCollaborating: false,
   userToFollow: null,
+  handleKeyboardGlobally: false,
+  detectScroll: true,
+  renderScrollbars: false,
 });
+
+/** Whether the default UI renders: not with `ui` `false` or `{ enabled }`. */
+export const isDefaultUIEnabled = (ui: boolean | UIConfig | undefined): boolean =>
+  ui !== false && !(typeof ui === "object" && "enabled" in ui);
+
+/** Whether a default UI control renders under `ui`. */
+export const isUIControlEnabled = (
+  control: UIControl,
+  ui: boolean | UIConfig | undefined,
+): boolean => {
+  if (typeof ui === "object") {
+    return "enabled" in ui
+      ? (ui.enabled as Partial<Record<UIControl, boolean>>)[control] === true
+      : (ui.disabled as Partial<Record<UIControl, boolean>>)[control] !== true;
+  }
+  return ui !== false;
+};

@@ -8,6 +8,7 @@ import { beforeEach, describe, expect, test } from "bun:test";
 import { ariaViolations, screen, within } from "@barqjs/testing";
 
 import { mountEditor, settle, setupUITests } from "./test-ui.tsx";
+import { TTDDialog, TTDDialogTrigger } from "../index.ts";
 
 import type { DiagramEditorApi } from "../index.ts";
 import type { SavedChat, TextSubmitRequest, TextSubmitResult } from "../ttd/types.ts";
@@ -107,17 +108,17 @@ describe("text to diagram", () => {
   test("a prompt streams a reply that previews and inserts, and the chat is kept", async () => {
     const backend = streamingBackend([FLOW]);
     let kept: SavedChat[] = [];
-    const { api } = await mountEditor({
-      textToDiagram: {
-        onTextSubmit: backend.onTextSubmit,
-        persistenceAdapter: {
+    const { api } = await mountEditor({}, () => (
+      <TTDDialog
+        onTextSubmit={backend.onTextSubmit}
+        persistenceAdapter={{
           loadChats: async () => [],
           saveChats: async (chats) => {
             kept = chats;
           },
-        },
-      },
-    });
+        }}
+      />
+    ));
     await openTTD(api, "text-to-diagram");
     const dialog = screen.getByRole("dialog", { name: "Text to diagram" });
     expect(within(dialog).getByRole("tab", { name: /Mermaid/ })).toBeDefined();
@@ -143,7 +144,7 @@ describe("text to diagram", () => {
 
   test("a reply Mermaid cannot read is repaired by the backend", async () => {
     const backend = streamingBackend(["flowchart LR\n  A[[[ -->", FLOW]);
-    const { api } = await mountEditor({ textToDiagram: { onTextSubmit: backend.onTextSubmit } });
+    const { api } = await mountEditor({}, () => <TTDDialog onTextSubmit={backend.onTextSubmit} />);
     await openTTD(api, "text-to-diagram");
     const dialog = screen.getByRole("dialog");
     const input = within(dialog).getByTestId("ttd-input");
@@ -161,9 +162,9 @@ describe("text to diagram", () => {
 
   test("a failed request can be retried, and Stop aborts a generation", async () => {
     let calls = 0;
-    const { api } = await mountEditor({
-      textToDiagram: {
-        onTextSubmit: (request) => {
+    const { api } = await mountEditor({}, () => (
+      <TTDDialog
+        onTextSubmit={(request) => {
           calls++;
           if (calls === 1) {
             return Promise.resolve({ error: { message: "Server error", status: 500 } });
@@ -173,9 +174,9 @@ describe("text to diagram", () => {
               resolve({ error: { name: "AbortError", message: "Aborted" } }),
             ),
           );
-        },
-      },
-    });
+        }}
+      />
+    ));
     await openTTD(api, "text-to-diagram");
     const dialog = screen.getByRole("dialog");
     type(within(dialog).getByTestId("ttd-input"), "a diagram please");
@@ -192,11 +193,53 @@ describe("text to diagram", () => {
 
   test("aiEnabled false hides the chat even with a backend", async () => {
     const backend = streamingBackend([]);
-    const { api } = await mountEditor({
-      aiEnabled: false,
-      textToDiagram: { onTextSubmit: backend.onTextSubmit },
-    });
+    const { api } = await mountEditor({ aiEnabled: false }, () => (
+      <TTDDialog onTextSubmit={backend.onTextSubmit} />
+    ));
     await openTTD(api, "text-to-diagram");
     expect(screen.getByRole("dialog", { name: "Mermaid to Excalidraw" })).toBeDefined();
+  });
+});
+
+describe("TTDDialog's children", () => {
+  test("TTDDialogTrigger puts the entry in the extra tools, with its label", async () => {
+    const backend = streamingBackend([FLOW]);
+    const { api } = await mountEditor({}, () => (
+      <>
+        <TTDDialog onTextSubmit={backend.onTextSubmit} />
+        <TTDDialogTrigger>Draw it for me</TTDDialogTrigger>
+      </>
+    ));
+    screen.getByTestId("toolbar-extra-tools").click();
+    await settle();
+    const entry = screen.getByTestId("toolbar-textToDiagram");
+    expect(entry.textContent).toContain("Draw it for me");
+    entry.click();
+    await settle();
+    expect(api.getAppState().openDialog).toEqual({ name: "ttd", tab: "text-to-diagram" });
+  });
+
+  test("renderWelcomeScreen and renderWarning say what the app wants", async () => {
+    const { api } = await mountEditor({}, () => (
+      <TTDDialog
+        onTextSubmit={async () => ({
+          error: { message: "slow down", status: 429 },
+          rateLimit: 10,
+          rateLimitRemaining: 0,
+        })}
+        renderWelcomeScreen={({ rateLimits }) => (
+          <span data-testid="own-welcome">{rateLimits === null ? "fresh" : "limited"}</span>
+        )}
+        renderWarning={(message) =>
+          message.warningType === "rateLimitExceeded" ? <span>Come back tomorrow</span> : undefined
+        }
+      />
+    ));
+    await openTTD(api, "text-to-diagram");
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByTestId("own-welcome").textContent).toBe("fresh");
+    type(within(dialog).getByTestId("ttd-input"), "anything");
+    within(dialog).getByTestId("ttd-send").click();
+    await waitFor(() => within(dialog).queryByText("Come back tomorrow") !== null);
   });
 });

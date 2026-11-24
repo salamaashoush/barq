@@ -1,11 +1,8 @@
 # Parity with Excalidraw's editor
 
 Excalidraw's editor (`@excalidraw/excalidraw` on `@excalidraw/element`
-0.18.0-2c3dcc0), feature by feature: **done** names the test that drives it,
-**pending** names the phase that owns it. Phase 3a is the UI on
-`@barqjs/arc` and `@barqjs/ui` (toolbar, panels, menus, pickers); 3b is the
-dialogs, the library and the remaining tools, and is done; phase 4 is
-collaboration and embeds, the only lines still pending.
+0.18.0-2c3dcc0), feature by feature, each **done** line naming the test that
+drives it. Nothing is pending.
 
 ## Data, rendering, export
 
@@ -28,7 +25,7 @@ collaboration and embeds, the only lines still pending.
 - done: autoshape tool, Shift+X: a sketch recognised as a shape, arrows bound, lines between shapes made arrows (`draw-shape.test.ts`)
 - done: bucket fill tool, B: fills the closed region clicked, restyles its own fills, B again cycles the colour, Alt holds an eye dropper (`bucket-fill.test.ts`)
 - done: embeddable and iframe tool, `actionLink` embeds: the link editor validating with `validateEmbeddable`, live iframes over the canvas placed with the viewport, the centre click that activates them, `renderEmbeddable`, the iframes' `sandbox` (`embeddable.test.ts`, `embeds.test.tsx`)
-- done: magic frame, with `aiEnabled` and the app's `diagramToCode`: wraps the selection, generates HTML beside it into a sandboxed iframe (streamed), copies its source, shows it full screen (`magic-frame.test.tsx`, `embeddable.test.ts`)
+- done: magic frame, with `aiEnabled` and the app's `<DiagramToCodePlugin>` child: wraps the selection, generates HTML beside it into a sandboxed iframe (streamed), copies its source, shows it full screen (`magic-frame.test.tsx`, `embeddable.test.ts`)
 - done: toolbar drag-to-place of the sticky note (`editor-ui.test.tsx`)
 
 ## Selection and transforms
@@ -99,13 +96,13 @@ collaboration and embeds, the only lines still pending.
 - done: properties panel: stroke, background, fill, stroke width and style, sloppiness, edges, arrow type, arrowheads, opacity, pressure (`editor-ui.test.tsx`, `ui-actions.test.ts`)
 - done: layers, align and distribute, duplicate, delete, group, link, crop and line editor buttons (`editor-ui.test.tsx`)
 - done: colour picker: quick picks, palette, shades, hex code, keyboard, eye dropper (`panels.test.tsx`, `editor-ui.test.tsx`)
-- done: main menu with app slots (`mainMenu`, `MainMenu`), context menu for canvas, element and selection, Shift+F10 (`editor-ui.test.tsx`, `ui-actions.test.ts`)
+- done: main menu with the app's `<MainMenu>` child and its `onSelect`, context menu for canvas, element and selection, Shift+F10 (`editor-ui.test.tsx`, `ui-actions.test.ts`)
 - done: command palette, Ctrl+/ and Ctrl+Shift+P (`panels.test.tsx`)
 - done: footer zoom, undo and redo, help button, scroll back to content (`editor-ui.test.tsx`, `panels.test.tsx`)
 - done: hyperlink popup and editor, element link editor, copy link to element (`panels.test.tsx`, `ui-actions.test.ts`)
 - done: hints under the toolbar (`panels.test.tsx`)
 - done: Excalidraw's 57 locale files, `langCode`, right to left for Arabic, Persian and Hebrew (`panels.test.tsx`, `diagram-editor.test.tsx`)
-- done: `UIOptions` canvas actions and image tool, `renderTopLeftUI`, `renderTopRightUI`, `renderCustomStats`, `aiEnabled`, `excalidrawAPI` (`panels.test.tsx`)
+- done: `UIOptions` canvas actions and image tool, `renderTopLeftUI`, `renderTopRightUI`, `renderCustomStats`, `aiEnabled`, `onExcalidrawAPI` (`panels.test.tsx`)
 - done: server render of the UI in its language, hydrated without a mismatch (`diagram-editor.test.tsx`)
 - done: help dialog with every shortcut, from `?`, the help button and the main menu (`dialogs.test.tsx`)
 - done: barq's own strings (the palette's categories, the keyboard help, the live region's announcements) in `locales/barq/`, laid over Excalidraw's locale as it loads (`dialogs.test.tsx`)
@@ -116,8 +113,8 @@ collaboration and embeds, the only lines still pending.
 - done: `#addLibrary=` install with the token and URL check, `useHandleLibrary` with a persistence and migration adapter, `onLibraryChange`, `updateLibrary`, `initialData.libraryItems`, dropped library files (`library.test.ts`, `library.test.tsx`)
 - done: publish dialog, to an app's `libraryPublishEndpoint` only (`library.test.tsx`)
 - done: search (Ctrl+F, the main menu), texts and frame names highlighted through `searchMatches`, stepping and bringing a match into view (`search.test.tsx`)
-- done: Mermaid and text-to-diagram dialog: Mermaid typed, previewed, auto-fixed and inserted; the chat streams from the app's `textToDiagram` backend, repairs, retries, stops and keeps its chats (`ttd-dialog.test.tsx`, `mermaid-error.test.ts`, `mermaid-auto-fix.test.ts`)
-- done: welcome screen with its hints, `welcomeScreen` and the `WelcomeScreen` parts (`welcome.test.tsx`)
+- done: Mermaid and text-to-diagram dialog: Mermaid typed, previewed, auto-fixed and inserted; the chat streams from the app's `<TTDDialog>` child, with its `renderWelcomeScreen` and `renderWarning`; `<TTDDialogTrigger>`; `TTDStreamFetch` and `parseSSEStream` (`stream-fetch.test.ts`), repairs, retries, stops and keeps its chats (`ttd-dialog.test.tsx`, `mermaid-error.test.ts`, `mermaid-auto-fix.test.ts`)
+- done: welcome screen with its hints, a `<WelcomeScreen>` child and its parts (`welcome.test.tsx`)
 - done: colour and font quick picks pinned by dragging a palette colour or a font onto a slot, reordered by dragging a pick, reset from the strip's context menu or the picker's tip (`top-picks.test.tsx`)
 - done: font picker previews the highlighted font on the selection and restores it on close; Shift+F opens it (`pickers.test.tsx`)
 - done: command palette's recently used command, library items, library and search entries (`library.test.tsx`)
@@ -129,7 +126,7 @@ collaboration and embeds, the only lines still pending.
 
 Not carried over: the main menu's links to Excalidraw's own social accounts.
 
-## Collaboration (phase 4)
+## Collaboration
 
 - done: the collaborators state through `updateScene({ collaborators })`: each one's cursor in their colour with their name, held at the viewport's edge and dimmed out of view, dimmed when idle or away, none with `renderCursor: false`; their selections outlined in their colour (`collaborators.test.ts`)
 - done: remote pointers' laser trails (`LaserTrails.updateCollabTrails`), in `laserColor` or the collaborator's colour, ended on release, gone when they leave (`collaborators.test.ts`)
@@ -146,3 +143,11 @@ Not carried over: the main menu's links to Excalidraw's own social accounts.
 - done: end-to-end encryption with the room key (AES-GCM, `compressData` for files) and room links `#room=id,key`: the room server and the Y.Doc hold ciphertext only (`data.test.ts`, `websocket.test.ts`, `yjs.test.ts`)
 - done: transports: `createWebSocketTransport` to `@barqjs/start`'s `createWebSocketRooms`, and `createYjsTransport` on a Y.Doc and its awareness (`websocket.test.ts`, `yjs.test.ts`; the server's own in `@barqjs/start`'s `websocket-rooms.test.ts`)
 - done: a session wired into `<DiagramEditor>` from its `api` (`collaboration.test.tsx`)
+
+## Excalidraw's public API
+
+- done: every export of `index.d.ts`, every `ExcalidrawProps` member and every `ExcalidrawImperativeAPI` member, pinned against the published types (`api-parity.test.ts`)
+- done: `isDestroyed`, `applyDeltas`, `mutateElement`, `getSceneElementsMapIncludingDeleted`, `selection`, `getName`, `setElementRenderOverrides`, `registerAction`, `setToast`, `setCursor`, `resetCursor`, `toggleSidebar`, `getEditorInterface`, `updateFrameRendering`, `onIncrement`, `onPointerDown`, `onPointerUp`, `onStateChange`, `onEvent` (`api.test.ts`)
+- done: `setViewport` (boxes, rects, elements, ids, element links; fit, offsets, animation, scroll and zoom locks with rubberband overscroll) and `getViewportOffsets` with padding and reserved surfaces; `initialState.viewport` (`api.test.ts`)
+- done: `interaction` (off, links, embeds, navigation, browser zoom, laser and custom tools), `activeTool`, `onPaste`, `onDuplicate`, `onLinkOpen` with link icons opening on the canvas, `handleKeyboardGlobally`, `detectScroll`, `renderScrollbars`, `generateIdForFile`, `objectsSnapModeEnabled`, `ownerDocument`, `renderEnvironment` (`api.test.ts`)
+- done: `onMount`, `onInitialize`, `onUnmount`, `onExcalidrawAPI`, `onIncrement`, `autoFocus`, `imageOptions`, `showDeprecatedFonts`, `ui` as `false` or a config, the children (`Sidebar`, `DefaultSidebar`, `Footer`, `CommandPalette`), `Button`, `Ellipsify`, `Stats` rows, `ExcalidrawAPIProvider` and the hooks (`host-api.test.tsx`)

@@ -19,12 +19,19 @@ export class ActionManager {
     private readonly editor: DiagramEditor,
   ) {}
 
+  public registerAction(action: Action): void {
+    this.actions.set(action.name, action);
+  }
+
   public registerAll(actions: readonly Action[]): void {
-    for (const action of actions) this.actions.set(action.name, action);
+    for (const action of actions) this.registerAction(action);
   }
 
   /** Runs the action whose shortcut the key is; whether one ran. */
   public handleKeyDown(event: KeyboardEvent): boolean {
+    if (!this.editor.isInteractionEnabled() && !this.editor.isNavigationEnabled()) {
+      return false;
+    }
     const appState = this.getAppState();
     const elements: readonly ExcalidrawElement[] = this.getElementsIncludingDeleted();
     // a canvas action the host turned off has no shortcut either
@@ -45,16 +52,41 @@ export class ActionManager {
     }
     const [action] = matches;
     if (action === undefined) return false;
+    // a non-interactive editor runs only navigation, when navigation is on
+    if (!this.editor.isInteractionEnabled() && action.navigation !== true) return false;
     if (appState.viewModeEnabled && action.viewMode !== true) return false;
 
     event.preventDefault();
     event.stopPropagation();
+    if (this.isBlockedByViewportTransition(action)) return true;
     this.run(action, null);
     return true;
   }
 
-  public executeAction<T>(action: Action<T>, value: T | null = null): void {
+  /**
+   * Runs an action. From the UI (`source` other than `"api"`), a
+   * non-interactive editor runs only navigation, when navigation is on.
+   */
+  public executeAction<T>(
+    action: Action<T>,
+    value: T | null = null,
+    source: "api" | "ui" = "api",
+  ): void {
+    if (
+      source !== "api" &&
+      !this.editor.isInteractionEnabled() &&
+      !(this.editor.isNavigationEnabled() && action.navigation === true)
+    ) {
+      return;
+    }
+    if (this.isBlockedByViewportTransition(action as Action)) {
+      return;
+    }
     this.run(action, value);
+  }
+
+  private isBlockedByViewportTransition(action: Action): boolean {
+    return action.navigation === true && this.editor.viewport.isLockedTransitionPending;
   }
 
   public isActionEnabled(action: Action): boolean {

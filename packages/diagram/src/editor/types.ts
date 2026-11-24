@@ -247,4 +247,6 @@ export interface Action<TData = unknown> {
   ) => boolean;
   /** Runs in view mode too. */
   viewMode?: boolean;
+  /** Canvas navigation: it runs in an editor that is otherwise not interactive while navigation is. */
+  navigation?: boolean;
 }

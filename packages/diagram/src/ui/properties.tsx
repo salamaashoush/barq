@@ -1220,6 +1220,10 @@ export function PropertiesPanel(props: { class?: string } = {}) {
         <section
           class={props.class ? `${panel} ${props.class}` : panel}
           aria-label={t("headings.selectedShapeActions")}
+          data-viewport-ui={ui.store.editorInterface().formFactor === "phone" ? undefined : "side"}
+          data-viewport-ui-name={
+            ui.store.editorInterface().formFactor === "phone" ? undefined : "stylesPanel"
+          }
           data-testid="properties-panel"
         >
           <Show when={!bucketFill()} fallback={<BucketFillColorField />}>
@@ -1393,6 +1397,10 @@ export function CompactPropertiesPanel() {
           class={compactColumn}
           role="group"
           aria-label={t("headings.selectedShapeActions")}
+          data-viewport-ui={ui.store.editorInterface().formFactor === "phone" ? undefined : "side"}
+          data-viewport-ui-name={
+            ui.store.editorInterface().formFactor === "phone" ? undefined : "stylesPanel"
+          }
           data-testid="compact-properties"
         >
           <Show when={shown().strokeColor}>

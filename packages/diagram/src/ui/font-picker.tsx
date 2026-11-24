@@ -145,7 +145,9 @@ export function FontPicker(props: { compact?: boolean } = {}) {
     const inScene = new Set(store.editor?.fonts.getSceneFamilies() ?? []);
     return {
       scene: all.filter((font) => inScene.has(font.value)),
-      available: all.filter((font) => !inScene.has(font.value) && !font.deprecated),
+      available: all.filter(
+        (font) => !inScene.has(font.value) && (ui.host().showDeprecatedFonts || !font.deprecated),
+      ),
     };
   });
 

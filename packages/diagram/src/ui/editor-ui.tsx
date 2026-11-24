@@ -1,4 +1,4 @@
-import { type Child, Show, provide } from "@barqjs/core";
+import { Show, provide } from "@barqjs/core";
 import { provideLocale } from "@barqjs/aria/i18n";
 
 import { DiagramUIContext, type DiagramUI, useDiagramUI } from "./context.tsx";
@@ -23,25 +23,21 @@ import {
 } from "./styles.ts";
 import { Toolbar } from "./toolbar.tsx";
 import { ChartDialog } from "./chart-dialog.tsx";
-import { CommandPalette } from "./command-palette.tsx";
+import { CommandPaletteDialog } from "./command-palette.tsx";
 import { EditorKeys } from "./editor-keys.tsx";
 import { ImageExportDialog, JSONExportDialog } from "./export-dialogs.tsx";
 import { HelpDialog } from "./help-dialog.tsx";
 import { MagicFrameButtons } from "./embeds.tsx";
-import { TTDDialog } from "./ttd-dialog.tsx";
+import { TTDDialogBase } from "./ttd-dialog.tsx";
 import { HintViewer } from "./hint-viewer.tsx";
 import { ElementLinkDialog, HyperlinkPopup } from "./hyperlink.tsx";
 import { Minimap } from "./minimap.tsx";
 import { ShapeSwitchPanel } from "./shape-switch.tsx";
-import {
-  DOCKED_SIDEBAR_INSET,
-  DefaultSidebar,
-  SidebarTrigger,
-  isSidebarDocked,
-} from "./sidebar.tsx";
+import { DOCKED_SIDEBAR_INSET, DefaultSidebar, SidebarTrigger } from "./sidebar.tsx";
 import { StatsPanel } from "./stats.tsx";
 import { EditorToasts } from "./toasts.tsx";
 import { gap, layout, space } from "@barqjs/arc/style";
+import { DEFAULT_SIDEBAR } from "@excalidraw/common";
 
 import { diagramLayer as d } from "./layer.ts";
 import { actionToggleViewMode, actionToggleZenMode } from "../editor/actions/toggles.ts";
@@ -70,10 +66,6 @@ const bottomCenter = d(pinned, passThrough, acrossWidth, layout.centre, { bottom
 
 export interface EditorUIProps {
   ui: DiagramUI;
-  /** The main menu's entries, replacing Excalidraw's defaults. */
-  mainMenu?: () => Child;
-  /** The welcome screen over an empty scene, `true` for Excalidraw's. */
-  welcomeScreen?: true | Child;
 }
 
 /**
@@ -87,7 +79,7 @@ export function EditorUI(props: EditorUIProps) {
   return provide(
     DiagramUIContext,
     () => props.ui,
-    () => <Layout mainMenu={props.mainMenu} welcomeScreen={props.welcomeScreen} />,
+    () => <Layout />,
   );
 }
 
@@ -116,22 +108,16 @@ function LaserPointerButton() {
   );
 }
 
-function Layout(props: { mainMenu?: () => Child; welcomeScreen?: true | Child }) {
+function Layout() {
   const value = useDiagramUI();
+  const defaults = () => value.defaultUIEnabled();
+  const slots = () => value.host().slots;
   const locale = provideLocale(() => value.langCode());
   const zen = () => value.store.state("zenModeEnabled");
   const viewMode = () => value.store.state("viewModeEnabled");
   const docked = () => {
-    const editor = value.store.editor;
-    value.store.state("width");
-    return (
-      editor !== null &&
-      isSidebarDocked(
-        value.store.state("openSidebar"),
-        value.store.state("defaultSidebarDockedPreference"),
-        editor.canFitSidebar(),
-      )
-    );
+    const name = value.dockedSidebar();
+    return name !== null && value.store.state("openSidebar")?.name === name;
   };
   const editorInterface = () => value.store.editorInterface();
   const phone = () => editorInterface().formFactor === "phone";
@@ -139,7 +125,13 @@ function Layout(props: { mainMenu?: () => Child; welcomeScreen?: true | Child })
   const statusFrame = () => value.host().viewportStatusFrame;
   const compact = () => editorInterface().formFactor === "tablet";
   const scrollBackButton = () => (
-    <Show when={value.store.state("scrolledOutside") && !zen()}>
+    <Show
+      when={
+        value.uiControlEnabled("scrollBackToContent") &&
+        value.store.state("scrolledOutside") &&
+        !zen()
+      }
+    >
       <Button
         variant="secondary"
         onPress={() => {
@@ -164,24 +156,27 @@ function Layout(props: { mainMenu?: () => Child; welcomeScreen?: true | Child })
         data-touch={editorInterface().isTouchScreen ? "" : undefined}
         data-testid="editor-ui"
       >
-        <Show when={props.welcomeScreen !== undefined}>
-          <WelcomeScreenLayer content={props.welcomeScreen ?? true} />
+        <Show when={slots().welcomeScreen} keyed>
+          {(welcome: { children?: unknown }) => (
+            <WelcomeScreenLayer content={welcome.children as never} />
+          )}
         </Show>
-        <Show
-          when={!phone()}
-          fallback={<PhoneChrome mainMenu={props.mainMenu} scrollBack={scrollBackButton()} />}
-        >
+        <Show when={!phone()} fallback={<PhoneChrome scrollBack={scrollBackButton()} />}>
           <div class={topStart}>
             {value.host().renderTopLeftUI?.(false, value.store.snapshot)}
             <Show when={!zen()}>
-              <MainMenuButton items={props.mainMenu} />
-              <Show when={compact()} fallback={<PropertiesPanel />}>
-                <CompactPropertiesPanel />
+              <Show when={defaults() || slots().mainMenu}>
+                <MainMenuButton />
+              </Show>
+              <Show when={defaults()}>
+                <Show when={compact()} fallback={<PropertiesPanel />}>
+                  <CompactPropertiesPanel />
+                </Show>
               </Show>
             </Show>
           </div>
-          <Show when={!viewMode()}>
-            <div class={topCenter}>
+          <Show when={defaults() && !viewMode()}>
+            <div class={topCenter} data-viewport-ui="top">
               <PenModeButton />
               <div class={toolbarAnchor}>
                 <Toolbar />
@@ -194,15 +189,23 @@ function Layout(props: { mainMenu?: () => Child; welcomeScreen?: true | Child })
           </Show>
           <div class={collaborating() ? `${topEnd} ${topEndWide}` : topEnd}>
             <div class={topEndRow}>
-              <Show when={collaborating()}>
+              <Show when={defaults() && collaborating()}>
                 <UserList />
               </Show>
               {value.host().renderTopRightUI?.(false, value.store.snapshot)}
-              <Show when={!viewMode() && !docked()}>
+              <Show
+                when={
+                  (defaults() || slots().defaultSidebarTrigger) &&
+                  !viewMode() &&
+                  !(docked() && value.dockedSidebar() === DEFAULT_SIDEBAR.name)
+                }
+              >
                 <SidebarTrigger />
               </Show>
             </div>
-            <StatsPanel />
+            <Show when={defaults()}>
+              <StatsPanel />
+            </Show>
           </div>
           <Show
             when={!zen()}
@@ -224,8 +227,15 @@ function Layout(props: { mainMenu?: () => Child; welcomeScreen?: true | Child })
                 <FooterStart />
               </div>
             </div>
+            <Show when={slots().footer} keyed>
+              {(footer: { children?: unknown }) => (
+                <div class={bottomCenter} data-testid="footer-center">
+                  {footer.children as never}
+                </div>
+              )}
+            </Show>
             <div class={bottomEnd}>
-              <Show when={viewMode() && value.isEnabled(actionToggleViewMode)}>
+              <Show when={defaults() && viewMode() && value.isEnabled(actionToggleViewMode)}>
                 <div class={island}>
                   <button
                     type="button"
@@ -240,7 +250,9 @@ function Layout(props: { mainMenu?: () => Child; welcomeScreen?: true | Child })
                   </button>
                 </div>
               </Show>
-              <FooterEnd />
+              <Show when={defaults()}>
+                <FooterEnd />
+              </Show>
             </div>
           </Show>
           <Show when={(value.store.state("scrolledOutside") && !zen()) || statusFrame()?.label}>
@@ -255,21 +267,28 @@ function Layout(props: { mainMenu?: () => Child; welcomeScreen?: true | Child })
         <Show when={statusFrame()?.border} keyed>
           {(border) => <ViewportStatusBorder border={border} />}
         </Show>
-        <ContextMenu />
-        <ShapeSwitchPanel />
-        <HyperlinkPopup />
-        <ElementLinkDialog />
-        <CommandPalette />
-        <HelpDialog />
-        <ChartDialog />
-        <TTDDialog />
-        <MagicFrameButtons />
-        <ImageExportDialog />
-        <JSONExportDialog />
+        <Show when={defaults()}>
+          <ContextMenu />
+          <ShapeSwitchPanel />
+          <HyperlinkPopup />
+          <ElementLinkDialog />
+          <CommandPaletteDialog
+            customCommandPaletteItems={slots().commandPalette?.customCommandPaletteItems}
+          />
+          <HelpDialog />
+          <ChartDialog />
+          <MagicFrameButtons />
+          <ImageExportDialog />
+          <JSONExportDialog />
+        </Show>
+        <TTDDialogBase />
         <EditorKeys />
         <EditorToasts />
+        {value.hostChildren()}
       </div>
-      <DefaultSidebar />
+      <Show when={defaults() || slots().defaultSidebar}>
+        <DefaultSidebar />
+      </Show>
     </>
   );
 }

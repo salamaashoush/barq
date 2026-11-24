@@ -94,16 +94,70 @@ let api: DiagramEditorApi | undefined;
 />;
 ```
 
-`api` (or `excalidrawAPI`) is Excalidraw's imperative API under its names: `updateScene`,
-`getSceneElements`, `getSceneElementsIncludingDeleted`, `getAppState`,
-`getFiles`, `addFiles`, `setActiveTool`, `scrollToContent`, `resetScene`, `refresh`,
-`history.clear`, `onChange`, and for collaboration `onPointerUpdate`,
-`onScrollChange` and `onUserFollow` (see [Collaboration](#collaboration)),
-each subscription returning its unsubscribe. `updateScene`'s `captureUpdate` says how a
-change is undone, as in Excalidraw: `"IMMEDIATELY"`, `"EVENTUALLY"` or
-`"NEVER"`. `theme` (or the `colorScheme()` above), `viewModeEnabled` and
-`gridModeEnabled` follow their props. On the server it renders the empty
-region, which hydrates into the editor.
+`api` (or Excalidraw's `onExcalidrawAPI`, which hears `null` once the editor
+is gone) is Excalidraw's imperative API under its names:
+
+- the scene: `updateScene` (whose `captureUpdate` says how a change is
+  undone: `"IMMEDIATELY"`, `"EVENTUALLY"` or `"NEVER"`), `getSceneElements`,
+  `getSceneElementsIncludingDeleted`, `getSceneElementsMapIncludingDeleted`,
+  `mutateElement`, `applyDeltas` (store deltas squashed and applied to copies
+  of the scene and the state), `getAppState`, `getFiles`, `addFiles`,
+  `getName`, `resetScene`, `refresh`, `history.clear`, `updateLibrary`;
+- the selection: `selection.select`, `.add`, `.remove` and `.clear`, by the
+  editor's rules (groups unless `deep`, locked elements only with
+  `includeLocked`, text editing and cropping ending);
+- the viewport: `setViewport({ target, fit, lock, animation, offsets })`,
+  which shows a box, a rect, elements, an id or an element link, animated
+  unless `animation: false`, and installs a scroll or zoom lock with its
+  rubberband `overscroll` (`null` lifts it); `getViewportOffsets`, how far the
+  rendered UI reaches into the canvas, padded, with room `reserve`d for the
+  styles panel or the sidebar while hidden; `scrollToContent`;
+- what is drawn: `setElementRenderOverrides`, transient opacities and
+  offsets drawn over the document's (nothing in the document, the history or
+  `onChange` changes; exports and hit-testing keep the document's values),
+  `updateFrameRendering`, `setCursor`, `resetCursor`, `setToast`;
+- the rest: `setActiveTool` (custom tools included), `toggleSidebar`,
+  `registerAction`, `getEditorInterface`, `id`, and `isDestroyed`, after
+  which the getters and subscriptions throw;
+- the subscriptions, each returning its unsubscribe: `onChange`,
+  `onIncrement` (the store's durable and ephemeral increments),
+  `onPointerDown`, `onPointerUp`, `onStateChange` (a key, keys, a selector or
+  a predicate of the app state; without a callback, a promise of the next
+  change), `onEvent` (`"editor:mount"`, `"editor:initialize"` once the initial
+  scene is in, `"editor:unmount"`, each replayed to a late subscriber), and
+  for collaboration `onPointerUpdate`, `onScrollChange` and `onUserFollow`
+  (see [Collaboration](#collaboration)).
+
+`theme` (or the `colorScheme()` above), `viewModeEnabled`, `gridModeEnabled`
+and `objectsSnapModeEnabled` follow their props. On the server it renders the
+empty region, which hydrates into the editor.
+
+The rest of Excalidraw's props, under its names:
+
+- the editor's life: `onMount({ excalidrawAPI, container })`,
+  `onInitialize(api)`, `onUnmount()`, `onIncrement`, `autoFocus`;
+- `initialState.viewport`, the viewport the initial scene opens at, as
+  `setViewport` takes it;
+- `interaction`: `false` makes the editor take no input but the API's (it
+  is in view mode, and the page scrolls over it), or a config keeps
+  `links`, `embeds` (or both, `interactiveContent`), `navigation`,
+  `browserZoom` and `tools.laser` or `tools.custom` working;
+- `activeTool`, the tool the host forces: neither the user nor
+  `setActiveTool` switches from it, it stays after use, and what it draws is
+  not selected;
+- `onPaste(data, event)` (returning `false` keeps the paste from the editor),
+  `onDuplicate(next, prev, data)` (sees each duplication, by a drag, Ctrl+D,
+  a paste or the library, and returns the elements to use, or `false` to
+  cancel it), `onLinkOpen(element, event)` (an element's link opening, from
+  its icon on the canvas or the link popup; `preventDefault()` keeps it from
+  the editor), `onPointerDown`, `onPointerUp`;
+- `imageOptions` (`maxWidthOrHeight`, `maxFileSizeBytes`), `generateIdForFile`,
+  `showDeprecatedFonts`, `renderScrollbars`, `detectScroll` (the page's
+  scroll moves the editor's offsets, on by default), `handleKeyboardGlobally`
+  (keys pressed anywhere in the page reach the editor);
+- `ownerDocument`, for an editor in an iframe mounted from its parent, and
+  `renderEnvironment`, where the renderer and the exports make canvases and
+  images and measure text; both are read once.
 
 What it does, and the keys Excalidraw gives each:
 
@@ -220,7 +274,7 @@ the theme and the toast stack the editor's toasts go to.
     langCode="ar-SA"
     UIOptions={{ canvasActions: { loadScene: false, export: false, saveAsImage: false } }}
     renderTopRightUI={() => <Button onPress={share}>Share</Button>}
-    excalidrawAPI={(api) => (editor = api)}
+    onExcalidrawAPI={(api) => (editor = api)}
   />
 </ArcProvider>
 ```
@@ -231,9 +285,9 @@ the theme and the toast stack the editor's toasts go to.
   draw: colours (a palette, shades, a hex code and an eye dropper), fill,
   stroke, sloppiness, edges, arrows, fonts, alignment, opacity, layers,
   align and distribute;
-- the main menu, top start, whose entries an app replaces with `mainMenu`,
-  a function returning `MainMenu` parts (`MainMenu.DefaultItems.Help`,
-  `MainMenu.Item`, `MainMenu.Separator`, ...);
+- the main menu, top start, whose entries an app replaces with a
+  `<MainMenu>` child (`MainMenu.DefaultItems.Help`, `MainMenu.Item`,
+  `MainMenu.Separator`, ...; `onSelect` hears any entry chosen);
 - the context menu (a right click, the menu key or Shift+F10), the command
   palette (Ctrl+/ or Ctrl+Shift+P), the stats panel (Alt+/), the minimap,
   the hints under the toolbar, the link popup (Ctrl+K), the element link
@@ -309,31 +363,89 @@ for the host. Under a coarse pointer, or once the editor is touched, its
 controls are a finger's size. A pen's first stroke turns pen mode on (the pen
 draws, a finger pans) and shows its toggle beside the toolbar.
 
-`welcomeScreen` puts Excalidraw's welcome screen over a scene that has never
-had an element while the selection tool is active: `true` for a heading, a
-menu (open a file, help) and hints pointing at the main menu, the toolbar and
-help, or the `WelcomeScreen` parts to show (as JSX), as Excalidraw's children
-are (`WelcomeScreen.Center`, `.Center.Logo`, `.Center.Heading`,
-`.Center.Menu`, `.Center.MenuItem`, `.Center.MenuItemLink`,
-`.Center.MenuItemHelp`, `.Center.MenuItemLoadScene`, `WelcomeScreen.Hints`).
+A `<WelcomeScreen>` child puts Excalidraw's welcome screen over a scene that
+has never had an element while the selection tool is active: empty for a
+heading, a menu (open a file, help) and hints pointing at the main menu, the
+toolbar and help, or the parts to show (`WelcomeScreen.Center`,
+`.Center.Logo`, `.Center.Heading`, `.Center.Menu`, `.Center.MenuItem`,
+`.Center.MenuItemLink`, `.Center.MenuItemHelp`, `.Center.MenuItemLoadScene`,
+`WelcomeScreen.Hints`).
+
+#### Children
+
+As in Excalidraw, an app composes the UI with children of `<DiagramEditor>`:
+
+```tsx
+<DiagramEditor>
+  <MainMenu>
+    <MainMenu.DefaultItems.LoadScene />
+    <MainMenu.Item onSelect={(event) => share(event)}>Share</MainMenu.Item>
+  </MainMenu>
+  <WelcomeScreen />
+  <Footer>
+    <Button onSelect={publish}>Publish</Button>
+  </Footer>
+  <Sidebar name="comments" docked={docked()} onDock={setDocked}>
+    <Sidebar.Header>Comments</Sidebar.Header>
+  </Sidebar>
+  <TTDDialog onTextSubmit={(request) => TTDStreamFetch({ url: "/api/ttd", ...request })} />
+  <TTDDialogTrigger />
+  <DiagramToCodePlugin generate={(input) => generateHtml(input)} />
+  <CommandPalette
+    customCommandPaletteItems={[{ label: "Publish", category: "app", perform: publish }]}
+  />
+</DiagramEditor>
+```
+
+- `MainMenu`, `WelcomeScreen` and `Footer` (shown in the middle of the
+  footer) go into their places;
+- `Sidebar` is a panel at the editor's end while `openSidebar` names it,
+  made of `Sidebar.Header`, `Sidebar.Tabs`, `Sidebar.TabTriggers`,
+  `Sidebar.TabTrigger` and `Sidebar.Tab`, and opened from anywhere by
+  `Sidebar.Trigger`; with `docked` and `onDock` it docks beside the canvas
+  where it fits, `onStateChange` hears it open, close and change tab;
+- `DefaultSidebar` sets the library and search sidebar's `docked`, `onDock`
+  (`false` takes the pin away) and `class`, its children being more
+  `Sidebar.Tab`s, and `DefaultSidebar.TabTriggers` and
+  `DefaultSidebar.Trigger` add to its tab buttons and its button;
+- `TTDDialog` is the text-to-diagram backend (below), `TTDDialogTrigger` its
+  entry in the extra tools, `DiagramToCodePlugin` the magic frame's backend;
+- `CommandPalette`'s `customCommandPaletteItems` join the palette, under
+  their category, while their `predicate` holds;
+- anything else renders in the UI's layer as it is.
+
+`Button` and `Ellipsify` are Excalidraw's parts for an app's own UI there,
+and `Stats.StatsRow` and `Stats.StatsRows` lay out what `renderCustomStats`
+adds. Inside the editor, `useExcalidrawAPI`, `useEditorInterface`,
+`useStylesPanelMode`, `useI18n`, `useExcalidrawStateValue(key | keys |
+selector)` and `useOnExcalidrawStateChange` read it as accessors; under an
+`<ExcalidrawAPIProvider>` the API and the state hooks work outside it too.
+
+`ui` is Excalidraw's: `false` draws no default UI (the children and the
+render props stay), `{ enabled: { zoom, scrollBackToContent } }` keeps those
+default controls alone, and `{ disabled: { minimap: true } }` removes the
+minimap and its toggles.
 
 `langCode` is one of Excalidraw's locale codes; each language loads when
 first asked for (`loadLanguage` loads one ahead, which a server render that
 should arrive in it does on both sides). Arabic, Persian and Hebrew lay the
 UI out right to left. `UIOptions`, `onThemeChange`, `zenModeEnabled`,
 `renderTopLeftUI`, `renderTopRightUI`, `renderCustomStats`, `aiEnabled` and
-`generateLinkForSelection` are Excalidraw's props; `ui={false}` draws the
-canvas alone. The UI reads the editor once per change, outside gestures, so
+`generateLinkForSelection` are Excalidraw's props. The UI reads the editor once per change, outside gestures, so
 a drag, a pan or a zoom re-renders nothing but the zoom level.
 
 The text-to-diagram dialog converts Mermaid as it is typed. Its chat talks
-to the app's own backend, which the editor never chooses: `textToDiagram`
-takes Excalidraw's `<TTDDialog>` props, `onTextSubmit` (given the messages,
-an `onChunk` to stream into and an abort `signal`, it resolves to the
-generated Mermaid or an error) and an optional `persistenceAdapter` that
-loads and saves the chats. Without it, or with `aiEnabled={false}`, the chat
-is not offered. `diagramToCode` is the magic frame's backend, Excalidraw's
-`<DiagramToCodePlugin generate>`: given the frame, its children and an
+to the app's own backend, which the editor never chooses: a `<TTDDialog>`
+child gives `onTextSubmit` (given the messages, an `onChunk` to stream into
+and an abort `signal`, it resolves to the generated Mermaid or an error), an
+optional `persistenceAdapter` that loads and saves the chats, and
+`renderWelcomeScreen` and `renderWarning` for what the chat says. Without it,
+or with `aiEnabled={false}`, the chat is not offered; `<TTDDialogTrigger>`
+puts its entry in the extra tools. `TTDStreamFetch({ url, messages, onChunk,
+signal })` is Excalidraw's client for a backend answering with server-sent
+`StreamChunk`s (`parseSSEStream` reads them), rate limits included. A
+`<DiagramToCodePlugin generate>` child is the magic frame's backend: given
+the frame, its children and an
 `onPartial` to stream into, it resolves to `{ html }`, which shows in a
 sandboxed iframe beside the frame (scripts run, with no access to the page),
 with buttons to copy its source and show it in full screen.
@@ -624,6 +736,12 @@ For collaboration the host options are the props' names: `isCollaborating`,
 and `onUserFollow`; `actionGoToCollaborator` is exported beside the text
 actions.
 
+The other props are host options of the same names too (`interaction`,
+`activeTool`, `onPaste`, `onDuplicate`, `onLinkOpen`, `onPointerDown`,
+`onPointerUp`, `generateIdForFile`, `handleKeyboardGlobally`, `detectScroll`,
+`renderScrollbars`, `ui`), and `initialState`, `objectsSnapModeEnabled`,
+`ownerDocument` and `renderEnvironment` are `DiagramEditorOptions`.
+
 ## Server rendering
 
 On the server the viewer renders its region, its description and `snapshot`:
@@ -729,9 +847,22 @@ uses (`wheelNavigation`, `keyboardNavigation`, `PointerNavigation`,
   `exportToCanvas`, `restore` and `convertToExcalidrawElements` take the same
   arguments and return the same things.
 - `<Excalidraw viewModeEnabled>` for showing a scene is `<DiagramViewer>`,
-  and `<Excalidraw>` for editing one is `<DiagramEditor>`, which takes
-  `excalidrawAPI` (or `api`), `langCode`, `UIOptions`, `theme` and
-  `aiEnabled` as they are.
+  and `<Excalidraw>` for editing one is `<DiagramEditor>`, which takes every
+  one of Excalidraw's props and children under its names; `className` is
+  `class`. `src/api-parity.test.ts` reads Excalidraw's published types and
+  fails when one of its exports, props or API members is missing here.
+- The imperative API is Excalidraw's, member for member, and so are the
+  components (`MainMenu`, `WelcomeScreen`, `Footer`, `Sidebar`,
+  `DefaultSidebar`, `Button`, `Ellipsify`, `Stats`, `TTDDialog`,
+  `TTDDialogTrigger`, `DiagramToCodePlugin`, `CommandPalette`,
+  `LiveCollaborationTrigger`) and the helpers it re-exports from
+  `@excalidraw/common` and `@excalidraw/element` (`CaptureUpdateAction`,
+  `mutateElement`, `ROUNDNESS`, `normalizeLink`, `sceneCoordsToViewportCoords`,
+  `getFormFactor`, `throttleRAF`, `isElementLink`, `elementsOverlappingBBox`,
+  `setCustomTextMetricsProvider`, `applyDarkModeFilter`, ...).
+- React's hooks are barq hooks of the same names returning accessors:
+  `useExcalidrawAPI()` is read as `useExcalidrawAPI()()`, and
+  `useExcalidrawStateValue("theme")()` the theme.
 - `window.EXCALIDRAW_ASSET_PATH` works as before; `setFontAssetPath` says it
   without a global.
 
