@@ -219,7 +219,7 @@ async function measure(url: string, count: number): Promise<Row> {
     );
     await mouse(chrome, "mouseReleased", startX + STEPS * 3, startY + STEPS * 2, { buttons: 0 });
 
-    log(`dragged ${drag}`);
+    log(`dragged ${drag.task.toFixed(2)} ms task, ${drag.script.toFixed(2)} ms script`);
     // pan with the wheel, and zoom with Ctrl and the wheel, in the middle of the scene
     const middle = { x: (COLUMNS * 160) / 2, y: 500 };
     // Shift and the wheel pan sideways in both, whatever the input device is taken for

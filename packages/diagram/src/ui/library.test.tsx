@@ -357,7 +357,7 @@ describe("publishing", () => {
     expect(sent[0]?.body.get("name")).toBe("Shapes");
     expect(sent[0]?.body.get("authorName")).toBe("Salama");
     expect(sent[0]?.body.get("previewImageType")).toBe("image/jpeg");
-    expect((sent[0]?.body.get("previewImage") as File).type).toBe("image/jpeg");
+    expect((sent[0]!.body.get("previewImage") as File).type).toBe("image/jpeg");
     const lib = JSON.parse(await (sent[0]!.body.get("excalidrawLib") as Blob).text()) as {
       libraryItems: LibraryItems;
     };
