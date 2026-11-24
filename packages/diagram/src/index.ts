@@ -81,6 +81,8 @@ export {
   restoreLibraryItems,
 } from "./data/restore.ts";
 export type { RestoredDataState } from "./data/restore.ts";
+export { reconcileElements } from "./data/reconcile.ts";
+export type { ReconciledExcalidrawElement, RemoteExcalidrawElement } from "./data/reconcile.ts";
 export {
   isValidExcalidrawData,
   isValidLibrary,

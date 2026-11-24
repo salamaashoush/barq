@@ -24,7 +24,8 @@ the editor's UI `@barqjs/ui`, `@barqjs/arc` (its `style` entry), `@barqjs/aria`,
 `@barqjs/css` and `@barqjs/lucide`, are peer dependencies. The package ships its TypeScript source under the `barq`
 export condition, and `@barqjs/vite` compiles it for the DOM or the server
 with the rest of the application. `@excalidraw/mermaid-to-excalidraw` is an
-optional peer dependency, needed only by `@barqjs/diagram/mermaid`.
+optional peer dependency, needed only by `@barqjs/diagram/mermaid`, and so is
+`yjs`, needed only by `@barqjs/diagram/collab/yjs`.
 
 ## Example
 
@@ -95,7 +96,7 @@ let api: DiagramEditorApi | undefined;
 
 `api` (or `excalidrawAPI`) is Excalidraw's imperative API under its names: `updateScene`,
 `getSceneElements`, `getSceneElementsIncludingDeleted`, `getAppState`,
-`getFiles`, `setActiveTool`, `scrollToContent`, `resetScene`, `refresh`,
+`getFiles`, `addFiles`, `setActiveTool`, `scrollToContent`, `resetScene`, `refresh`,
 `history.clear`, `onChange`, and for collaboration `onPointerUpdate`,
 `onScrollChange` and `onUserFollow` (see [Collaboration](#collaboration)),
 each subscription returning its unsubscribe. `updateScene`'s `captureUpdate` says how a
@@ -194,6 +195,8 @@ What it does, and the keys Excalidraw gives each:
 - space-drag, the middle button and the hand tool pan; ctrl-wheel and a
   pinch zoom; Ctrl+`=`, `-` and `0` zoom, Shift+1 fits; Ctrl+`'` shows the
   grid, which elements snap to;
+- on a touch screen a double tap writes text, a pinch keeps the selection it
+  began with, and a finger held still opens the context menu;
 - Alt+S snaps to objects instead: a drag, a resize or a new shape lands on
   the corners, centres and equal gaps of the elements around it, with the
   lines that show it; Ctrl turns it off for one gesture, or on when it is
@@ -204,8 +207,10 @@ Ctrl is Cmd on macOS.
 ### The UI
 
 `<DiagramEditor>` draws Excalidraw's UI over the canvas, on `@barqjs/ui`'s
-components and arc's theme tokens, so light, dark and an app's brand all
-reach it. Render it inside `<ArcProvider>` from `@barqjs/arc`, which installs
+components and `@barqjs/arc/style`'s treatments, so light, dark, density and
+an app's brand all reach it. Its styles compose those treatments and ui's
+shared groups rather than write them again, and what is the editor's own is
+written once; `src/ui/duplication.test.ts` holds it to arc's rule. Render it inside `<ArcProvider>` from `@barqjs/arc`, which installs
 the theme and the toast stack the editor's toasts go to.
 
 ```tsx
@@ -294,8 +299,12 @@ typed.
 The UI follows the editor's size as Excalidraw's does: a phone's (narrower
 than 600px, or a landscape phone's) has the main menu and the library along
 the top and the toolbar along the bottom, with the selection's properties in a
-bottom sheet and undo and redo beside them; a tablet's opens the properties
-from a button; a desktop's is the one above. `UIOptions.getFormFactor` decides
+bottom sheet and undo and redo beside them, and the library and the search in
+a sheet over the editor's end; a tablet's has Excalidraw's compact properties,
+a column of buttons at the top start: the stroke and background colours and
+the font each open their picker, and the stroke styles, the arrow, the text
+and the other actions each open a popover of their own, one at a time; a
+desktop's is the one above. `UIOptions.getFormFactor` decides
 for the host. Under a coarse pointer, or once the editor is touched, its
 controls are a finger's size. A pen's first stroke turns pen mode on (the pen
 draws, a finger pans) and shows its toggle beside the toolbar.
@@ -404,34 +413,160 @@ button, with the number of collaborators on it.
 
 ```tsx
 <DiagramEditor
-  isCollaborating={session.active()}
-  userToFollow={session.following()}
-  onUserFollow={({ userToFollow, action }) =>
-    session.follow(action === "FOLLOW" ? userToFollow : null)
-  }
-  onPointerUpdate={session.sendPointer}
-  onScrollChange={() => session.sendBounds()}
-  viewportStatusFrame={
-    session.following()
-      ? {
-          border: "var(--brand)",
-          label: {
-            label: `Following ${session.following()!.username}`,
-            onClose: () => session.follow(null),
-          },
-        }
-      : null
-  }
+  isCollaborating={collab() !== null}
+  userToFollow={collab()?.userToFollow ?? null}
+  viewportStatusFrame={collab()?.viewportStatusFrame ?? null}
   renderTopRightUI={() => (
-    <LiveCollaborationTrigger isCollaborating={session.active()} onSelect={openShareDialog} />
+    <LiveCollaborationTrigger isCollaborating={collab() !== null} onSelect={openShareDialog} />
   )}
 />
 ```
+
+The sync layer below fills `collab()`; a host with its own may answer
+`onPointerUpdate`, `onScrollChange` and `onUserFollow` itself instead.
 
 `createIdleDetector({ onChange })` is Excalidraw's idle detection, which
 its app does: `UserIdleState.ACTIVE` every three seconds while the pointer
 moves, `IDLE` after a minute without, `AWAY` while the page is hidden; it
 returns the stop.
+
+#### The sync layer: `@barqjs/diagram/collab`
+
+`createCollaboration` is excalidraw.com's `Collab` and `Portal`: it binds
+an editor's `api` to a room through a transport. Scene changes go out as
+increments, each element once per version, with the whole scene every
+twenty seconds in case a message was lost; a client that joins gets the
+whole scene from everyone in the room. What arrives is restored and
+merged with `reconcileElements` (exported from `@barqjs/diagram` too):
+the higher version of each element wins, the lower `versionNonce` on a
+tie, and the element being drawn or resized here keeps its local copy;
+the order is the elements' fractional indices. Deleted elements are sent
+for a day, invisibly small ones never. Remote changes are not undoable.
+
+The session also sends the pointer (as `onPointerUpdate` reports it, thirty
+times a second at most, a pinch left out), with the laser's tool and
+button and the selection, and the idle state `createIdleDetector` reports;
+each client is a collaborator in the editor. Following is the host's
+`userToFollow`: the session takes the editor's `onUserFollow` requests, and
+its state carries `userToFollow` and a `viewportStatusFrame` ("Following"
+and the name, closable; `followingFrame` makes another). The followed
+client sends its visible bounds to its followers only, as its viewport
+moves, and the follower's viewport fits them with `zoomToFitBounds`;
+taking the viewport over, the frame's close, or the followed user leaving
+stops it. Images are uploaded once per version when they are added, the
+element's `status` going from `"pending"` to `"saved"`, which tells the
+others to fetch the file; a file that cannot be fetched marks its images
+`"error"`. Files over `maxFileBytes` (4 MiB) are refused with
+`errors.fileTooBig` in `errorMessage`.
+
+```tsx
+import { createSignal } from "@barqjs/core";
+import { DiagramEditor } from "@barqjs/diagram";
+import {
+  type CollaborationState,
+  createCollaboration,
+  createWebSocketTransport,
+  getCollaborationLinkData,
+} from "@barqjs/diagram/collab";
+
+function Board() {
+  const room = getCollaborationLinkData(location.href);
+  const [collab, setCollab] = createSignal<CollaborationState | null>(null);
+  return (
+    <DiagramEditor
+      api={(api) => {
+        if (!room) return;
+        const session = createCollaboration({
+          api,
+          transport: createWebSocketTransport({ url: "wss://example.com/rooms" }),
+          ...room,
+          username: "Salama",
+          existingRoom: true,
+        });
+        session.subscribe(setCollab);
+      }}
+      isCollaborating={collab() !== null}
+      userToFollow={collab()?.userToFollow ?? null}
+      viewportStatusFrame={collab()?.viewportStatusFrame ?? null}
+    />
+  );
+}
+```
+
+`existingRoom` says whether the room's scene replaces the editor's (a
+shared link) or the room starts with it (a new room, whose saved images
+go back to pending and whose deleted elements are left out). `ready`
+settles once the room's scene is in the editor. `getState()` and
+`subscribe` give `status` (`"connecting"`, also while reconnecting,
+`"connected"`, or `"closed"` once stopped), `socketId`, `username`, `collaborators`,
+`userToFollow`, `followedBy` and `viewportStatusFrame`, the listeners
+called a microtask after each change; `setUsername`, `setUserToFollow`
+and `fetchImageFiles` are the rest of `CollabAPI`. `stop()` saves the
+scene, finishes the uploads and leaves; the editor keeps the scene, its
+images pending again. On the headless editor the same session takes
+`editor.api`, and `editor.setHost({ userToFollow })` from `subscribe`
+plays the prop's part.
+
+#### Transports
+
+A transport implements `CollabTransport`: it connects to a room and
+reports who is in it, sends and receives the session's messages, follows,
+and stores and fetches files (and, where it can, the room's scene for a
+client that joins an empty room). Two come with the package.
+
+`createWebSocketTransport({ url })` speaks to a room server: `@barqjs/start`
+serves one with `createWebSocketRooms` (see its README). The server relays
+each message to the rest of the room and the followed client's bounds to
+its followers, keeps the room's files, and stores its scene, saved over
+the revision it was read at, so two saves reconcile rather than overwrite.
+A dropped connection comes back as socket.io's does, after a second and
+then twice as long each time up to thirty (`reconnectDelay`), under a new
+id: the session sends its scene and who it follows again, and the room's
+scene, reconciled, brings what it missed.
+
+`createYjsTransport({ doc, awareness })` from `@barqjs/diagram/collab/yjs`
+keeps the elements in a `Y.Map` by id and the files in another, and each
+client's pointer, selection, idle state, who it follows and, while it is
+followed, its visible bounds in its awareness state. Any provider carries
+them (y-websocket, Hocuspocus, y-webrtc), and its store is the room's
+store; the awareness is typed by the methods it uses, so y-protocols is
+not a dependency. What arrives is reconciled exactly as above; a copy that
+loses a race for the map to an older one is written again. `yjs` is an
+optional peer dependency.
+
+```ts
+import * as Y from "yjs";
+import { WebsocketProvider } from "y-websocket";
+import { createCollaboration } from "@barqjs/diagram/collab";
+import { createYjsTransport } from "@barqjs/diagram/collab/yjs";
+
+const doc = new Y.Doc();
+const provider = new WebsocketProvider("wss://example.com/yjs", room.roomId, doc);
+createCollaboration({
+  api,
+  transport: createYjsTransport({ doc, awareness: provider.awareness }),
+  ...room,
+  username: "Salama",
+  existingRoom: true,
+});
+```
+
+#### Encryption and links
+
+Nothing leaves a client unencrypted: messages, elements, presence, files
+and the stored scene are sealed with the room key, AES-GCM with a fresh IV
+each time, so the room server, the Y.Doc's provider and their stores hold
+ciphertext. Files are `compressData`'s format, Excalidraw's (metadata,
+deflated, encrypted). The key travels in the link's hash, which browsers
+do not send: `generateCollaborationLinkData()` makes a room (a random id
+and a new key), `getCollaborationLink(room)` the page's link to it
+(`#room=id,key`), and `getCollaborationLinkData(link)` reads it back,
+`null` for a link without a room and a `LocalizedError` with
+`alerts.invalidEncryptionKey` for a key of the wrong length. The pieces are
+exported for other uses: `generateEncryptionKey`, `encryptData`,
+`decryptData`, `getCryptoKey`, `createIV`, `IV_LENGTH_BYTES`,
+`compressData`, `decompressData`, `createRoomCipher`,
+`encodeFilesForUpload`, `FileManager`.
 
 ### Accessibility
 

@@ -88,6 +88,7 @@ collaboration and embeds, the only lines still pending.
 ## Viewport and history
 
 - done: pan, wheel, pinch, zoom keys, fit, scroll constraints, grid (`navigation.test.ts`, `actions.test.ts`)
+- done: touch input: a one-finger double tap writes text, a pinch clears the selection and an active embed and restores the selection as a finger lifts, a long press opens the context menu (`touch.test.ts`)
 - done: undo and redo through the store (`history.test.ts`)
 - done: minimap, zen mode, view mode, stats panel with editing, theme toggle (`panels.test.tsx`, `ui-actions.test.ts`)
 - done: clear canvas with confirmation, canvas background, project name (`ui-actions.test.ts`, `editor-ui.test.tsx`)
@@ -121,8 +122,9 @@ collaboration and embeds, the only lines still pending.
 - done: font picker previews the highlighted font on the selection and restores it on close; Shift+F opens it (`pickers.test.tsx`)
 - done: command palette's recently used command, library items, library and search entries (`library.test.tsx`)
 - done: stats panel: the element's type, an image's uncropped size while cropping, a group's heading, several units edited each, the grid's step, folding sections, dragging a label to scrub a value (`stats.test.tsx`); a scene version is the host's to show through `renderCustomStats`, as excalidraw.com does
-- done: layouts by the editor's size, Excalidraw's form factors and `UIOptions.getFormFactor`: a phone's top bar, bottom toolbar, properties in a bottom sheet and undo beside them; a tablet's properties behind a button; touch-sized targets under a coarse pointer or once touched; the pen mode toggle once a pen draws (`layouts.test.tsx`)
+- done: layouts by the editor's size, Excalidraw's form factors and `UIOptions.getFormFactor`: a phone's top bar, bottom toolbar, properties in a bottom sheet and undo beside them, the library and search in a sheet that an inserted item closes; a tablet's compact properties, a column of buttons each opening its picker or popover, one at a time; touch-sized targets under a coarse pointer or once touched; the pen mode toggle once a pen draws (`layouts.test.tsx`)
 - done: `toggleWrap` (W): a text into a container, texts into new containers and back, labels freed and rewrapped, shapes in and out of a frame (`wrap.test.ts`)
+- done: the UI's styles compose `@barqjs/arc/style` and `@barqjs/ui`'s shared groups, no group or colour written twice (`ui/duplication.test.ts`)
 - done: eye dropper: a held pointer previews, Alt picks the other colour, Alt held in a picker keeps it open, dark mode's filter taken off; I, Shift+S and Shift+G; S and G open the colour pickers (`pickers.test.tsx`)
 
 Not carried over: the main menu's links to Excalidraw's own social accounts.
@@ -136,3 +138,11 @@ Not carried over: the main menu's links to Excalidraw's own social accounts.
 - done: `UserList`: avatars as many as fit, the current user's menu of everyone, searchable from eight, call states, `currentUserControls`, the followed avatar marked; in the main menu on a phone (`collaborators.test.tsx`)
 - done: `viewportStatusFrame` (frame and badge, clickable and closable, at the top on a phone), `LiveCollaborationTrigger` with its count and `MainMenu.DefaultItems.LiveCollaborationTrigger`, `isCollaborating`'s laser button beside the toolbar (`collaborators.test.tsx`)
 - done: the idle detection Excalidraw's app does, as `createIdleDetector`: active, idle after `IDLE_THRESHOLD`, away while hidden (`collaborators.test.ts`)
+- done: `reconcileElements`: the higher version, the lower nonce on a tie, the element being drawn or resized kept, ordered by fractional index, convergent both ways (`reconcile.test.ts`)
+- done: the sync layer, `createCollaboration` (excalidraw.com's `Collab` and `Portal`): scene increments by broadcast version with the periodic full sync, the whole scene to a new user, reconciliation of what arrives with `restoreElements` and `bumpElementVersions`, deletions, z-order, concurrent edits, remote changes not undoable; the scene stored twenty seconds after a change (`websocket.test.ts`, `yjs.test.ts`, `session.test.ts`)
+- done: presence over the session: collaborators from the room's users, cursors with the selection thirty times a second at most and not for a pinch, the laser's tool and button, idle and away states (`websocket.test.ts`, `yjs.test.ts`, `session.test.ts`)
+- done: following end to end: the session owns `userToFollow` and the `viewportStatusFrame`, the followed client sends its bounds to its followers only, the follower's viewport fits them; the viewport taken over, the frame's close and the followed user leaving stop it (`websocket.test.ts`, `yjs.test.ts`, `collaboration.test.tsx`)
+- done: images: uploaded once per version, `pending` to `saved`, fetched by the others, a file the room lacks marking its images errored, files over the size refused; the room's stored scene and files for whoever joins an empty room (`websocket.test.ts`, `yjs.test.ts`, `data.test.ts`)
+- done: end-to-end encryption with the room key (AES-GCM, `compressData` for files) and room links `#room=id,key`: the room server and the Y.Doc hold ciphertext only (`data.test.ts`, `websocket.test.ts`, `yjs.test.ts`)
+- done: transports: `createWebSocketTransport` to `@barqjs/start`'s `createWebSocketRooms`, and `createYjsTransport` on a Y.Doc and its awareness (`websocket.test.ts`, `yjs.test.ts`; the server's own in `@barqjs/start`'s `websocket-rooms.test.ts`)
+- done: a session wired into `<DiagramEditor>` from its `api` (`collaboration.test.tsx`)
