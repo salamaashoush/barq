@@ -262,6 +262,7 @@ export const page = () => () => (
   expect(region?.getAttribute("aria-label")).toBe("Whiteboard");
   expect(region?.querySelectorAll("canvas")).toHaveLength(3);
   expect(container.querySelector("[role=status]")?.textContent).toBe("");
+  const children = [...(region?.children ?? [])];
 
   const module = (await import(`${compiled.dom}?${Math.random()}`)) as {
     page: () => () => unknown;
@@ -271,7 +272,9 @@ export const page = () => () => (
   cleanups.push(hydrate(module.page() as never, container));
   flush();
   expect(hydrate.report.recovered).toBe(false);
+  expect(hydrate.report.mismatches).toEqual([]);
   expect(container.querySelector("[role=application]")).toBe(region);
+  expect([...(region?.children ?? [])]).toEqual(children);
   expect(module.handle.api?.getSceneElements()).toEqual([]);
   expect(container.querySelector("footer")?.textContent).toBe("end");
 });

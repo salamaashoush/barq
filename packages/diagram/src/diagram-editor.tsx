@@ -61,6 +61,8 @@ const FRAME_NAME_INPUT_STYLE =
 const SVG_LAYER_STYLE =
   "position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible";
 
+const TEXT_EDITOR_STYLE = "position:absolute;inset:0;overflow:hidden;pointer-events:none";
+
 const KEYBOARD_HELP =
   "Tools: V select, R rectangle, D diamond, O ellipse, A arrow, L line, P draw, T text, " +
   "E eraser, K laser pointer, H hand; " +
@@ -239,17 +241,20 @@ export function DiagramEditor(props: DiagramEditorProps): JSX.Element {
           );
         }}
       </For>
-      <Show when={textEdit()} keyed>
-        {(request) => (
-          <textarea
-            aria-label="Text"
-            ref={(textarea: HTMLTextAreaElement) =>
-              // attached once in the region, which clips it with the canvases
-              queueMicrotask(() => request.attach(textarea))
-            }
-          />
-        )}
-      </Show>
+      <div style={TEXT_EDITOR_STYLE}>
+        <Show when={textEdit()} keyed>
+          {(request) => (
+            <textarea
+              aria-label="Text"
+              style="pointer-events:auto"
+              ref={(textarea: HTMLTextAreaElement) =>
+                // attached once in its box, which clips it with the canvases
+                queueMicrotask(() => request.attach(textarea))
+              }
+            />
+          )}
+        </Show>
+      </div>
       <div id={helpId} style={SR_ONLY}>
         {KEYBOARD_HELP}
       </div>
