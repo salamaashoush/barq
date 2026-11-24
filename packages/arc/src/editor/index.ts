@@ -107,3 +107,9 @@ export {
   typeaheadStyles,
 } from "./typeahead.tsx";
 export { type RenderedMention, RichTextRenderer, type RichTextRendererProps } from "./renderer.tsx";
+export {
+  ChatComposer,
+  type ChatComposerProps,
+  type ComposedMessage,
+  chatComposerStyles,
+} from "./chat-composer.tsx";

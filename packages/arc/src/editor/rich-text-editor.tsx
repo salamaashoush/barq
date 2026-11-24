@@ -66,6 +66,7 @@ import {
   markdownTransformers,
 } from "./document.ts";
 import { useRegistration } from "./hooks.ts";
+import { editableText } from "./theme.ts";
 import { FloatingFormatToolbar, LinkEditor } from "./floating.tsx";
 import {
   DEFAULT_EMBED_PROVIDERS,
@@ -86,21 +87,15 @@ export const richTextEditorStyles = variants({
       minBlockSize: "var(--editor-min-height, auto)",
       maxBlockSize: "var(--editor-max-height, none)",
     }),
-    content: arc({
-      outline: "none",
+    content: arc(editableText, {
       minBlockSize: "var(--editor-min-height, auto)",
-      paddingBlock: space.x3,
-      paddingInline: space.x3,
-      caretColor: tokens.foreground,
+      padding: space.x3,
     }),
     placeholder: arc(fg.faint, truncate, place.passive, {
       insetBlockStart: space.x3,
       insetInline: space.x3,
     }),
-    footer: arc(layout.row, layout.between, gap[2], type.caption, fg.muted, {
-      paddingInline: space.x3,
-      paddingBlock: space.x1_5,
-    }),
+    footer: arc(layout.row, layout.between, gap[2], type.caption, fg.muted, place.paddedStrip),
     status: arc({}),
     counter: arc(type.numeric, layout.pushEnd, {
       "&[data-over]": { color: tokens.destructive, fontWeight: "var(--font-weight-medium)" },
@@ -219,7 +214,7 @@ function matches(event: KeyboardEvent, keys: string): boolean {
 }
 
 /** The shortcuts Lexical leaves to an app: inline code, lists, headings, indent. */
-function Shortcuts() {
+export function EditorShortcuts() {
   const editor = useLexicalEditor();
   useRegistration(() =>
     editor.registerCommand(
@@ -238,7 +233,7 @@ function Shortcuts() {
 }
 
 /** What the editor's props reach once it is built: read-only, changes, autosave, the counter. */
-function Bridge(props: {
+export function EditorBridge(props: {
   readOnly?: boolean;
   onChange?: RichTextEditorProps["onChange"];
   onEditor?: (editor: LexicalEditor) => void;
@@ -470,7 +465,7 @@ export function RichTextEditor(props: RichTextEditorProps) {
     }
     const markdown = props.defaultMarkdown;
     if (markdown === undefined) return undefined;
-    const transformers = markdownTransformers(options.blocks);
+    const transformers = markdownTransformers(options);
     return () => $convertFromMarkdownString(markdown, transformers);
   });
 
@@ -524,8 +519,8 @@ export function RichTextEditor(props: RichTextEditorProps) {
       <Show when={props.upload !== undefined}>
         <ImagePaste />
       </Show>
-      <Shortcuts />
-      <Bridge readOnly={props.readOnly} onChange={props.onChange} onEditor={props.onEditor} />
+      <EditorShortcuts />
+      <EditorBridge readOnly={props.readOnly} onChange={props.onChange} onEditor={props.onEditor} />
       {props.children}
     </>
   );

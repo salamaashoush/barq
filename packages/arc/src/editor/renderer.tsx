@@ -310,8 +310,7 @@ function storedNodes(
   markdown: string | undefined,
   blocks?: readonly AnyBlock[],
 ): StoredNode[] {
-  if (markdown !== undefined)
-    return markdownToDocument(markdown, { blocks }).root.children;
+  if (markdown !== undefined) return markdownToDocument(markdown, { blocks }).root.children;
   if (value === undefined) return [];
   // Read through an editor with the document's nodes, so a stored state
   // from an older version comes out in the shape it has today.

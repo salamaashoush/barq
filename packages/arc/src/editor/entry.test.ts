@@ -18,11 +18,9 @@ describe("what an app pays for the editor", () => {
     expect(graph.packages.has("yjs")).toBe(false);
   });
 
-  test("the code and chat entries reach no Lexical either", () => {
-    for (const entry of ["code", "chat"]) {
-      const graph = importGraph(join(src, entry, "index.ts"));
-      expect([...graph.packages.keys()].filter(LEXICAL)).toEqual([]);
-    }
+  test("the code entry reaches no Lexical either", () => {
+    const graph = importGraph(join(src, "code", "index.ts"));
+    expect([...graph.packages.keys()].filter(LEXICAL)).toEqual([]);
   });
 
   test("the editor entry is Lexical, and leaves Yjs to the collaboration entry", () => {

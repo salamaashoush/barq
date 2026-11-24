@@ -1,4 +1,5 @@
 import { arcLayer as arc } from "../layer.ts";
+import { space } from "./tokens.ts";
 
 /**
  * Where a part sits and how big it is, for the arrangements several parts
@@ -18,6 +19,10 @@ export const place = {
   screen: arc({ width: "100vw", maxWidth: "100vw", height: "100dvh", maxHeight: "100dvh" }),
   /** Across its positioned parent, at a height the caller sets: a row a list places itself. */
   across: arc({ position: "absolute", insetInline: "0" }),
+  /** The room a cell or a line of text keeps from its edges: a table's cell, an editor's text. */
+  padded: arc({ paddingInline: space.x3, paddingBlock: space.x2 }),
+  /** The same across a thin strip: a status line, a header above an editor. */
+  paddedStrip: arc({ paddingInline: space.x3, paddingBlock: space.x1_5 }),
   /** No padding: a part whose content sets its size. */
   unpadded: arc({ padding: "0px" }),
   /** Over its positioned parent and out of the way: the pointer passes through it and it is never selected. */

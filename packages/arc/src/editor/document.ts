@@ -226,10 +226,13 @@ function blockTransformer(block: AnyBlock): ElementTransformer {
  * lists, tables, dividers, mentions as `[@Name](mention:id)`, and each
  * block's own line.
  */
-export function markdownTransformers(blocks: readonly AnyBlock[] = []): Transformer[] {
+export function markdownTransformers(
+  options: Pick<DocumentOptions, "blocks" | "tables"> = {},
+): Transformer[] {
   const all: Transformer[] = [];
+  if (options.tables !== false) all.push(tableTransformer(() => all));
+  const blocks = options.blocks;
   all.push(
-    tableTransformer(() => all),
     HR,
     ...documentBlocks(blocks).map(blockTransformer),
     CHECK_LIST,
@@ -287,7 +290,7 @@ export function documentExtensions(options: DocumentOptions = {}): AnyLexicalExt
   }
   if (options.history !== false) extensions.push(HistoryExtension);
   if (options.markdownShortcuts !== false) {
-    const transformers = markdownTransformers(options.blocks);
+    const transformers = markdownTransformers(options);
     extensions.push(
       defineExtension({
         name: "@barqjs/arc/markdown-shortcuts",
@@ -328,7 +331,7 @@ export function markdownToDocument(
 ): SerializedEditorState {
   const editor = createDocumentEditor(options);
   try {
-    const transformers = markdownTransformers(options.blocks);
+    const transformers = markdownTransformers(options);
     editor.update(() => $convertFromMarkdownString(markdown, transformers), { discrete: true });
     return editor.getEditorState().toJSON();
   } finally {
@@ -341,7 +344,7 @@ export function documentToMarkdown(value: DocumentValue, options: DocumentOption
   const editor = createDocumentEditor(options);
   try {
     editor.setEditorState(editor.parseEditorState(value));
-    const transformers = markdownTransformers(options.blocks);
+    const transformers = markdownTransformers(options);
     return editor.read(() => $convertToMarkdownString(transformers));
   } finally {
     editor.dispose();

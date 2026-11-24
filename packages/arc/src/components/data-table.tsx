@@ -246,7 +246,7 @@ type RowItem =
   | { id: string; kind: "loader" };
 
 /** A cell's room, which the header's cells, the body's and the pager share. */
-const cellPad = arc({ paddingInline: space.x3, paddingBlock: space.x2 });
+const cellPad = arc(place.padded);
 
 /** Numbers sit at the end, in the column and in its header alike. */
 const aligned = arc({ '[data-align="end"]': { justifyContent: "flex-end", textAlign: "end" } });

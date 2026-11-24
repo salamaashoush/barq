@@ -80,7 +80,10 @@ export const documentStyles = variants({
   },
 });
 
-export { blockGap };
+/** The editable root: no outline of its own, since the frame around it shows focus, and the caret in the text's colour. */
+const editableText = arc({ outline: "none", caretColor: tokens.foreground });
+
+export { blockGap, editableText };
 
 export type DocumentSlots = ReturnType<typeof documentStyles>;
 
