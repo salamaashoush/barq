@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800" width="1200" height="800">
+<title>Forest ridge</title>
+<defs><linearGradient id="s" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e4f0d8"/><stop offset="1" stop-color="#6fa35b"/></linearGradient></defs>
+<rect width="1200" height="800" fill="url(#s)"/>
+<circle cx="880" cy="220" r="90" fill="#ffffff" opacity="0.55"/>
+<path d="M0 520 L220 360 L420 500 L640 300 L900 520 L1200 380 L1200 800 L0 800 Z" fill="#6fa35b" opacity="0.85"/>
+<path d="M0 640 Q300 520 600 640 T1200 600 L1200 800 L0 800 Z" fill="#24502c"/>
+</svg>

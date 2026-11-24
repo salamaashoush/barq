@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
+<title>Acme product tour</title>
+<rect width="1280" height="720" fill="#14213d"/>
+<circle cx="640" cy="360" r="120" fill="#fca311"/>
+<path d="M610 300 L700 360 L610 420 Z" fill="#14213d"/>
+<text x="640" y="560" font-family="sans-serif" font-size="48" fill="#e5e5e5" text-anchor="middle">Acme product tour</text>
+</svg>

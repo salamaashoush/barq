@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800" viewBox="0 0 1200 800">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#7fb3e6"/>
+      <stop offset="1" stop-color="#e9f2fb"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="800" fill="url(#sky)"/>
+  <circle cx="960" cy="170" r="80" fill="#ffd36b"/>
+  <rect x="140" y="300" width="260" height="500" fill="#3c4a5c"/>
+  <rect x="440" y="180" width="320" height="620" fill="#2b3644"/>
+  <rect x="800" y="360" width="240" height="440" fill="#46566b"/>
+  <g fill="#ffe9a8">
+    <rect x="480" y="230" width="40" height="50"/><rect x="560" y="230" width="40" height="50"/><rect x="640" y="230" width="40" height="50"/>
+    <rect x="480" y="320" width="40" height="50"/><rect x="640" y="320" width="40" height="50"/>
+    <rect x="560" y="410" width="40" height="50"/><rect x="640" y="410" width="40" height="50"/>
+    <rect x="180" y="350" width="36" height="44"/><rect x="250" y="350" width="36" height="44"/><rect x="320" y="430" width="36" height="44"/>
+    <rect x="840" y="410" width="36" height="44"/><rect x="920" y="490" width="36" height="44"/>
+  </g>
+  <text x="600" y="150" font-family="Helvetica, Arial, sans-serif" font-size="56" font-weight="700" fill="#1d2633" text-anchor="middle">ACME</text>
+  <rect y="760" width="1200" height="40" fill="#5b8c4a"/>
+</svg>
