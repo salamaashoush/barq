@@ -106,3 +106,4 @@ export {
   editorCommands,
   typeaheadStyles,
 } from "./typeahead.tsx";
+export { type RenderedMention, RichTextRenderer, type RichTextRendererProps } from "./renderer.tsx";

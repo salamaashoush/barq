@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { fileURLToPath } from "node:url";
 import { type Child } from "@barqjs/core";
 import { provideLocale } from "@barqjs/aria/i18n";
 import { ariaViolations, cleanup, render, waitFor } from "@barqjs/testing";
@@ -16,6 +17,8 @@ import {
   MentionTypeahead,
   SlashCommandMenu,
 } from "./typeahead.tsx";
+
+const entry = JSON.stringify(fileURLToPath(new URL("./index.ts", import.meta.url)));
 
 afterEach(() => {
   cleanup();
@@ -197,7 +200,7 @@ describe("EmojiShortcuts", () => {
 describe("on the server", () => {
   test("a composer with its typeaheads hydrates, drawing no menu", async () => {
     const result = await hydrates(`
-      import { MentionTypeahead, RichTextEditor, SlashCommandMenu } from "<arc>/../editor/index.ts";
+      import { MentionTypeahead, RichTextEditor, SlashCommandMenu } from ${entry};
       export function Page() {
         return (
           <RichTextEditor label="Message" toolbar={false}>

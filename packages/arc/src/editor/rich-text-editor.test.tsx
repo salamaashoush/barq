@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { fileURLToPath } from "node:url";
 import { type Child, createSignal } from "@barqjs/core";
 import { provideLocale } from "@barqjs/aria/i18n";
 import { ariaViolations, cleanup, render, screen, user, waitFor, within } from "@barqjs/testing";
@@ -8,6 +9,8 @@ import { hydrates } from "../test-arc.ts";
 import { documentToMarkdown } from "./document.ts";
 import { RichTextEditor } from "./rich-text-editor.tsx";
 import { capture, keydown, selectAll, settle, textOf, typeText } from "./test-editor.ts";
+
+const entry = JSON.stringify(fileURLToPath(new URL("./index.ts", import.meta.url)));
 
 afterEach(() => {
   cleanup();
@@ -250,7 +253,7 @@ describe("RichTextEditor", () => {
 
   test("hydrates what the server wrote", async () => {
     const result = await hydrates(`
-      import { RichTextEditor } from "<arc>/../editor/index.ts";
+      import { RichTextEditor } from ${entry};
       export function Page() {
         return <RichTextEditor label="Notes" placeholder="Write" maxLength={100} />;
       }

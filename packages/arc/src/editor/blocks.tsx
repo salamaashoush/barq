@@ -174,6 +174,8 @@ export interface AnyBlock {
   readonly insertable?: boolean;
   readonly fromMarkdown?: { regExp: RegExp; data: (match: string[]) => unknown };
   readonly node: Klass<BlockNode>;
+  /** What the block was defined with, its data's type forgotten. */
+  readonly definition: BlockDefinition<unknown>;
   /** A new block with its default data. */
   $create(): BlockNode;
   $is(node: LexicalNode | null | undefined): node is BlockNode;
@@ -182,6 +184,7 @@ export interface AnyBlock {
 /** A block type an editor knows: its definition, its node class, and how to make one. */
 export interface Block<Data = unknown> extends BlockDefinition<Data> {
   readonly node: Klass<BlockNode>;
+  readonly definition: BlockDefinition<unknown>;
   $create(data?: Data): TypedBlockNode<Data>;
   $is(node: LexicalNode | null | undefined): node is TypedBlockNode<Data>;
 }
@@ -230,6 +233,7 @@ export function defineBlock<Data>(definition: BlockDefinition<Data>): Block<Data
   return {
     ...definition,
     node: DefinedBlockNode,
+    definition: definition as unknown as BlockDefinition<unknown>,
     $create: (data) =>
       new DefinedBlockNode(data ?? definition.defaultData()) as TypedBlockNode<Data>,
     $is: (node): node is TypedBlockNode<Data> => node instanceof DefinedBlockNode,
