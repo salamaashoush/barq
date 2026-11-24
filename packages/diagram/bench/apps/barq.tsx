@@ -14,7 +14,9 @@ declare global {
 
 let api: DiagramEditorApi | undefined;
 
-const frame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+function frame() {
+  return new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+}
 
 window.__mount = async (count) => {
   const scene = { elements: makeScene(count), appState: {}, files: {} };
@@ -31,7 +33,9 @@ window.__mount = async (count) => {
     document.getElementById("app")!,
   );
   // the scene is in once the editor has it, which Excalidraw restores asynchronously
-  const loaded = () => api !== undefined && api.getSceneElements().length > 0;
+  function loaded() {
+    return api !== undefined && api.getSceneElements().length > 0;
+  }
   while (!loaded()) await frame();
   // the frame that draws the scene, and the one after it
   await frame();

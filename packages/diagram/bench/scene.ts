@@ -11,42 +11,49 @@ const CELL_HEIGHT = 120;
 export const COLUMNS = 10;
 
 let seed = 1;
-const random = () => {
+function random() {
   seed = (seed * 16807) % 2147483647;
   return seed;
-};
+}
 
-const base = (id: string, type: string, x: number, y: number, width: number, height: number) => ({
-  id,
-  type,
-  x,
-  y,
-  width,
-  height,
-  angle: 0,
-  strokeColor: "#1e1e1e",
-  backgroundColor: "#a5d8ff",
-  fillStyle: "solid",
-  strokeWidth: 2,
-  strokeStyle: "solid",
-  roughness: 1,
-  opacity: 100,
-  groupIds: [] as string[],
-  frameId: null,
-  roundness: null,
-  seed: random(),
-  version: 1,
-  versionNonce: random(),
-  isDeleted: false,
-  boundElements: null as { id: string; type: string }[] | null,
-  updated: 1,
-  link: null,
-  locked: false,
-});
+interface BoundElement {
+  id: string;
+  type: string;
+}
+
+function base(id: string, type: string, x: number, y: number, width: number, height: number) {
+  return {
+    id,
+    type,
+    x,
+    y,
+    width,
+    height,
+    angle: 0,
+    strokeColor: "#1e1e1e",
+    backgroundColor: "#a5d8ff",
+    fillStyle: "solid",
+    strokeWidth: 2,
+    strokeStyle: "solid",
+    roughness: 1,
+    opacity: 100,
+    groupIds: [] as string[],
+    frameId: null,
+    roundness: null,
+    seed: random(),
+    version: 1,
+    versionNonce: random(),
+    isDeleted: false,
+    boundElements: null as BoundElement[] | null,
+    updated: 1,
+    link: null,
+    locked: false,
+  };
+}
 
 const SHAPES = ["rectangle", "ellipse", "diamond"] as const;
 
-export const makeScene = (count: number): Record<string, unknown>[] => {
+export function makeScene(count: number): Record<string, unknown>[] {
   seed = 1;
   const elements: Record<string, unknown>[] = [];
   let index = 0;
@@ -91,11 +98,12 @@ export const makeScene = (count: number): Record<string, unknown>[] => {
     }
   }
   return elements.slice(0, count);
-};
+}
 
 /** The first hundred shapes (not labels or arrows), which the drag moves. */
-export const dragSelection = (elements: readonly Record<string, unknown>[]): string[] =>
-  elements
+export function dragSelection(elements: readonly Record<string, unknown>[]): string[] {
+  return elements
     .filter((element) => element.type !== "text" && element.type !== "arrow")
     .slice(0, 100)
     .map((element) => element.id as string);
+}

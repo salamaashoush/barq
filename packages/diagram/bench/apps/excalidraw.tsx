@@ -16,9 +16,15 @@ declare global {
 }
 
 let api: ExcalidrawImperativeAPI | undefined;
-(window as never as { __api: () => unknown }).__api = () => api;
+interface BenchWindow {
+  __api: () => unknown;
+}
 
-const frame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+(window as never as BenchWindow).__api = () => api;
+
+function frame() {
+  return new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+}
 
 window.__mount = async (count) => {
   const scene = { elements: makeScene(count), appState: {}, files: {} };
@@ -32,7 +38,9 @@ window.__mount = async (count) => {
     </div>,
   );
   // the scene is in once the editor has it, which Excalidraw restores asynchronously
-  const loaded = () => api !== undefined && api.getSceneElements().length > 0;
+  function loaded() {
+    return api !== undefined && api.getSceneElements().length > 0;
+  }
   while (!loaded()) await frame();
   await frame();
   await frame();

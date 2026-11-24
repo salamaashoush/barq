@@ -26,9 +26,16 @@ const HERE = import.meta.dir;
 const ROUNDS = Number(process.argv[2] ?? 3);
 const SIZES = (process.env.BENCH_SIZES ?? "1000,5000,10000").split(",").map(Number);
 
-const native = createRequire(import.meta.url)("@barqjs/compiler") as {
-  transform(code: string, options: Record<string, unknown>): { code: string; warnings?: string[] };
-};
+interface NativeCompiler {
+  transform(code: string, options: Record<string, unknown>): TransformOutput;
+}
+
+interface TransformOutput {
+  code: string;
+  warnings?: string[];
+}
+
+const native = createRequire(import.meta.url)("@barqjs/compiler") as NativeCompiler;
 
 const barqCompiler: BunPlugin = {
   name: "barq-diagram-bench",
@@ -86,47 +93,78 @@ async function bundle(entry: string): Promise<Bundle> {
   return { js, css };
 }
 
-const page = (name: string, setup = "") =>
-  '<!doctype html><meta charset="utf-8"><body style="margin:0">' +
-  `<link rel="stylesheet" href="/${name}.css"><div id="app"></div>` +
-  // both load their fonts from here, where there are none, so neither waits on a CDN
-  `<script>window.EXCALIDRAW_ASSET_PATH = "/assets/";${setup}</script>` +
-  `<script type="module" src="/${name}.js"></script>`;
+function page(name: string, setup = "") {
+  return (
+    '<!doctype html><meta charset="utf-8"><body style="margin:0">' +
+    `<link rel="stylesheet" href="/${name}.css"><div id="app"></div>` +
+    // both load their fonts from here, where there are none, so neither waits on a CDN
+    `<script>window.EXCALIDRAW_ASSET_PATH = "/assets/";${setup}</script>` +
+    `<script type="module" src="/${name}.js"></script>`
+  );
+}
 
-const median = (values: number[]): number => {
+function median(values: number[]): number {
   const sorted = values.toSorted((a, b) => a - b);
   const middle = sorted.length >> 1;
   return sorted.length % 2 === 1 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
-};
+}
+
+interface MainThreadTime {
+  task: number;
+  script: number;
+}
+
+interface PerformanceMetrics {
+  metrics: PerformanceMetric[];
+}
+
+interface PerformanceMetric {
+  name: string;
+  value: number;
+}
 
 /** Main-thread task time and the script part of it, in milliseconds. */
-async function mainThread(chrome: Page): Promise<{ task: number; script: number }> {
-  const result = (await chrome.send("Performance.getMetrics", {})) as {
-    metrics: { name: string; value: number }[];
-  };
-  const read = (name: string) =>
-    (result.metrics.find((metric) => metric.name === name)?.value ?? 0) * 1000;
+async function mainThread(chrome: Page): Promise<MainThreadTime> {
+  const result = (await chrome.send("Performance.getMetrics", {})) as PerformanceMetrics;
+  function read(name: string) {
+    return (result.metrics.find((metric) => metric.name === name)?.value ?? 0) * 1000;
+  }
   return { task: read("TaskDuration"), script: read("ScriptDuration") };
+}
+
+interface HeapUsage {
+  usedSize: number;
 }
 
 async function heap(chrome: Page): Promise<number> {
   await chrome.send("HeapProfiler.collectGarbage", {});
   await chrome.send("HeapProfiler.collectGarbage", {});
-  const usage = (await chrome.send("Runtime.getHeapUsage", {})) as { usedSize: number };
+  const usage = (await chrome.send("Runtime.getHeapUsage", {})) as HeapUsage;
   return usage.usedSize;
 }
 
-const afterFrame = (chrome: Page) =>
-  chrome.evaluate("new Promise((resolve) => requestAnimationFrame(() => afterFrame(resolve)))");
+function afterFrame(chrome: Page) {
+  return chrome.evaluate(
+    "new Promise((resolve) => requestAnimationFrame(() => afterFrame(resolve)))",
+  );
+}
 
-const mouse = (
+function mouse(
   chrome: Page,
   type: string,
   x: number,
   y: number,
   extra: Record<string, unknown> = {},
-) =>
-  chrome.send("Input.dispatchMouseEvent", { type, x, y, button: "left", clickCount: 1, ...extra });
+) {
+  return chrome.send("Input.dispatchMouseEvent", {
+    type,
+    x,
+    y,
+    button: "left",
+    clickCount: 1,
+    ...extra,
+  });
+}
 
 /**
  * Main-thread milliseconds per step, each step an input and the frame after
@@ -137,7 +175,7 @@ async function perStep(
   chrome: Page,
   steps: number,
   step: (index: number) => Promise<unknown>,
-): Promise<{ task: number; script: number }> {
+): Promise<MainThreadTime> {
   await afterFrame(chrome);
   const before = await mainThread(chrome);
   for (let index = 0; index < steps; index++) {
@@ -167,13 +205,23 @@ const STEPS = 40;
 /** `BENCH_PROFILE=barq` (or `excalidraw`): unminified, one size, and where the time goes. */
 const PROFILE = process.env.BENCH_PROFILE;
 
+interface CallFrame {
+  functionName: string;
+  url: string;
+  lineNumber: number;
+}
+
 interface ProfileNode {
   id: number;
-  callFrame: { functionName: string; url: string; lineNumber: number };
+  callFrame: CallFrame;
 }
 
 /** `BENCH_TRACE=1`: the renderer main thread's trace events per scenario, by name, for the time outside script. */
 const TRACE = process.env.BENCH_TRACE;
+
+interface TraceEventArgs {
+  name?: string;
+}
 
 interface TraceEvent {
   name?: string;
@@ -181,7 +229,7 @@ interface TraceEvent {
   dur?: number;
   pid?: number;
   tid?: number;
-  args?: { name?: string };
+  args?: TraceEventArgs;
 }
 
 async function tracedByName<T>(chrome: Page, label: string, body: () => Promise<T>): Promise<T> {
@@ -201,6 +249,16 @@ async function tracedByName<T>(chrome: Page, label: string, body: () => Promise<
   return value;
 }
 
+interface ProfilerStop {
+  profile: CpuProfile;
+}
+
+interface CpuProfile {
+  nodes: ProfileNode[];
+  samples: number[];
+  timeDeltas: number[];
+}
+
 async function profiled<T>(chrome: Page, label: string, body: () => Promise<T>): Promise<T> {
   if (TRACE) return tracedByName(chrome, label, body);
   if (!PROFILE) return body();
@@ -208,9 +266,7 @@ async function profiled<T>(chrome: Page, label: string, body: () => Promise<T>):
   await chrome.send("Profiler.setSamplingInterval", { interval: 100 });
   await chrome.send("Profiler.start", {});
   const result = await body();
-  const { profile } = (await chrome.send("Profiler.stop", {})) as {
-    profile: { nodes: ProfileNode[]; samples: number[]; timeDeltas: number[] };
-  };
+  const { profile } = (await chrome.send("Profiler.stop", {})) as ProfilerStop;
   const self = new Map<string, number>();
   const byId = new Map(profile.nodes.map((node) => [node.id, node]));
   profile.samples.forEach((id, index) => {
@@ -227,7 +283,9 @@ async function profiled<T>(chrome: Page, label: string, body: () => Promise<T>):
 
 async function measure(url: string, count: number): Promise<Row> {
   return withBenchChrome(async (chrome) => {
-    const log = (phase: string) => process.env.BENCH_DEBUG && console.log(url, count, phase);
+    function log(phase: string) {
+      return process.env.BENCH_DEBUG && console.log(url, count, phase);
+    }
     await load(chrome, url);
     log("loaded");
     await chrome.send("Performance.enable", {});
@@ -306,10 +364,12 @@ const files = new Map([
 ]);
 const server = serve(files);
 
-const size = (bundled: Bundle) => ({
-  kb: (bundled.js.length + bundled.css.length) / 1024,
-  gzipKb: (gzipSync(bundled.js).length + gzipSync(bundled.css).length) / 1024,
-});
+function size(bundled: Bundle) {
+  return {
+    kb: (bundled.js.length + bundled.css.length) / 1024,
+    gzipKb: (gzipSync(bundled.js).length + gzipSync(bundled.css).length) / 1024,
+  };
+}
 
 const EDITORS = ["barq", "barq-canvas", "excalidraw"] as const;
 const results: Record<string, Record<string, Row>> = {
@@ -344,7 +404,9 @@ try {
 
 if (PROFILE) process.exit(0);
 
-const fixed = (value: number, digits = 1) => value.toFixed(digits);
+function fixed(value: number, digits = 1) {
+  return value.toFixed(digits);
+}
 const lines = [
   "| scene | editor | first render (ms) | drag 100 (ms/frame) | pan (ms/frame) | zoom (ms/frame) | JS heap (MB) |",
   "| --- | --- | --- | --- | --- | --- | --- |",
