@@ -1770,3 +1770,24 @@ describe("a colour field steps only where its text is the 24-bit value", () => {
     });
   }
 });
+
+describe("the thumbs and the output take a class", () => {
+  test("slider, area and wheel thumbs carry a class and a slot, and so does the slider's output", () => {
+    render(() => (
+      <ColorPicker defaultValue="#7f00ff">
+        <ColorArea aria-label="Colour" thumbClass="area-thumb" />
+        <ColorSlider channel="hue" thumbClass="hue-thumb" outputClass="hue-output" />
+        <ColorWheel aria-label="Hue" thumbClass="wheel-thumb" />
+      </ColorPicker>
+    ));
+    const thumbs = [...document.querySelectorAll('[data-slot="color-thumb"]')];
+    expect(thumbs.map((thumb) => thumb.className)).toEqual([
+      "area-thumb",
+      "hue-thumb",
+      "wheel-thumb",
+    ]);
+    const output = document.querySelector('[data-slot="color-output"]');
+    expect(output?.className).toBe("hue-output");
+    expect(output?.tagName).toBe("OUTPUT");
+  });
+});

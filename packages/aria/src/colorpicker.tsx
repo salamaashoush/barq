@@ -1985,6 +1985,10 @@ export interface ColorSliderComponentProps extends StyleProps {
   /** @default "horizontal" */
   orientation?: Orientation;
   isDisabled?: boolean;
+  /** On the thumb, which carries `data-slot="color-thumb"`. */
+  thumbClass?: string;
+  /** On the `<output>` reading the value out, which carries `data-slot="color-output"`. */
+  outputClass?: string;
   /** The form name the channel's value is submitted under. */
   name?: string;
   form?: string;
@@ -2053,10 +2057,14 @@ export function ColorSlider(props: ColorSliderComponentProps) {
   return (
     <>
       {() => (props.label === undefined ? null : <label {...labelProps}>{props.label}</label>)}
-      <output {...outputProps}>{() => state.valueText()}</output>
+      <output {...outputProps} class={props.outputClass} data-slot="color-output">
+        {() => state.valueText()}
+      </output>
       <div {...elementProps} ref={mergeRefs(trackRef.set, props.ref)}>
         <div
           {...mergeProps(thumbProps, {
+            class: () => props.thumbClass,
+            "data-slot": "color-thumb",
             "data-focused": isFocused,
             "data-focus-visible": isFocusVisible,
             "data-hovered": isHovered,
@@ -2082,6 +2090,8 @@ export interface ColorAreaComponentProps extends StyleProps {
   xChannel?: ColorChannel;
   yChannel?: ColorChannel;
   isDisabled?: boolean;
+  /** On the thumb, which carries `data-slot="color-thumb"`. */
+  thumbClass?: string;
   /** The form names the two channels are submitted under. */
   xName?: string;
   yName?: string;
@@ -2147,6 +2157,8 @@ export function ColorArea(props: ColorAreaComponentProps) {
     <div {...elementProps} ref={mergeRefs(containerRef.set, props.ref)}>
       <div
         {...mergeProps(thumbProps, {
+          class: () => props.thumbClass,
+          "data-slot": "color-thumb",
           "data-focused": isFocused,
           "data-focus-visible": isFocusVisible,
           "data-dragging": state.isDragging,
@@ -2176,6 +2188,8 @@ export interface ColorWheelComponentProps extends StyleProps {
   /** The wheel's radius, in pixels. @default 80 */
   outerRadius?: number;
   isDisabled?: boolean;
+  /** On the thumb, which carries `data-slot="color-thumb"`. */
+  thumbClass?: string;
   name?: string;
   form?: string;
   "aria-label"?: string;
@@ -2249,6 +2263,8 @@ export function ColorWheel(props: ColorWheelComponentProps) {
     <div {...elementProps} ref={mergeRefs(trackRef.set, props.ref)}>
       <div
         {...mergeProps(thumbProps, {
+          class: () => props.thumbClass,
+          "data-slot": "color-thumb",
           "data-focused": isFocused,
           "data-focus-visible": isFocusVisible,
           "data-hovered": isHovered,
