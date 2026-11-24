@@ -1,7 +1,14 @@
 import type { UserConfig } from "tsdown";
 
 // `exports` names `.js`/`.d.ts`; tsdown 0.22 defaults to `.mjs`/`.d.mts`.
-export const outExtensions = (): { js: string; dts: string } => ({ js: ".js", dts: ".d.ts" });
+interface OutExtensions {
+  js: string;
+  dts: string;
+}
+
+export function outExtensions(): OutExtensions {
+  return { js: ".js", dts: ".d.ts" };
+}
 
 interface Node {
   type: string;
@@ -10,8 +17,19 @@ interface Node {
   [key: string]: unknown;
 }
 
-const isNode = (value: unknown): value is Node =>
-  typeof value === "object" && value !== null && typeof (value as Node).type === "string";
+function isNode(value: unknown): value is Node {
+  return typeof value === "object" && value !== null && typeof (value as Node).type === "string";
+}
+
+interface Program {
+  body: Node[];
+}
+
+interface TextEdit {
+  start: number;
+  end: number;
+  text: string;
+}
 
 const FUNCTION = new Set(["ArrowFunctionExpression", "FunctionExpression", "FunctionDeclaration"]);
 
@@ -32,7 +50,7 @@ function freezeFunctionText(): NonNullable<UserConfig["plugins"]> {
       for (const chunk of Object.values(bundle)) {
         if (chunk.type !== "chunk") continue;
         const code = chunk.code;
-        const program = this.parse(code) as unknown as { body: Node[] };
+        const program = this.parse(code) as unknown as Program;
         const functions = new Map<string, Node>();
         const declarators: Node[] = [];
         for (const raw of program.body) {
@@ -52,8 +70,8 @@ function freezeFunctionText(): NonNullable<UserConfig["plugins"]> {
             }
           }
         }
-        const edits: { start: number; end: number; text: string }[] = [];
-        const visit = (node: Node): void => {
+        const edits: TextEdit[] = [];
+        function visit(node: Node): void {
           if (FUNCTION.has(node.type)) return;
           const callee = node.callee;
           if (
@@ -84,7 +102,7 @@ function freezeFunctionText(): NonNullable<UserConfig["plugins"]> {
               visit(value);
             }
           }
-        };
+        }
         for (const declarator of declarators) if (isNode(declarator.init)) visit(declarator.init);
         let next = code;
         for (const edit of edits.toSorted((a, b) => b.start - a.start)) {

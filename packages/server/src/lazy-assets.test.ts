@@ -9,7 +9,9 @@ afterEach(() => {
   clearHydrationData();
 });
 
-const wait = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 const manifest = {
   "/src/Chart.tsx": {
@@ -18,7 +20,7 @@ const manifest = {
   },
 };
 
-const page = (delay: number) => {
+function page(delay: number) {
   const Chart = lazy(
     async () => {
       await wait(delay);
@@ -36,7 +38,7 @@ const page = (delay: number) => {
         }),
       )}</body></html>`,
     );
-};
+}
 
 async function body(delay: number): Promise<string> {
   return new Response(renderToStream(page(delay), { manifest }).readable).text();

@@ -22,6 +22,35 @@ import {
   serializationAdapters,
 } from "./codec.ts";
 
+type BrandedError = Record<symbol, unknown> & Error;
+
+type DecodedRedirect = BrandedError & {
+  to: string;
+  status: number;
+};
+
+type DecodedNotFound = BrandedError & {
+  data?: unknown;
+  routeId?: string;
+};
+
+interface RedirectWithOptions extends Error {
+  options?: Record<string, unknown>;
+}
+
+interface SeededNotFound {
+  e: BrandedError;
+}
+
+interface SeededRedirect {
+  e: DecodedRedirect;
+}
+
+interface MoneyWire {
+  c: number;
+  u: string;
+}
+
 /**
  * An Error keeps its KIND across the wire.
  *
@@ -41,15 +70,17 @@ describe("a control-flow throwable survives the wire", () => {
   const REDIRECT = Symbol.for("barq.redirect");
   const NOT_FOUND = Symbol.for("barq.not-found");
 
-  const notFound = (): Error =>
-    Object.assign(new Error("no such row"), { name: "NotFound", [NOT_FOUND]: true });
-  const redirect = (): Error =>
-    Object.assign(new Error("redirect to /login"), {
+  function notFound(): Error {
+    return Object.assign(new Error("no such row"), { name: "NotFound", [NOT_FOUND]: true });
+  }
+  function redirect(): Error {
+    return Object.assign(new Error("redirect to /login"), {
       name: "Redirect",
       [REDIRECT]: true,
       to: "/login",
       status: 302,
     });
+  }
 
   test("a notFound is still one on the JSON channel", () => {
     const back = decodeWire<Record<symbol, unknown> & Error>(encodeWire(notFound()));
@@ -59,9 +90,7 @@ describe("a control-flow throwable survives the wire", () => {
   });
 
   test("a redirect keeps its target and status", () => {
-    const back = decodeWire<Record<symbol, unknown> & Error & { to: string; status: number }>(
-      encodeWire(redirect()),
-    );
+    const back = decodeWire<DecodedRedirect>(encodeWire(redirect()));
     expect(back[REDIRECT]).toBe(true);
     expect(back.to).toBe("/login");
     expect(back.status).toBe(302);
@@ -79,7 +108,7 @@ describe("a control-flow throwable survives the wire", () => {
         mask: () => "/hidden",
       },
     });
-    const back = decodeWire<Error & { options?: Record<string, unknown> }>(encodeWire(thrown));
+    const back = decodeWire<RedirectWithOptions>(encodeWire(thrown));
     expect(back.options).toEqual({
       to: "/orders/$id",
       params: { id: "42" },
@@ -95,7 +124,7 @@ describe("a control-flow throwable survives the wire", () => {
     const thrown = Object.assign(redirect(), {
       options: { to: "/orders", search: (previous: object) => previous },
     });
-    const back = decodeWire<Error & { options?: Record<string, unknown> }>(encodeWire(thrown));
+    const back = decodeWire<RedirectWithOptions>(encodeWire(thrown));
     expect(back.options).toEqual({ to: "/orders" });
   });
 
@@ -104,26 +133,20 @@ describe("a control-flow throwable survives the wire", () => {
       data: { slug: "missing-post", tried: ["a", "b"] },
       routeId: "/posts/$slug",
     });
-    const back = decodeWire<Record<symbol, unknown> & Error & { data?: unknown; routeId?: string }>(
-      encodeWire(thrown),
-    );
+    const back = decodeWire<DecodedNotFound>(encodeWire(thrown));
     expect(back[NOT_FOUND]).toBe(true);
     expect(back.data).toEqual({ slug: "missing-post", tried: ["a", "b"] });
     expect(back.routeId).toBe("/posts/$slug");
-    expect(decodeWire<Error & { data?: unknown }>(encodeWire(notFound())).data).toBeUndefined();
+    expect(decodeWire<DecodedNotFound>(encodeWire(notFound())).data).toBeUndefined();
   });
 
   /** The SEED channel is JS rather than JSON, and rebuilds by evaluation. */
   test("the seed channel rebuilds the brand too", () => {
-    const back = runInThisContext(encodeSeed({ e: notFound() })) as {
-      e: Record<symbol, unknown> & Error;
-    };
+    const back = runInThisContext(encodeSeed({ e: notFound() })) as SeededNotFound;
     expect(back.e[NOT_FOUND]).toBe(true);
     expect(back.e.name).toBe("NotFound");
 
-    const moved = runInThisContext(encodeSeed({ e: redirect() })) as {
-      e: Record<symbol, unknown> & Error & { to: string; status: number };
-    };
+    const moved = runInThisContext(encodeSeed({ e: redirect() })) as SeededRedirect;
     expect(moved.e[REDIRECT]).toBe(true);
     expect(moved.e.to).toBe("/login");
     expect(moved.e.status).toBe(302);
@@ -169,7 +192,7 @@ describe("a control-flow throwable survives the wire", () => {
 describe("a rejected loader on the streaming channel", () => {
   const NOT_FOUND = Symbol.for("barq.not-found");
 
-  const streamOf = async (value: Record<string, unknown>): Promise<string> => {
+  async function streamOf(value: Record<string, unknown>): Promise<string> {
     const encoder = createSeedEncoder();
     const chunks: string[] = [];
     await new Promise<void>((done) => {
@@ -181,7 +204,7 @@ describe("a rejected loader on the streaming channel", () => {
       chunks.unshift(initial);
     });
     return chunks.join("\n");
-  };
+  }
 
   /** The leak, named by the property that carried it. */
   test("the server's own paths do not reach the wire", async () => {
@@ -267,7 +290,12 @@ describe("serialization adapters", () => {
     }
   }
 
-  const money = createSerializationAdapter<Money, { c: number; u: string }>({
+  interface MoneyRows {
+    rows: Money[];
+    when: Date;
+  }
+
+  const money = createSerializationAdapter<Money, MoneyWire>({
     key: "money",
     test: (value): value is Money => value instanceof Money,
     toSerializable: (value) => ({ c: value.cents, u: value.currency }),
@@ -295,7 +323,7 @@ describe("serialization adapters", () => {
 
   test("it reaches a value NESTED in an ordinary structure", () => {
     registerSerializationAdapters([money]);
-    const back = decodeWire<{ rows: Money[]; when: Date }>(
+    const back = decodeWire<MoneyRows>(
       encodeWire({ rows: [new Money(1, "GBP")], when: new Date(0) }),
     );
     expect(back.rows[0]).toBeInstanceOf(Money);
@@ -363,7 +391,7 @@ describe("serialization adapters", () => {
   test("registering the same key twice replaces it, which is what an edit is", () => {
     registerSerializationAdapters([money]);
     registerSerializationAdapters([
-      createSerializationAdapter<Money, { c: number; u: string }>({
+      createSerializationAdapter<Money, MoneyWire>({
         key: "money",
         test: (value): value is Money => value instanceof Money,
         toSerializable: (value) => ({ c: value.cents, u: "USD" }),

@@ -10,12 +10,21 @@ import { expect, test } from "bun:test";
 import { renderToStream } from "./server.ts";
 import { type SsrHtml, boundary, esc, html } from "./ssr.ts";
 
-const tick = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
-const pause = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+function tick(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+function pause(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 const BOUNDARIES = 5;
 
-function page(counts: { builds: number; disposed: boolean }): () => SsrHtml {
+interface BuildCounts {
+  builds: number;
+  disposed: boolean;
+}
+
+function page(counts: BuildCounts): () => SsrHtml {
   return () => {
     onCleanup(() => {
       counts.disposed = true;
@@ -91,19 +100,19 @@ test("an abort while the render waits for its reader releases the render", async
 });
 
 test("a read that lands while the render waits for its reader still resumes its boundary", async () => {
-  const twoReads = (): SsrHtml => {
+  function twoReads(): SsrHtml {
     const first = createMemo(async () => "A");
-    const content = (): SsrHtml => {
+    function content(): SsrHtml {
       const a = first();
       // Declared only once the first has arrived, so the boundary parks twice
       // and the second flight starts on a resume.
       const second = createMemo(async () => `${a}B`);
       return html(`<b>${esc(second())}</b>`);
-    };
+    }
     return html(
       `<main>${esc(boundary(null, null, "loading", () => html("<i>skel</i>"), content, HYDRATE))}</main>`,
     );
-  };
+  }
 
   const out = await rest(renderToStream(twoReads).readable.getReader());
   expect(out).toContain("<b>AB</b>");

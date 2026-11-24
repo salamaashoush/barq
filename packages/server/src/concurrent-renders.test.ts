@@ -14,8 +14,12 @@ import { afterEach, expect, test } from "bun:test";
 import { renderPage, renderToStream } from "./server.ts";
 import { esc, html, ssrLoading } from "./ssr.ts";
 
-const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
-const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+function tick() {
+  return new Promise<void>((resolve) => setTimeout(resolve, 0));
+}
+function wait(ms: number) {
+  return new Promise<void>((resolve) => setTimeout(resolve, ms));
+}
 
 async function collect(stream: ReadableStream<Uint8Array>): Promise<string> {
   const reader = stream.getReader();

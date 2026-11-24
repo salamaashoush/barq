@@ -22,9 +22,13 @@ import { esc, html, ssrLoading } from "./ssr.ts";
 import { provideRequestEvent } from "./storage.ts";
 import { expectOnly, printedBy } from "./test-console.ts";
 
-const request = (path = "/account"): Request => new Request(`https://example.com${path}`);
+function request(path = "/account"): Request {
+  return new Request(`https://example.com${path}`);
+}
 
-const tick = (ms = 0) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+function tick(ms = 0) {
+  return new Promise<void>((resolve) => setTimeout(resolve, ms));
+}
 
 afterEach(() => {
   clearHydrationData();

@@ -5,9 +5,11 @@ import { afterEach, describe, expect, test } from "bun:test";
 
 import { renderToStream, renderToString } from "./server.ts";
 import { esc, html, ssrLoading } from "./ssr.ts";
-import { applyHeadPatch } from "./swap.ts";
+import { type HeadPatchTag, applyHeadPatch } from "./swap.ts";
 
-const tick = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
+function tick(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
 
 afterEach(() => {
   clearHydrationData();
@@ -15,14 +17,16 @@ afterEach(() => {
   document.title = "";
 });
 
-const shellPage = () => () => {
-  useHead([
-    { tag: "title", children: "salama's account" },
-    { tag: "meta", props: { name: "description", content: "first" } },
-    { tag: "meta", props: { name: "description", content: "an account at example.com" } },
-  ]);
-  return html('<html><head><meta charset="utf-8"></head><body><main>a</main></body></html>');
-};
+function shellPage() {
+  return () => {
+    useHead([
+      { tag: "title", children: "salama's account" },
+      { tag: "meta", props: { name: "description", content: "first" } },
+      { tag: "meta", props: { name: "description", content: "an account at example.com" } },
+    ]);
+    return html('<html><head><meta charset="utf-8"></head><body><main>a</main></body></html>');
+  };
+}
 
 describe("useHead on the server", () => {
   test("puts what the shell declared inside its head, the last of each identity winning", () => {
@@ -92,14 +96,16 @@ describe("useHead on the server", () => {
 });
 
 describe("useHead under a nonce", () => {
-  const inline = () => () => {
-    useHead([
-      { tag: "script", children: "document.documentElement.className='dark'" },
-      { tag: "style", children: ":root{color-scheme:dark}" },
-      { tag: "script", props: { nonce: "own" }, children: "void 0" },
-    ]);
-    return html("<html><head></head><body><main>a</main></body></html>");
-  };
+  function inline() {
+    return () => {
+      useHead([
+        { tag: "script", children: "document.documentElement.className='dark'" },
+        { tag: "style", children: ":root{color-scheme:dark}" },
+        { tag: "script", props: { nonce: "own" }, children: "void 0" },
+      ]);
+      return html("<html><head></head><body><main>a</main></body></html>");
+    };
+  }
 
   test("gives an inline script and style the render's nonce, keeping one the tag brought", () => {
     const out = renderToString(inline(), { nonce: { script: "s1", style: "t1" } });
@@ -134,7 +140,7 @@ describe("useHead under a nonce", () => {
     ).text();
 
     const patch = /window\.__BARQ_HEAD__\((\[.*?\])\)/.exec(body);
-    const ops = JSON.parse(patch?.[1] ?? "[]") as { t: string; a: Record<string, string> }[];
+    const ops = JSON.parse(patch?.[1] ?? "[]") as HeadPatchTag[];
     expect(ops.find((op) => op.t === "script")?.a.nonce).toBe("n2");
   });
 });

@@ -16,18 +16,25 @@ import { afterEach, expect, test } from "bun:test";
 import { renderPage, renderToStream } from "./server.ts";
 import { esc, html, reveal, ssrLoading } from "./ssr.ts";
 
-const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+function tick() {
+  return new Promise<void>((resolve) => setTimeout(resolve, 0));
+}
+
+interface Fired<T> {
+  value: T;
+  fired: number[];
+}
 
 /**
  * The delay of every timer of a deadline's length that fired while `run` was
  * pending. Which timer let a render go is a fact about the render; how long it
  * took is a fact about the machine.
  */
-async function deadlinesFired<T>(run: () => Promise<T>): Promise<{ value: T; fired: number[] }> {
+async function deadlinesFired<T>(run: () => Promise<T>): Promise<Fired<T>> {
   const real = globalThis.setTimeout;
   const fired: number[] = [];
-  const recording = (handler: (...args: unknown[]) => void, ms = 0, ...args: unknown[]) =>
-    real(
+  function recording(handler: (...args: unknown[]) => void, ms = 0, ...args: unknown[]) {
+    return real(
       (...passed: unknown[]) => {
         if (ms >= 1000) fired.push(ms);
         handler(...passed);
@@ -35,6 +42,7 @@ async function deadlinesFired<T>(run: () => Promise<T>): Promise<{ value: T; fir
       ms,
       ...args,
     );
+  }
   globalThis.setTimeout = recording as unknown as typeof setTimeout;
   try {
     return { value: await run(), fired };
@@ -59,18 +67,23 @@ afterEach(() => {
   clearHydrationData();
 });
 
-function makePage(): { page: () => unknown; fetches: () => number } {
+interface CountedPage {
+  page: () => unknown;
+  fetches: () => number;
+}
+
+function makePage(): CountedPage {
   let fetches = 0;
-  const User = (): unknown => {
+  function User(): unknown {
     const user = createMemo(async () => {
       fetches++;
       await tick();
       return "salama";
     });
     return html(`<b>${esc(user())}</b>`);
-  };
-  const page = (): unknown =>
-    html(
+  }
+  function page(): unknown {
+    return html(
       `<main>${esc(
         ssrLoading({
           fallback: () => html("<i>loading</i>"),
@@ -78,6 +91,7 @@ function makePage(): { page: () => unknown; fetches: () => number } {
         }),
       )}</main>`,
     );
+  }
   return { page, fetches: () => fetches };
 }
 
@@ -103,21 +117,23 @@ test("renderPage settles it rather than refetching until the boundary deadline",
 
 test("a boundary inside the body keeps its own declarations apart from the body's", async () => {
   let fetches = 0;
-  const fetched = (value: string) => async (): Promise<string> => {
-    fetches++;
-    await tick();
-    return value;
-  };
-  const Inner = (): unknown => {
+  function fetched(value: string) {
+    return async (): Promise<string> => {
+      fetches++;
+      await tick();
+      return value;
+    };
+  }
+  function Inner(): unknown {
     const inner = createMemo(fetched("inner"));
     return html(`<u>${esc(inner())}</u>`);
-  };
-  const Outer = (): unknown => {
+  }
+  function Outer(): unknown {
     const outer = createMemo(fetched("outer"));
     const nested = ssrLoading({ fallback: () => html("<i>inner</i>"), children: () => Inner() });
     return html(`<b>${esc(outer())}</b>${esc(nested)}`);
-  };
-  const page = (): unknown => {
+  }
+  function page(): unknown {
     const after = createMemo(fetched("after"));
     return html(
       `<main>${esc(
@@ -129,7 +145,7 @@ test("a boundary inside the body keeps its own declarations apart from the body'
         }),
       )}</main>`,
     );
-  };
+  }
 
   const capture = DEV.diagnostics.capture();
   const out = await renderPage(page as never);
@@ -141,27 +157,26 @@ test("a boundary inside the body keeps its own declarations apart from the body'
   expect(codes).not.toContain("RUN_WITH_DISPOSED_OWNER");
 });
 
-const wait = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 /**
  * A boundary that parks inside a body which then reads a value of its own that
  * has not arrived: the body unwinds and takes the inner boundary's range with
  * it, and only the rebuild's copy of that boundary stands on the page.
  */
-function nestedUnderUnwind(innerMs: number): {
-  page: () => unknown;
-  fetches: () => number;
-} {
+function nestedUnderUnwind(innerMs: number): CountedPage {
   let fetches = 0;
-  const Inner = (): unknown => {
+  function Inner(): unknown {
     const inner = createMemo(async () => {
       fetches++;
       await wait(innerMs);
       return "inner";
     });
     return html(`<u>${esc(inner())}</u>`);
-  };
-  const Outer = (): unknown => {
+  }
+  function Outer(): unknown {
     const outer = createMemo(async () => {
       fetches++;
       await tick();
@@ -169,13 +184,14 @@ function nestedUnderUnwind(innerMs: number): {
     });
     const nested = ssrLoading({ fallback: () => html("<i>inner</i>"), children: () => Inner() });
     return html(`${esc(nested)}<b>${esc(outer())}</b>`);
-  };
-  const page = (): unknown =>
-    html(
+  }
+  function page(): unknown {
+    return html(
       `<main>${esc(
         ssrLoading({ fallback: () => html("<i>outer</i>"), children: () => Outer() }),
       )}</main>`,
     );
+  }
   return { page, fetches: () => fetches };
 }
 
@@ -230,13 +246,14 @@ test("a buffered page settles the rebuilt inner boundary and seeds both values o
 });
 
 test("a sequential Reveal does not hold a sibling back for a boundary the body unwound", async () => {
-  const value = (name: string, ms: number) =>
-    createMemo(async () => {
+  function value(name: string, ms: number) {
+    return createMemo(async () => {
       await wait(ms);
       return name;
     });
-  const page = (): unknown =>
-    html(
+  }
+  function page(): unknown {
+    return html(
       `<main>${esc(
         reveal("sequential", false, () => {
           const outer = ssrLoading({
@@ -260,6 +277,7 @@ test("a sequential Reveal does not hold a sibling back for a boundary the body u
         }),
       )}</main>`,
     );
+  }
 
   const reader = renderToStream(page as never, { timeout: 1000 }).readable.getReader();
   const decoder = new TextDecoder();
@@ -267,7 +285,9 @@ test("a sequential Reveal does not hold a sibling back for a boundary the body u
   for (let next = await reader.read(); !next.done; next = await reader.read()) {
     parts.push(decoder.decode(next.value));
   }
-  const chunkWith = (text: string): number => parts.findIndex((part) => part.includes(text));
+  function chunkWith(text: string): number {
+    return parts.findIndex((part) => part.includes(text));
+  }
 
   expect(chunkWith("<b>fast</b>")).toBeGreaterThan(0);
   expect(chunkWith("<s>sibling</s>")).toBeGreaterThan(0);

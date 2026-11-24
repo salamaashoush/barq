@@ -545,12 +545,18 @@ const SERVER_FN_BRAND = Symbol.for("barq.server-fn");
 /** Kept beside the brand: `@barqjs/start`'s `RPC_PREFIX`, read the same way. */
 const RPC_PREFIX = "/_barq/fn/";
 
+interface ServerFnMeta {
+  id?: unknown;
+}
+
+type BrandedServerFn = Record<symbol, unknown> & {
+  meta?: ServerFnMeta;
+  url?: unknown;
+};
+
 export function formAttr(value: unknown): string {
   if (typeof value !== "function") return attr("action", value);
-  const fn = value as unknown as Record<symbol, unknown> & {
-    meta?: { id?: unknown };
-    url?: unknown;
-  };
+  const fn = value as unknown as BrandedServerFn;
   if (fn[SERVER_FN_BRAND] !== true) return "";
   // The function knows where it is mounted, which an application may have
   // moved; the prefix is for one built before it carried its address.
@@ -768,6 +774,10 @@ export function bindAttr(position: string, read: () => unknown): string {
   return isSlotValue(value) ? boundAttr(position, value) : "";
 }
 
+interface InnerHtmlProp {
+  __html?: unknown;
+}
+
 /**
  * The names that replace an element's CONTENT rather than set an attribute.
  * `createElement` applies them before it appends children, so the compiler
@@ -777,7 +787,7 @@ export function bindAttr(position: string, read: () => unknown): string {
 export function content(name: string, value: unknown): string {
   const resolved = unwrap(value);
   if (name === "dangerouslySetInnerHTML") {
-    const inner = isObject(resolved) ? (resolved as { __html?: unknown }).__html : undefined;
+    const inner = isObject(resolved) ? (resolved as InnerHtmlProp).__html : undefined;
     return inner === null || inner === undefined ? "" : toString(inner);
   }
   if (name === "innerHTML") {
@@ -1175,13 +1185,13 @@ export function each<T>(
 function rowsUnder(given: Scope | null, total: number, build: (index: number) => unknown): string {
   let out = "";
   const next = { row: 0 };
-  const stretch = (): string => {
+  function stretch(): string {
     const before = bindingsWritten();
     let built = "";
     do built += esc(build(next.row++));
     while (next.row < total && bindingsWritten() === before && OWNERSHIP.sink === null);
     return built;
-  };
+  }
   while (next.row < total) {
     const scope = childScope(given, "each");
     let done = false;
@@ -1244,11 +1254,13 @@ function errorBoundary(
   // anything reactive: nothing can read the error before this function returns.
   let failed = false;
   let caught: unknown;
-  const reset = (): void => {
+  function reset(): void {
     failed = false;
     caught = undefined;
-  };
-  const asError = (err: unknown): Error => (err instanceof Error ? err : new Error(String(err)));
+  }
+  function asError(err: unknown): Error {
+    return err instanceof Error ? err : new Error(String(err));
+  }
 
   // E2.1: the catcher is on the INSTANCE scope and is installed before the
   // body runs, so a throw routed to it from anywhere below reaches this
@@ -1264,14 +1276,16 @@ function errorBoundary(
   // The FALLBACK's range says so, `f:` as a loading boundary's does, because a
   // client claiming it as the content's would claim the wrong markup: the
   // client builds the content aside and its fallback takes these nodes.
-  const showFallback = (): string => {
+  function showFallback(): string {
     let shown = "";
     if (fallback !== null && fallback !== undefined) {
-      const error = (): Error => asError(sanitizeThrown(caught));
+      function error(): Error {
+        return asError(sanitizeThrown(caught));
+      }
       shown = activate(given, fallback, [error, reset], flags, "branch");
     }
     return (flags & HYDRATE) === 0 ? shown : parkedRange(shown);
-  };
+  }
 
   // A loading boundary below this one can park and fail on a later resume,
   // after these bytes are written. The sink is handed what it needs to put
@@ -1312,12 +1326,19 @@ function errorBoundary(
   return showFallback();
 }
 
+interface LoadingMarkup {
+  markup: string;
+  parked: boolean;
+}
+
+type CountedId = NonNullable<Parameters<typeof childScope>[2]>;
+
 function loadingBoundary(
   given: Scope | null,
   fallback: Block<unknown> | null | undefined,
   body: Block<unknown>,
   flags: number,
-): { markup: string; parked: boolean } {
+): LoadingMarkup {
   // The boundary's own scope, with each arm an instance below it, which is the
   // shape the DOM backend builds: an async value is keyed by where it stands
   // among the scopes of its render, so the two have to open the same ones.
@@ -1328,11 +1349,11 @@ function loadingBoundary(
   // key is its position, and a build that stood somewhere else would find
   // nothing recorded under it and fetch again, for ever. So the content keeps
   // the position its first build took.
-  const numbering: { id: string | undefined } = { id: undefined };
+  const numbering: CountedId = { id: undefined };
   // A resume runs outside the error boundary that stood around this one, so
   // a boundary the resume parks is told which one that was.
   const catcher = CATCHER;
-  const build = (): string => {
+  function build(): string {
     const outer = CATCHER;
     CATCHER = catcher;
     try {
@@ -1340,7 +1361,7 @@ function loadingBoundary(
     } finally {
       CATCHER = outer;
     }
-  };
+  }
   // A read of a value that has not arrived throws, and a string render has no
   // effect that could be pending without one: the throw is the whole signal.
   let parkedOn: NotReadyError;
@@ -1467,13 +1488,82 @@ function slotBlock(slot: unknown): Block<unknown> | null {
   return slot === null || slot === undefined ? null : (slot as Block<unknown>);
 }
 
-export function ssrShow(props: {
+export interface SsrShowProps {
   when?: unknown;
   keyed?: unknown;
   fallback?: unknown;
   children?: unknown;
-}): SsrHtml {
-  const value = (): unknown => readValue(props.when, "Show.when");
+}
+
+export interface SsrForProps {
+  each?: unknown;
+  fallback?: unknown;
+  keyed?: unknown;
+  children: (item: never, index: never) => unknown;
+}
+
+interface EachSlots {
+  children: unknown;
+  fallback?: unknown;
+}
+
+export interface SsrRepeatProps {
+  count?: unknown;
+  from?: unknown;
+  fallback?: unknown;
+  children: (index: number) => unknown;
+}
+
+export interface SsrSwitchProps {
+  fallback?: unknown;
+  children?: unknown;
+}
+
+interface MatchedArm {
+  index: number;
+  value: unknown;
+  match: Record<string, unknown>;
+}
+
+export interface SsrLoadingProps {
+  fallback?: unknown;
+  on?: unknown;
+  children: unknown;
+}
+
+export interface SsrErroredProps {
+  fallback: unknown;
+  children: unknown;
+}
+
+export interface SsrIslandProps {
+  children: unknown;
+}
+
+export interface ClientOnlyOptions {
+  lazy?: boolean;
+  export?: string;
+}
+
+export interface ClientOnlyProps {
+  fallback?: unknown;
+}
+
+export interface SsrPortalProps {
+  mount?: unknown;
+  children: unknown;
+}
+
+export interface SsrRevealProps {
+  order?: unknown;
+  collapsed?: unknown;
+  children: unknown;
+}
+
+export function ssrShow(props: SsrShowProps): SsrHtml {
+  function value(): unknown {
+    return readValue(props.when, "Show.when");
+  }
   const keyed = readValue(props.keyed, "Show.keyed") === true;
   const key: Cell<unknown> = keyed
     ? (): unknown => value() || false
@@ -1491,12 +1581,7 @@ export function ssrShow(props: {
   return branch(null, null, key, arm);
 }
 
-export function ssrFor(props: {
-  each?: unknown;
-  fallback?: unknown;
-  keyed?: unknown;
-  children: (item: never, index: never) => unknown;
-}): SsrHtml {
+export function ssrFor(props: SsrForProps): SsrHtml {
   // `keyMode` in `flow.ts` owns the key rule, so the carrier crosses unresolved
   // and both backends reach one implementation of it.
   return eachOf(props.each, props.keyed as Cell<unknown>, props, "For");
@@ -1505,10 +1590,12 @@ export function ssrFor(props: {
 function eachOf(
   source: unknown,
   keyOf: ((item: never) => unknown) | false | null | Cell<unknown>,
-  props: { children: unknown; fallback?: unknown },
+  props: EachSlots,
   origin: string,
 ): SsrHtml {
-  const list = (): readonly unknown[] => readValue(source, `${origin}.each`) as readonly unknown[];
+  function list(): readonly unknown[] {
+    return readValue(source, `${origin}.each`) as readonly unknown[];
+  }
   return each(
     null,
     null,
@@ -1523,14 +1610,13 @@ function eachOf(
   );
 }
 
-export function ssrRepeat(props: {
-  count?: unknown;
-  from?: unknown;
-  fallback?: unknown;
-  children: (index: number) => unknown;
-}): SsrHtml {
-  const from = (): number => (readValue(props.from, "Repeat.from") as number | undefined) ?? 0;
-  const count = (): number => readValue(props.count, "Repeat.count") as number;
+export function ssrRepeat(props: SsrRepeatProps): SsrHtml {
+  function from(): number {
+    return (readValue(props.from, "Repeat.from") as number | undefined) ?? 0;
+  }
+  function count(): number {
+    return readValue(props.count, "Repeat.count") as number;
+  }
   const shifted: Block<unknown> = (index: unknown): unknown =>
     invokeBlock(props.children, [(index as number) + from()]);
   return each(
@@ -1549,13 +1635,13 @@ export function ssrMatch<T>(props: T): T {
   return props;
 }
 
-export function ssrSwitch(props: { fallback?: unknown; children?: unknown }): SsrHtml {
-  const arms = (): { index: number; value: unknown; match: Record<string, unknown> } | null => {
+export function ssrSwitch(props: SsrSwitchProps): SsrHtml {
+  function arms(): MatchedArm | null {
     // Read as data, and an arm written after another arrives as a Block that
     // yields its descriptor, one behind a condition as a Cell. A server render
     // has one frame, so both are simply run.
     const children: unknown[] = [];
-    const visit = (entry: unknown): void => {
+    function visit(entry: unknown): void {
       if (isArray<unknown>(entry)) {
         for (const item of entry) visit(item);
       } else if (typeof entry === "function") {
@@ -1563,7 +1649,7 @@ export function ssrSwitch(props: { fallback?: unknown; children?: unknown }): Ss
       } else {
         children.push(entry);
       }
-    };
+    }
     visit(props.children);
     for (let i = 0; i < children.length; i++) {
       const child = children[i] as Record<string, unknown> | null;
@@ -1572,11 +1658,13 @@ export function ssrSwitch(props: { fallback?: unknown; children?: unknown }): Ss
       if (value) return { index: i, value, match: child };
     }
     return null;
-  };
+  }
   // Row 0 is the fallback, so "no arm matched" is a key like any other — the
   // same table `passes/flow.rs` builds when it lowers a `Switch` itself.
   const found = arms();
-  const key = (): number => (found === null ? 0 : found.index + 1);
+  function key(): number {
+    return found === null ? 0 : found.index + 1;
+  }
   const body: Block<unknown> = (): unknown => {
     if (found === null) return invokeBlock(props.fallback, NO_ARGS);
     // Non-keyed is the default, and its children take the narrowed accessor.
@@ -1584,7 +1672,7 @@ export function ssrSwitch(props: { fallback?: unknown; children?: unknown }): Ss
     // the value this arm matched on — the shape has to agree with the DOM
     // half's or the two backends hand the same body different arguments.
     const keyed = readValue(found.match.keyed, "Match.keyed") === true;
-    const narrowed = (): unknown => found.value;
+    const narrowed: () => unknown = () => found.value;
     return invokeBlock(found.match.children, [keyed ? found.value : narrowed]);
   };
   return branch(null, null, key, body);
@@ -1600,10 +1688,7 @@ export function ssrSwitch(props: { fallback?: unknown; children?: unknown }): Ss
  * `0` stays the default: an uncompiled caller with no `hydratable` client half
  * is the case these adapters were written for.
  */
-export function ssrLoading(
-  props: { fallback?: unknown; on?: unknown; children: unknown },
-  flags = 0,
-): SsrHtml {
+export function ssrLoading(props: SsrLoadingProps, flags = 0): SsrHtml {
   return boundary(
     null,
     null,
@@ -1615,7 +1700,7 @@ export function ssrLoading(
   );
 }
 
-export function ssrErrored(props: { fallback: unknown; children: unknown }, flags = 0): SsrHtml {
+export function ssrErrored(props: SsrErroredProps, flags = 0): SsrHtml {
   return boundary(
     null,
     null,
@@ -1637,7 +1722,7 @@ export function ssrErrored(props: { fallback: unknown; children: unknown }, flag
  * key-based one does not.
  */
 /** The COMPONENT form, for a build whose flow pass is off. See `island`. */
-export function ssrIsland(props: { children: unknown }): SsrHtml {
+export function ssrIsland(props: SsrIslandProps): SsrHtml {
   return island(null, null, props.children as Block<unknown>);
 }
 
@@ -1672,9 +1757,9 @@ export function island(
  */
 export function clientOnly(
   _fn: () => Promise<unknown>,
-  _options?: { lazy?: boolean; export?: string },
+  _options?: ClientOnlyOptions,
   moduleUrl?: string,
-): (props: { fallback?: unknown }) => SsrHtml {
+): (props: ClientOnlyProps) => SsrHtml {
   return (props) => {
     if (moduleUrl !== undefined) reportModule(moduleUrl);
     const fallback = block((): unknown => {
@@ -1685,7 +1770,7 @@ export function clientOnly(
   };
 }
 
-export function ssrPortal(props: { mount?: unknown; children: unknown }): SsrHtml {
+export function ssrPortal(props: SsrPortalProps): SsrHtml {
   return portal(
     (): Node | string | null | undefined =>
       readValue(props.mount, "Portal.mount") as Node | string | undefined,
@@ -1830,10 +1915,6 @@ export function resolveDynamic(component: unknown, props: Record<string, unknown
   return element(resolved, props);
 }
 
-export function ssrReveal(props: {
-  order?: unknown;
-  collapsed?: unknown;
-  children: unknown;
-}): SsrHtml {
+export function ssrReveal(props: SsrRevealProps): SsrHtml {
   return reveal(props.order, props.collapsed, props.children);
 }

@@ -32,8 +32,12 @@ import { expectOnly, printedBy } from "./test-console.ts";
 
 type Payload = Record<string, unknown>;
 
+interface SeedStore {
+  __BARQ_DATA__?: Payload;
+}
+
 function seedStore(data: Payload | undefined): void {
-  const target = globalThis as { __BARQ_DATA__?: Payload };
+  const target = globalThis as SeedStore;
   if (data === undefined) delete target.__BARQ_DATA__;
   else target.__BARQ_DATA__ = { ...data };
 }
@@ -137,11 +141,11 @@ describe("createAsync auto-keying", () => {
   });
 
   test("sibling owner scopes do not collide", async () => {
-    const branch = (label: string) => {
+    function branch(label: string) {
       createRoot(() => {
         createMemo(async () => label);
       });
-    };
+    }
 
     const data = await renderInSession(() => {
       branch("left");
@@ -158,15 +162,15 @@ describe("createAsync auto-keying", () => {
     // label without its fetcher running.
     let fetches = 0;
     const reads: (() => unknown)[] = [];
-    const keyed = (label: string): void => {
+    function keyed(label: string): void {
       reads.push(
         createMemo(async () => {
           fetches++;
           return label;
         }),
       );
-    };
-    const tree = () => {
+    }
+    function tree() {
       keyed("top");
       createRoot(() => {
         keyed("nested");
@@ -174,7 +178,7 @@ describe("createAsync auto-keying", () => {
           keyed("deep");
         });
       });
-    };
+    }
 
     // server: inside a render session, under renderPage's root scope
     const server = await renderInSession(tree);
@@ -193,12 +197,12 @@ describe("createAsync auto-keying", () => {
   });
 
   test("keys are stable across two server renders in different sessions", async () => {
-    const tree = () => {
+    function tree() {
       createMemo(async () => "a");
       createRoot(() => {
         createMemo(async () => "b");
       });
-    };
+    }
 
     const first = await renderInSession(tree);
     const second = await renderInSession(tree);
@@ -209,7 +213,7 @@ describe("createAsync auto-keying", () => {
 
   test("auto-keyed server data seeds the client synchronously, with no refetch", async () => {
     let fetches = 0;
-    const tree = () => {
+    function tree() {
       const user = createMemo(async () => {
         fetches++;
         return "Ada";
@@ -222,7 +226,7 @@ describe("createAsync auto-keying", () => {
         reads.push(posts);
       });
       reads.push(user);
-    };
+    }
     const reads: (() => unknown)[] = [];
 
     const data = await renderInSession(tree);
@@ -242,7 +246,7 @@ describe("createAsync auto-keying", () => {
 
   test("renderPage and hydrate agree on the auto-keys, with no refetch", async () => {
     let fetches = 0;
-    const app = () => {
+    function app() {
       const user = createMemo(async () => {
         fetches++;
         return "Ada";
@@ -261,7 +265,7 @@ describe("createAsync auto-keying", () => {
         () => document.createTextNode("loading..."),
         () => document.createTextNode(greeting()),
       );
-    };
+    }
 
     const { html, data } = await renderPage(app);
     const served = fetches;
@@ -300,15 +304,17 @@ describe("createAsync auto-keying", () => {
    * positional can tell those apart at the moment of the read.
    */
   test("a divergent client tree shifts the auto-keys, and the drift is reported", async () => {
-    const a = () =>
-      createRoot(() => {
+    function a() {
+      return createRoot(() => {
         createMemo(async () => "A-VALUE");
       });
-    const b = () =>
-      createRoot(() => {
+    }
+    function b() {
+      return createRoot(() => {
         const value = createMemo(async () => "B-VALUE");
         return value;
       });
+    }
 
     const both = await renderInSession(() => {
       a();
@@ -350,12 +356,13 @@ describe("createAsync auto-keying", () => {
    */
   test("a named read refetches on a divergent tree instead of seeding wrong data", async () => {
     let fetches = 0;
-    const a = () =>
-      createRoot(() => {
+    function a() {
+      return createRoot(() => {
         createMemo(async () => "A-VALUE", { name: "a" });
       });
-    const b = () =>
-      createRoot(() => {
+    }
+    function b() {
+      return createRoot(() => {
         const value = createMemo(
           async () => {
             fetches++;
@@ -365,6 +372,7 @@ describe("createAsync auto-keying", () => {
         );
         return value;
       });
+    }
 
     const both = await renderInSession(() => {
       a();

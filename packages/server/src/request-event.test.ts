@@ -1,19 +1,17 @@
 import { DEV, createRoot } from "@barqjs/core";
-import { getRequestEvent, httpHeader, httpStatus } from "@barqjs/web";
+import { type ResponseStub, getRequestEvent, httpHeader, httpStatus } from "@barqjs/web";
 import { describe, expect, test } from "bun:test";
 
 import { provideRequestEvent } from "./storage.ts";
 import { expectOnly, printedBy } from "./test-console.ts";
 
-const event = () => ({
-  request: new Request("https://example.com/account"),
-  locals: { user: "salama" },
-  response: { headers: new Headers() } as {
-    headers: Headers;
-    status?: number;
-    committed?: boolean;
-  },
-});
+function event() {
+  return {
+    request: new Request("https://example.com/account"),
+    locals: { user: "salama" },
+    response: { headers: new Headers() } as ResponseStub,
+  };
+}
 
 describe("the request event", () => {
   test("is undefined outside a request", () => {

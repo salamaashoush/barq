@@ -7,29 +7,33 @@ import { WritableStream as WebWritableStream } from "node:stream/web";
 import { type ServerErrorContext, renderToStream, renderToString } from "./server.ts";
 import { esc, html, ssrLoading } from "./ssr.ts";
 
-const tick = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
+function tick(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
 
 afterEach(() => {
   clearHydrationData();
 });
 
-const page = () => () => {
-  const who = createMemo(
-    async () => {
-      await tick();
-      return "salama";
-    },
-    { key: "who" },
-  );
-  return html(
-    `<html><body><main>${esc(
-      ssrLoading({
-        fallback: () => html("<i>wait</i>"),
-        children: () => html(`<b>${esc(who())}</b>`),
-      }),
-    )}</main></body></html>`,
-  );
-};
+function page() {
+  return () => {
+    const who = createMemo(
+      async () => {
+        await tick();
+        return "salama";
+      },
+      { key: "who" },
+    );
+    return html(
+      `<html><body><main>${esc(
+        ssrLoading({
+          fallback: () => html("<i>wait</i>"),
+          children: () => html(`<b>${esc(who())}</b>`),
+        }),
+      )}</main></body></html>`,
+    );
+  };
+}
 
 async function text(stream: ReadableStream<Uint8Array>): Promise<string> {
   return new Response(stream).text();

@@ -9,35 +9,39 @@ afterEach(() => {
   clearHydrationData();
 });
 
-const wait = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 /** Two boundaries in a `<Reveal>`, the SECOND of which settles first. */
-const page = (order: string) => () =>
-  html(
-    `<main>${esc(
-      reveal(order, false, () =>
-        html(
-          [
-            ["slow", 30],
-            ["fast", 1],
-          ]
-            .map(([name, ms]) => {
-              const value = createMemo(async () => {
-                await wait(ms as number);
-                return name as string;
-              });
-              return esc(
-                ssrLoading({
-                  fallback: () => html("<i>wait</i>"),
-                  children: () => html(`<b>${esc(value())}</b>`),
-                }),
-              );
-            })
-            .join(""),
+function page(order: string) {
+  return () =>
+    html(
+      `<main>${esc(
+        reveal(order, false, () =>
+          html(
+            [
+              ["slow", 30],
+              ["fast", 1],
+            ]
+              .map(([name, ms]) => {
+                const value = createMemo(async () => {
+                  await wait(ms as number);
+                  return name as string;
+                });
+                return esc(
+                  ssrLoading({
+                    fallback: () => html("<i>wait</i>"),
+                    children: () => html(`<b>${esc(value())}</b>`),
+                  }),
+                );
+              })
+              .join(""),
+          ),
         ),
-      ),
-    )}</main>`,
-  );
+      )}</main>`,
+    );
+}
 
 async function chunks(order: string): Promise<string[]> {
   const reader = renderToStream(page(order)).readable.getReader();
@@ -49,8 +53,9 @@ async function chunks(order: string): Promise<string[]> {
   return out;
 }
 
-const chunkWith = (parts: string[], text: string): number =>
-  parts.findIndex((part) => part.includes(text));
+function chunkWith(parts: string[], text: string): number {
+  return parts.findIndex((part) => part.includes(text));
+}
 
 test("a sequential Reveal swaps a boundary only after the ones before it", async () => {
   const parts = await chunks("sequential");

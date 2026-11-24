@@ -1,3 +1,11 @@
+interface MarkRegistry {
+  __BARQ_MARKS__?: Map<string, Comment>;
+}
+
+interface BoundaryMarker {
+  $$barq?: (failed: boolean) => boolean;
+}
+
 /**
  * The client half of a swap: replace the range between `<!--[b:n-->` and its
  * matching `<!--]-->` with the template that just arrived.
@@ -40,16 +48,16 @@
 export function swapDeferredRange(n: number | string, wrapped?: boolean, failed?: boolean): void {
   const t = document.querySelector<HTMLTemplateElement>(`template[data-barq="${n}"]`);
   if (!t) return;
-  const g = globalThis as { __BARQ_MARKS__?: Map<string, Comment> };
+  const g = globalThis as MarkRegistry;
   const marks = g.__BARQ_MARKS__ ?? (g.__BARQ_MARKS__ = new Map<string, Comment>());
-  const index = (root: Node): void => {
+  function index(root: Node): void {
     const w = document.createTreeWalker(root, 128);
     let c: Node | null;
     while ((c = w.nextNode())) {
       const data = (c as Comment).data;
       if (data.startsWith("[b:") || data.startsWith("[e:")) marks.set(data, c as Comment);
     }
-  };
+  }
   const mark = (failed ? "[e:" : "[b:") + n;
   let open = marks.get(mark);
   if (!open || !open.isConnected || open.data !== mark) {
@@ -58,7 +66,7 @@ export function swapDeferredRange(n: number | string, wrapped?: boolean, failed?
   }
   if (!open || !open.isConnected) return;
   marks.delete(mark);
-  const owner = (open as { $$barq?: (failed: boolean) => boolean }).$$barq;
+  const owner = (open as BoundaryMarker).$$barq;
   if (owner && !owner(!!failed)) {
     t.parentNode?.removeChild(t);
     return;
@@ -107,14 +115,19 @@ export function swapDeferredRange(n: number | string, wrapped?: boolean, failed?
 /** The same function, as the bytes a page gets. Inlined once per stream. */
 export const SWAP_SNIPPET: string = `window.__BARQ_SWAP__=${swapDeferredRange.toString()};`;
 
+export interface HeadPatchTag {
+  k: string;
+  t: string;
+  a: Record<string, string>;
+  c?: string;
+}
+
 /**
  * The client half of a head patch: the tags a boundary declared with `useHead`
  * after the shell, applied when that boundary's swap runs. The same three
  * constraints as `swapDeferredRange`, for the same reason.
  */
-export function applyHeadPatch(
-  tags: readonly { k: string; t: string; a: Record<string, string>; c?: string }[],
-): void {
+export function applyHeadPatch(tags: readonly HeadPatchTag[]): void {
   for (const tag of tags) {
     if (tag.t === "title") {
       document.title = tag.c ?? "";

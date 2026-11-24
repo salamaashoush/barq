@@ -22,11 +22,27 @@ import { build } from "tsdown";
 import { wireText } from "../wire-text.config.ts";
 import { SWAP_SNIPPET as sourceSnippet } from "./swap.ts";
 
+interface StreamOptions {
+  scopeId: string;
+  onSerialize: (chunk: string) => void;
+  onDone: () => void;
+}
+
+interface SwapModule {
+  SWAP_SNIPPET: string;
+}
+
+interface SettledSeed {
+  s?: number;
+  v?: unknown;
+}
+
+interface SeedGlobal {
+  __SEED__?: Record<string, SettledSeed>;
+}
+
 interface Serializer {
-  crossSerializeStream: (
-    value: unknown,
-    options: { scopeId: string; onSerialize: (chunk: string) => void; onDone: () => void },
-  ) => () => void;
+  crossSerializeStream: (value: unknown, options: StreamOptions) => () => void;
   getCrossReferenceHeader: (scopeId: string) => string;
 }
 
@@ -44,7 +60,7 @@ beforeAll(async () => {
     outDir: out,
     logLevel: "silent",
   });
-  snippet = ((await import(join(out, "swap.js"))) as { SWAP_SNIPPET: string }).SWAP_SNIPPET;
+  snippet = ((await import(join(out, "swap.js"))) as SwapModule).SWAP_SNIPPET;
   minified = await import(join(out, "serializer.js"));
   installed = await import("seroval");
 });
@@ -73,7 +89,7 @@ describe("the swap", () => {
 });
 
 describe("seroval's helpers", () => {
-  const seedOf = async (serializer: Serializer, scopeId: string): Promise<string> => {
+  async function seedOf(serializer: Serializer, scopeId: string): Promise<string> {
     const chunks: string[] = [];
     await new Promise<void>((resolve) => {
       serializer.crossSerializeStream(
@@ -82,7 +98,7 @@ describe("seroval's helpers", () => {
       );
     });
     return `${serializer.getCrossReferenceHeader(scopeId)};window.__SEED__=${chunks[0]};${chunks.slice(1).join(";")}`;
-  };
+  }
 
   test("are minified text, smaller than the installed seroval's", async () => {
     const small = await seedOf(minified, "m0");
@@ -93,8 +109,7 @@ describe("seroval's helpers", () => {
 
   test("still settle and stamp a promise the way the client reads it", async () => {
     (0, eval)(await seedOf(minified, "m1"));
-    const seed = (globalThis as { __SEED__?: Record<string, { s?: number; v?: unknown }> })
-      .__SEED__!;
+    const seed = (globalThis as SeedGlobal).__SEED__!;
     (seed.r01 as unknown as Promise<unknown>).catch(() => {});
     expect({ s: seed.r00.s, v: seed.r00.v }).toEqual({ s: 1, v: "LATE" });
     expect({ s: seed.r01.s, v: String(seed.r01.v) }).toEqual({ s: 2, v: "Error: boom" });

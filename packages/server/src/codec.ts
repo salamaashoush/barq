@@ -85,6 +85,10 @@ interface ErrorInfo extends PluginInfo {
 const REDIRECT = Symbol.for("barq.redirect");
 const NOT_FOUND = Symbol.for("barq.not-found");
 
+interface ErrorParseContext {
+  parse: (input: unknown) => unknown;
+}
+
 /**
  * One parse body for all three modes.
  *
@@ -93,7 +97,7 @@ const NOT_FOUND = Symbol.for("barq.not-found");
  * against the sync context and reached by the other two through a cast, which
  * is narrower than declaring the union.
  */
-function parseError(value: Error, ctx: { parse: (input: unknown) => unknown }): ErrorInfo {
+function parseError(value: Error, ctx: ErrorParseContext): ErrorInfo {
   const kind = kindOf(value);
   const redirect = kind === "redirect" ? (value as unknown as RedirectShape) : undefined;
   return {
@@ -420,6 +424,10 @@ export function clearSerializationAdapters(): void {
   seedPlugins = null;
 }
 
+interface AdapterParseContext {
+  parse: (value: unknown) => never;
+}
+
 interface AdapterNode extends PluginInfo {
   v: never;
 }
@@ -437,9 +445,9 @@ interface AdapterNode extends PluginInfo {
  * and there is no way to write one into a string.
  */
 function pluginFor(adapter: AnySerializationAdapter): Plugin<unknown, AdapterNode> {
-  const reduce = (value: unknown, ctx: { parse: (value: unknown) => never }): AdapterNode => ({
-    v: ctx.parse(adapter.toSerializable(value as never)),
-  });
+  function reduce(value: unknown, ctx: AdapterParseContext): AdapterNode {
+    return { v: ctx.parse(adapter.toSerializable(value as never)) };
+  }
   return createPlugin<unknown, AdapterNode>({
     tag: `barq/adapter/${adapter.key}`,
     test: adapter.test,
@@ -563,6 +571,10 @@ export interface SeedEncoder {
   readonly hasPending: (value: unknown) => boolean;
 }
 
+interface MaybeThenable {
+  then?: unknown;
+}
+
 /**
  * Does this value carry a promise anywhere the encoder will walk?
  *
@@ -573,7 +585,7 @@ export interface SeedEncoder {
  */
 function carriesPending(value: unknown, seen: WeakSet<object> = new WeakSet()): boolean {
   if (value === null || typeof value !== "object") return false;
-  if (typeof (value as { then?: unknown }).then === "function") return true;
+  if (typeof (value as MaybeThenable).then === "function") return true;
   if (seen.has(value)) return false;
   seen.add(value);
   if (Array.isArray(value)) return value.some((item) => carriesPending(item, seen));
@@ -619,11 +631,11 @@ export function createSeedEncoder(adapters?: readonly AnySerializationAdapter[])
       // counting its outstanding payloads goes below zero and waits for its
       // deadline instead of closing.
       let done = false;
-      const finish = (): void => {
+      function finish(): void {
         if (done) return;
         done = true;
         onDone();
-      };
+      }
       crossSerializeStream(data, {
         scopeId,
         refs,

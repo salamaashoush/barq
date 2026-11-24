@@ -17,7 +17,9 @@ import { afterEach, expect, test } from "bun:test";
 import { renderPage } from "./server.ts";
 import { attr, esc, html, ssrLoading } from "./ssr.ts";
 
-const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+function tick() {
+  return new Promise<void>((resolve) => setTimeout(resolve, 0));
+}
 
 afterEach(() => {
   clearHydrationData();
@@ -31,7 +33,7 @@ function parse(markup: string): HTMLElement {
 
 test("a hostile attribute value before a parked boundary stays an attribute value", async () => {
   const query = '<!--[b:0--><!--]--><img src=x onerror="alert(1)">';
-  const page = (): unknown => {
+  function page(): unknown {
     const late = createMemo(async () => {
       await tick();
       return "salama";
@@ -44,7 +46,7 @@ test("a hostile attribute value before a parked boundary stays an attribute valu
         }),
       )}</main>`,
     );
-  };
+  }
 
   const out = await renderPage(page as never);
   const dom = parse(out.html);
@@ -57,7 +59,7 @@ test("a hostile attribute value before a parked boundary stays an attribute valu
 
 test("a hostile attribute value inside a fallback cannot end the boundary early", async () => {
   const title = '<!--]--><img src=x onerror="alert(1)">';
-  const page = (): unknown => {
+  function page(): unknown {
     const late = createMemo(async () => {
       await tick();
       return "salama";
@@ -70,7 +72,7 @@ test("a hostile attribute value inside a fallback cannot end the boundary early"
         }),
       )}</main>`,
     );
-  };
+  }
 
   const out = await renderPage(page as never);
 
@@ -79,7 +81,7 @@ test("a hostile attribute value inside a fallback cannot end the boundary early"
 });
 
 test("a boundary that settles inside another is patched where the outer one put it", async () => {
-  const page = (): unknown => {
+  function page(): unknown {
     const first = createMemo(async () => {
       await tick();
       return "first";
@@ -89,14 +91,15 @@ test("a boundary that settles inside another is patched where the outer one put 
       await tick();
       return "second";
     });
-    const inner = (): unknown =>
-      ssrLoading(
+    function inner(): unknown {
+      return ssrLoading(
         {
           fallback: () => html("<i>inner</i>"),
           children: () => html(`<u>${esc(second())}</u>`),
         },
         4,
       );
+    }
     return html(
       `<main>${esc(
         ssrLoading(
@@ -108,7 +111,7 @@ test("a boundary that settles inside another is patched where the outer one put 
         ),
       )}</main>`,
     );
-  };
+  }
 
   const out = await renderPage(page as never);
 

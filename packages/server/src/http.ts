@@ -17,6 +17,7 @@ import {
   mergeServerTiming,
 } from "@barqjs/web/internal";
 
+import type { NodeWritable } from "./server.ts";
 import { escapeAttribute } from "./ssr.ts";
 
 export interface SSRResponseOptions {
@@ -31,7 +32,7 @@ export interface SSRResponseOptions {
 /** The parts of a `renderToStream` result this consumes. */
 type StreamedRender =
   | { readonly readable: ReadableStream<Uint8Array> }
-  | { pipe(writable: { write: (chunk: string) => unknown; end: () => unknown }): void };
+  | { pipe(writable: NodeWritable): void };
 
 /** Headers the init carried, with every `set-cookie` kept as its own line. */
 function copied(init: HeadersInit | undefined): Headers {
@@ -43,11 +44,14 @@ function copied(init: HeadersInit | undefined): Headers {
   return headers;
 }
 
+interface ResponseHead {
+  status: number;
+  statusText: string | undefined;
+  headers: Headers;
+}
+
 /** The head a page answers with: the init, with the stub's status and headers over it. */
-function deriveHead(
-  stub: ResponseStub | undefined,
-  init: ResponseInit = {},
-): { status: number; statusText: string | undefined; headers: Headers } {
+function deriveHead(stub: ResponseStub | undefined, init: ResponseInit = {}): ResponseHead {
   const headers = copied(init.headers);
   if (stub !== undefined) {
     for (const [name, value] of stub.headers) {
@@ -69,10 +73,7 @@ function deriveHead(
  * The `Response` built, headers appended after construction: under a DOM
  * registered on the server, an init's `set-cookie` lines are dropped.
  */
-function built(
-  body: BodyInit | null,
-  head: { status: number; statusText: string | undefined; headers: Headers },
-): Response {
+function built(body: BodyInit | null, head: ResponseHead): Response {
   const response = new Response(body, { status: head.status, statusText: head.statusText });
   response.headers.delete("content-type");
   for (const [name, value] of head.headers) {
@@ -82,10 +83,7 @@ function built(
   return response;
 }
 
-function redirectFrom(
-  stub: ResponseStub,
-  head: { status: number; statusText: string | undefined; headers: Headers },
-): Response {
+function redirectFrom(stub: ResponseStub, head: ResponseHead): Response {
   return built(null, {
     status: getExpectedRedirectStatus(stub),
     statusText: undefined,
@@ -93,10 +91,7 @@ function redirectFrom(
   });
 }
 
-function html(
-  body: BodyInit | null,
-  head: { status: number; statusText: string | undefined; headers: Headers },
-): Response {
+function html(body: BodyInit | null, head: ResponseHead): Response {
   if (!head.headers.has("content-type"))
     head.headers.set("content-type", "text/html; charset=utf-8");
   return built(body, head);
@@ -156,7 +151,7 @@ export function createSSRResponse(
     let flushed = false;
     let closed = false;
     let stop: () => void = () => {};
-    const enqueue = (text: string): void => {
+    function enqueue(text: string): void {
       if (closed || controller === null || text === "") return;
       try {
         controller.enqueue(encoder.encode(text));
@@ -164,8 +159,8 @@ export function createSSRResponse(
         // The consumer has gone; the render is stopped by `cancel`.
         closed = true;
       }
-    };
-    const write = (chunk: string): void => {
+    }
+    function write(chunk: string): void {
       if (!flushed) {
         flushed = true;
         if (stub !== undefined) commitResponseStub(stub, { allowLateLocation: true, event });
@@ -193,8 +188,8 @@ export function createSSRResponse(
         );
       }
       enqueue(transform === undefined ? chunk : transform(chunk));
-    };
-    const end = (): void => {
+    }
+    function end(): void {
       if (!flushed) write("");
       if (closed || controller === null) return;
       const location = stub?.headers.get("location") ?? null;
@@ -214,7 +209,7 @@ export function createSSRResponse(
       } catch {
         // Already closed by the consumer.
       }
-    };
+    }
 
     if ("readable" in result) {
       const reader = result.readable.getReader();
@@ -262,14 +257,14 @@ export function composeMiddleware(
 ) => Promise<Response> {
   return (request, last) => {
     let reached = -1;
-    const dispatch = (at: number, current: Request): Promise<Response> => {
+    function dispatch(at: number, current: Request): Promise<Response> {
       if (at <= reached)
         return Promise.reject(new Error("[barq] `next()` was called twice in one middleware."));
       reached = at;
       const middleware = middlewares[at];
       if (middleware === undefined) return Promise.resolve(last(current));
       return Promise.resolve(middleware(current, (next) => dispatch(at + 1, next ?? current)));
-    };
+    }
     return dispatch(0, request);
   };
 }

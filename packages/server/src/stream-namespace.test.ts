@@ -17,7 +17,9 @@ import { attr, esc, html, ssrLoading } from "./ssr.ts";
 
 const SVG = "http://www.w3.org/2000/svg";
 
-const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+function tick() {
+  return new Promise<void>((resolve) => setTimeout(resolve, 0));
+}
 
 async function collect(stream: ReadableStream<Uint8Array>): Promise<string> {
   const reader = stream.getReader();
@@ -114,11 +116,12 @@ test("a boundary parked by a resumed boundary stands where that one does", async
         await tick();
         return "2";
       });
-      const inner = (): unknown =>
-        ssrLoading({
+      function inner(): unknown {
+        return ssrLoading({
           fallback: () => html(""),
           children: () => html(`<circle r="${esc(second())}"/>`),
         });
+      }
       return html(
         `<svg>${esc(
           ssrLoading({

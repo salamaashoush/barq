@@ -6,7 +6,9 @@ import { generateHydrationScript, renderPage, renderToStream } from "./server.ts
 import { type SsrHtml, boundary, esc, html } from "./ssr.ts";
 import { expectOnly, printedBy } from "./test-console.ts";
 
-const tick = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
+function tick(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
 
 afterEach(() => {
   clearHydrationData();
@@ -24,8 +26,9 @@ async function collect(stream: ReadableStream<Uint8Array>): Promise<string> {
   return out;
 }
 
-const showFailure = (error: Cell<unknown>): SsrHtml =>
-  html(`<em>${esc((error() as Error).message)}</em>`);
+function showFailure(error: Cell<unknown>): SsrHtml {
+  return html(`<em>${esc((error() as Error).message)}</em>`);
+}
 
 function errored(body: () => SsrHtml): string {
   return esc(boundary(null, null, "error", showFailure, body, HYDRATE));
@@ -55,16 +58,18 @@ const GENERIC = "Internal Server Error";
 
 describe("generateHydrationScript", () => {
   test("is the bootstrap, and carries no render's data while two renders are in flight", async () => {
-    const page = (name: string) => () => {
-      const who = createMemo(
-        async () => {
-          await tick();
-          return name;
-        },
-        { key: "who" },
-      );
-      return html(`<p>${loading(() => html(`<b>${esc(who())}</b>`))}</p>`);
-    };
+    function page(name: string) {
+      return () => {
+        const who = createMemo(
+          async () => {
+            await tick();
+            return name;
+          },
+          { key: "who" },
+        );
+        return html(`<p>${loading(() => html(`<b>${esc(who())}</b>`))}</p>`);
+      };
+    }
 
     const [first, second] = await Promise.all([
       renderPage(page("salama-first")),

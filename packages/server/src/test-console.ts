@@ -24,12 +24,21 @@ export function expectOnly(printed: unknown[][], code: string): void {
   for (const [line] of printed) expect(String(line)).toStartWith(`[${code}] `);
 }
 
+interface SpyCalls {
+  calls: unknown[][];
+}
+
+interface HeldSpy {
+  mock: SpyCalls;
+  mockRestore(): void;
+}
+
 /**
  * Holds the console for each test in the enclosing `describe`, every one of
  * which provokes `code` on purpose, and fails a test that printed anything else.
  */
 export function holdReports(code: string): void {
-  let held: { mock: { calls: unknown[][] }; mockRestore(): void }[] = [];
+  let held: HeldSpy[] = [];
   beforeEach(() => {
     held = [
       spyOn(console, "warn").mockImplementation(() => {}),

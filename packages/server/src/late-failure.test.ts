@@ -19,18 +19,34 @@ import { renderPage, renderToStream } from "./server.ts";
 import { holdReports } from "./test-console.ts";
 import { type SsrHtml, boundary, esc, html } from "./ssr.ts";
 
-const tick = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
+interface SeedStore {
+  __BARQ_DATA__?: Record<string, unknown>;
+}
+
+interface SettledSeed {
+  s?: number;
+  v?: unknown;
+}
+
+function tick(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+interface Fired<T> {
+  value: T;
+  fired: number[];
+}
 
 /**
  * The delay of every timer of a deadline's length that fired while `run` was
  * pending. Which timer let a render go is a fact about the render; how long it
  * took is a fact about the machine.
  */
-async function deadlinesFired<T>(run: () => Promise<T>): Promise<{ value: T; fired: number[] }> {
+async function deadlinesFired<T>(run: () => Promise<T>): Promise<Fired<T>> {
   const real = globalThis.setTimeout;
   const fired: number[] = [];
-  const recording = (handler: (...args: unknown[]) => void, ms = 0, ...args: unknown[]) =>
-    real(
+  function recording(handler: (...args: unknown[]) => void, ms = 0, ...args: unknown[]) {
+    return real(
       (...passed: unknown[]) => {
         if (ms >= 1000) fired.push(ms);
         handler(...passed);
@@ -38,6 +54,7 @@ async function deadlinesFired<T>(run: () => Promise<T>): Promise<{ value: T; fir
       ms,
       ...args,
     );
+  }
   globalThis.setTimeout = recording as unknown as typeof setTimeout;
   try {
     return { value: await run(), fired };
@@ -48,11 +65,12 @@ async function deadlinesFired<T>(run: () => Promise<T>): Promise<{ value: T; fir
 
 afterEach(() => {
   clearHydrationData();
-  (globalThis as { __BARQ_DATA__?: unknown }).__BARQ_DATA__ = undefined;
+  (globalThis as SeedStore).__BARQ_DATA__ = undefined;
 });
 
-const failed = (error: Cell<unknown>): SsrHtml =>
-  html(`<em>failed: ${esc((error() as Error).message)}</em>`);
+function failed(error: Cell<unknown>): SsrHtml {
+  return html(`<em>failed: ${esc((error() as Error).message)}</em>`);
+}
 
 function errored(body: () => SsrHtml, flags = HYDRATE): string {
   return esc(boundary(null, null, "error", failed, body, flags));
@@ -62,14 +80,15 @@ function loading(body: () => SsrHtml, flags = HYDRATE): string {
   return esc(boundary(null, null, "loading", () => html("<i>skel</i>"), body, flags));
 }
 
-const rejectsLate = (key: string) =>
-  createMemo(
+function rejectsLate(key: string) {
+  return createMemo(
     async (): Promise<string> => {
       await tick();
       throw markSafeError(new Error("late boom"));
     },
     { key },
   );
+}
 
 describe("a buffered page", () => {
   test("shows the error boundary's fallback for a read that fails after the shell", async () => {
@@ -89,10 +108,10 @@ describe("a buffered page", () => {
         await tick();
         return "LATE";
       });
-      const boom = (): string => {
+      function boom(): string {
         if (late() === "LATE") throw markSafeError(new Error("late boom"));
         return "never";
-      };
+      }
       return html(
         `<main>${errored(() => html(loading(() => html(`<b>${esc(boom())}</b>`))))}</main>`,
       );
@@ -185,11 +204,7 @@ describe("a buffered page", () => {
     expect(Object.keys(page.data)).toEqual(["bad"]);
     const source = /<script[^>]*>([\s\S]*?)<\/script>/.exec(page.script)?.[1] ?? "";
     (0, eval)(source);
-    const seeded = (globalThis as { __BARQ_DATA__?: Record<string, unknown> }).__BARQ_DATA__
-      ?.bad as {
-      s?: number;
-      v?: unknown;
-    };
+    const seeded = (globalThis as SeedStore).__BARQ_DATA__?.bad as SettledSeed;
     expect(seeded.s).toBe(2);
     expect(String(seeded.v)).toBe("Error: late boom");
   });
@@ -227,10 +242,10 @@ describe("a stream", () => {
     document.body.innerHTML = "";
   });
 
-  const lateFailure = (): SsrHtml => {
+  function lateFailure(): SsrHtml {
     const bad = rejectsLate("bad");
     return html(`<main>${errored(() => html(loading(() => html(`<b>${esc(bad())}</b>`))))}</main>`);
-  };
+  }
 
   test("places the error boundary's fallback over everything it held, and reports the failure", async () => {
     const seen: unknown[] = [];
@@ -314,8 +329,11 @@ describe("a stream", () => {
         renderToStream(
           () => {
             const bad = rejectsLate("bad");
-            const outer = (body: () => SsrHtml): string =>
-              esc(boundary(null, null, "error", () => html("<em>outer</em>"), body, HYDRATE));
+            function outer(body: () => SsrHtml): string {
+              return esc(
+                boundary(null, null, "error", () => html("<em>outer</em>"), body, HYDRATE),
+              );
+            }
             return html(
               `<main>${outer(() =>
                 html(

@@ -12,20 +12,25 @@ import { afterEach, expect, test } from "bun:test";
 import { renderPage, renderToStream, renderToString } from "./server.ts";
 import { esc, html, ssrLoading } from "./ssr.ts";
 
-const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
-const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+function tick() {
+  return new Promise<void>((resolve) => setTimeout(resolve, 0));
+}
+function wait(ms: number) {
+  return new Promise<void>((resolve) => setTimeout(resolve, ms));
+}
 
 afterEach(() => {
   clearHydrationData();
 });
 
-const defer = (value: () => unknown): string =>
-  esc(
+function defer(value: () => unknown): string {
+  return esc(
     ssrLoading({
       fallback: () => html("<i>skel</i>"),
       children: () => html(`<b>${esc(value())}</b>`),
     }),
   );
+}
 
 test("renderToString disposes its root when the page throws", () => {
   let cleaned = 0;

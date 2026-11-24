@@ -16,6 +16,10 @@ import type { RequestEvent } from "@barqjs/web";
 
 const REQUEST_EVENT = Symbol.for("barq.request-event");
 
+interface RequestEventHolder {
+  [REQUEST_EVENT]?: hooks.AsyncLocalStorage<RequestEvent>;
+}
+
 /**
  * Run `cb` with `event` as the current request's, across every `await` inside
  * it. Build the event with `createRequestEvent` from `@barqjs/server`.
@@ -26,7 +30,7 @@ const REQUEST_EVENT = Symbol.for("barq.request-event");
  * evaluate there.
  */
 export function provideRequestEvent<T>(event: RequestEvent, cb: () => T): T {
-  const holder = globalThis as { [REQUEST_EVENT]?: hooks.AsyncLocalStorage<RequestEvent> };
+  const holder = globalThis as RequestEventHolder;
   if (holder[REQUEST_EVENT] === undefined) {
     const AsyncLocalStorage = hooks.AsyncLocalStorage;
     if (typeof AsyncLocalStorage !== "function") {
@@ -45,8 +49,6 @@ export function provideRequestEvent<T>(event: RequestEvent, cb: () => T): T {
  * requests, which must not read one of them as its own.
  */
 export function withoutRequestEvent<T>(cb: () => T): T {
-  const storage = (globalThis as { [REQUEST_EVENT]?: hooks.AsyncLocalStorage<RequestEvent> })[
-    REQUEST_EVENT
-  ];
+  const storage = (globalThis as RequestEventHolder)[REQUEST_EVENT];
   return storage === undefined ? cb() : storage.exit(cb);
 }

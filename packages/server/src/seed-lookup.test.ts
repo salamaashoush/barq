@@ -11,15 +11,24 @@
 import { createMemo, createRoot, runWithOwner, settle } from "@barqjs/core";
 import { afterEach, expect, test } from "bun:test";
 
-const store = (data: Record<string, unknown> | undefined): void => {
-  (globalThis as { __BARQ_DATA__?: Record<string, unknown> }).__BARQ_DATA__ = data;
-};
+interface SeedStore {
+  __BARQ_DATA__?: Record<string, unknown>;
+}
+
+interface KeyedRead {
+  value: unknown;
+  fetches: number;
+}
+
+function store(data: Record<string, unknown> | undefined): void {
+  (globalThis as SeedStore).__BARQ_DATA__ = data;
+}
 
 afterEach(() => {
   store(undefined);
 });
 
-async function readKeyed(key: string): Promise<{ value: unknown; fetches: number }> {
+async function readKeyed(key: string): Promise<KeyedRead> {
   let fetches = 0;
   const value = runWithOwner(null, () =>
     createRoot(() =>

@@ -15,11 +15,22 @@ import { expect, test } from "bun:test";
 
 import { dynamic, html, resolveDynamic } from "./ssr.ts";
 
-const markupOf = (value: unknown): string => String(value);
+function markupOf(value: unknown): string {
+  return String(value);
+}
+
+interface ParsedAttribute {
+  name: string;
+  value: string;
+}
+
+interface Parse5 {
+  parseFragment: (source: string) => ParsedNode;
+}
 
 interface ParsedNode {
   tagName?: string;
-  attrs?: { name: string; value: string }[];
+  attrs?: ParsedAttribute[];
   childNodes?: ParsedNode[];
 }
 
@@ -33,14 +44,12 @@ async function elementsIn(markup: string): Promise<string[]> {
     }),
   ][0];
   if (found === undefined) throw new Error("parse5 is not installed; this check needs it");
-  const parse5 = (await import(`${root}/${found}`)) as {
-    parseFragment: (source: string) => ParsedNode;
-  };
+  const parse5 = (await import(`${root}/${found}`)) as Parse5;
   const out: string[] = [];
-  const walk = (node: ParsedNode): void => {
+  function walk(node: ParsedNode): void {
     if (node.tagName !== undefined) out.push(node.tagName);
     for (const child of node.childNodes ?? []) walk(child);
-  };
+  }
   walk(parse5.parseFragment(markup));
   return out;
 }
@@ -89,8 +98,9 @@ test("both entry points refuse a tag name that does not begin with an ASCII lett
 });
 
 test("dynamic writes one range around whatever its source answers", () => {
-  const Badge = (props: Record<string, unknown>) =>
-    html(`<b>${(props.label as () => string)()}</b>`);
+  function Badge(props: Record<string, unknown>) {
+    return html(`<b>${(props.label as () => string)()}</b>`);
+  }
   let which: "badge" | "tag" | "none" = "badge";
   const Chosen = dynamic(() => (which === "badge" ? Badge : which === "tag" ? "i" : null));
   const props = { label: () => "salama", children: "text" };

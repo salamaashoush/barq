@@ -22,10 +22,11 @@ function page(moduleUrl?: string) {
     undefined,
     moduleUrl,
   );
-  const view = () =>
-    html(
+  function view() {
+    return html(
       `<html><head></head><body>${esc(Chart({ fallback: () => html("<p>salama's chart</p>") }))}</body></html>`,
     );
+  }
   return { view, imports: () => imports };
 }
 

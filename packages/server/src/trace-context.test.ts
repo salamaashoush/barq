@@ -14,6 +14,10 @@ import { renderToString } from "./server.ts";
 import { html } from "./ssr.ts";
 import { provideRequestEvent } from "./storage.ts";
 
+interface SeenTrace {
+  context?: TraceContext;
+}
+
 const TRACE = "4bf92f3577b34da6a3ce929d0e0e4736";
 const PARENT = "00f067aa0ba902b7";
 
@@ -77,7 +81,7 @@ describe("getTraceContext", () => {
   });
 
   test("is the render's own outside a request, read within it", () => {
-    const seen: { context?: TraceContext } = {};
+    const seen: SeenTrace = {};
     renderToString(() => {
       seen.context = getTraceContext();
       createMemo(() => 1);

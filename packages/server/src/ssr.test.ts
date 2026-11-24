@@ -142,7 +142,9 @@ describe("escaping", () => {
   });
 
   test("and never split a surrogate pair or drop a code point", () => {
-    const points = (s: string): number => Array.from(s).length;
+    function points(s: string): number {
+      return Array.from(s).length;
+    }
     const lone = /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/;
     for (const value of BOUNDARIES) {
       const pairs = points(value) - points(value.replaceAll(/[\u{10000}-\u{10ffff}]/gu, ""));
@@ -446,9 +448,22 @@ describe("attributes", () => {
   });
 });
 
+interface Row {
+  n: string;
+}
+
+interface IdentifiedRow {
+  id: string;
+}
+
+interface KeyCarrier {
+  keyed: () => unknown;
+}
+
 describe("the six string-inlinable flow components", () => {
-  const row = (item: { n: string }, index: () => number) =>
-    html(`<li>${index()}: ${esc(item.n)}</li>`);
+  function row(item: Row, index: () => number) {
+    return html(`<li>${index()}: ${esc(item.n)}</li>`);
+  }
 
   test("ssrFor reproduces For's rows, keys and fallback", () => {
     const rows = [{ n: "a" }, { n: "<b>" }];
@@ -463,15 +478,15 @@ describe("the six string-inlinable flow components", () => {
     // A key FUNCTION hands the row its item as an ACCESSOR.
     const boxed = ssrFor({
       each: rows,
-      keyed: cell((item: { n: string }) => item.n),
-      children: (item: () => { n: string }) => html(`<li>${esc(item().n)}</li>`),
+      keyed: cell((item: Row) => item.n),
+      children: (item: () => Row) => html(`<li>${esc(item().n)}</li>`),
     });
     expect(boxed.toString()).toBe("<li>a</li><li>&lt;b&gt;</li>");
     // `keyed: false` is the positional mode, whose row item is an accessor.
     const unkeyed = ssrFor({
       each: rows,
       keyed: false,
-      children: (item: () => { n: string }) => html(`<li>${esc(item().n)}</li>`),
+      children: (item: () => Row) => html(`<li>${esc(item().n)}</li>`),
     });
     expect(unkeyed.toString()).toBe("<li>a</li><li>&lt;b&gt;</li>");
   });
@@ -488,15 +503,15 @@ describe("the six string-inlinable flow components", () => {
       { id: "y", n: "b" },
     ];
     const seen: unknown[] = [];
-    const keyed = (item: { id: string }) => {
+    function keyed(item: IdentifiedRow) {
       seen.push(item);
       return item.id;
-    };
+    }
     const carrier = props([
       { each: rows },
       { keyed },
       {
-        children: (item: () => { n: string }) => html(`<li>${esc(item().n)}</li>`),
+        children: (item: () => Row) => html(`<li>${esc(item().n)}</li>`),
       },
     ]) as never;
 
@@ -509,7 +524,7 @@ describe("the six string-inlinable flow components", () => {
     // The detector. Reading the same carrier the way a Cell is read — call it,
     // take the result — is what `ssrFor` used to do, and it is a TypeError on
     // the first row rather than a wrong string.
-    expect(() => (carrier as { keyed: () => unknown }).keyed()).toThrow();
+    expect(() => (carrier as KeyCarrier).keyed()).toThrow();
   });
 
   test("ssrFor keyed={false} hands the item as an accessor and the index as a number", () => {
@@ -596,7 +611,7 @@ describe("the six string-inlinable flow components", () => {
         () =>
           For({
             each: () => rows,
-            children: (item: { n: string }, index: Cell<number>) =>
+            children: (item: Row, index: Cell<number>) =>
               element("li", { children: `${index()}: ${item.n}` }),
           }),
       ],
@@ -604,14 +619,13 @@ describe("the six string-inlinable flow components", () => {
         ssrFor({
           each: rows,
           keyed: false,
-          children: (item: () => { n: string }, index: number) =>
-            html(`<li>${index}: ${esc(item().n)}</li>`),
+          children: (item: () => Row, index: number) => html(`<li>${index}: ${esc(item().n)}</li>`),
         }).toString(),
         () =>
           For({
             each: () => rows,
             keyed: false,
-            children: (item: Cell<{ n: string }>, index: number) =>
+            children: (item: Cell<Row>, index: number) =>
               element("li", { children: `${index}: ${item().n}` }),
           }),
       ],
@@ -657,7 +671,9 @@ describe("the two SSR strategies compose", () => {
 
   test("a view built with the DOM is owned by the render that writes it out", async () => {
     const capture = DEV.diagnostics.capture();
-    const view = () => element("p", { children: "salama" });
+    function view() {
+      return element("p", { children: "salama" });
+    }
     expect(renderToString(view)).toBe("<p>salama</p>");
     expect((await renderPage(view)).html).toBe("<p>salama</p>");
     expect(capture.stop().map((event) => event.code)).toEqual([]);
@@ -872,8 +888,9 @@ describe("raw text has no escaping, so the close sequence is neutralised", () =>
  */
 describe("a form action", () => {
   const SERVER_FN = Symbol.for("barq.server-fn");
-  const serverFn = (id: string): unknown =>
-    Object.assign(() => undefined, { [SERVER_FN]: true, meta: { id } });
+  function serverFn(id: string): unknown {
+    return Object.assign(() => undefined, { [SERVER_FN]: true, meta: { id } });
+  }
 
   test("a server function becomes the endpoint, with the method it requires", () => {
     // POST is not decoration: the endpoint refuses GET, because a GET-invocable
@@ -907,7 +924,7 @@ describe("a form action", () => {
  */
 describe("the scopes of a list's rows", () => {
   const Theme = createContext("none");
-  const scopesFor = (count: number): number => {
+  function scopesFor(count: number): number {
     const before = scopeAllocations();
     renderToString(() =>
       ssrFor({
@@ -916,27 +933,27 @@ describe("the scopes of a list's rows", () => {
       }),
     );
     return scopeAllocations() - before;
-  };
+  }
 
   test("rows that write no binding share one scope", () => {
     expect(scopesFor(50)).toBe(scopesFor(1));
   });
 
   test("a binding one row writes does not reach the rows after it", () => {
-    const row = (item: string): SsrHtml => {
+    function row(item: string): SsrHtml {
       const found = getContext(Theme);
       if (item !== "b") setContext(Theme, `by ${item}`);
       return html(`<i>${item}:${found}:${getContext(Theme)}</i>`);
-    };
+    }
     const out = renderToString(() => ssrFor({ each: ["a", "b", "c", "d"], children: row }));
     expect(out).toBe("<i>a:none:by a</i><i>b:none:none</i><i>c:none:by c</i><i>d:none:by d</i>");
   });
 
   test("a row that throws takes down the stretch it was built in", () => {
-    const row = (item: number): SsrHtml => {
+    function row(item: number): SsrHtml {
       if (item === 2) throw new Error("row two");
       return html(`<i>${esc(item)}</i>`);
-    };
+    }
     expect(() => renderToString(() => ssrFor({ each: [0, 1, 2, 3], children: row }))).toThrow(
       "row two",
     );
