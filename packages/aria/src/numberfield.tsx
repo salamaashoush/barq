@@ -809,6 +809,13 @@ export interface NumberFieldComponentProps extends StyleProps {
   autoFocus?: boolean;
   incrementAriaLabel?: string;
   decrementAriaLabel?: string;
+  /** On the `<input>`, which carries `data-slot="number-field-input"`. */
+  inputClass?: string;
+  /** On both stepper buttons, which carry `data-slot="number-field-decrement"` and `"number-field-increment"`. */
+  stepperClass?: string;
+  /** What the buttons show. Named by their labels either way. @default "+" and "−" */
+  incrementIcon?: Child;
+  decrementIcon?: Child;
   "aria-label"?: string;
   "aria-labelledby"?: string;
   ref?: RefTarget<HTMLInputElement>;
@@ -913,12 +920,19 @@ export function NumberField(props: NumberFieldComponentProps) {
         <button
           {...decrement.buttonProps}
           type="button"
+          class={props.stepperClass}
+          data-slot="number-field-decrement"
           data-pressed={decrement.isPressed}
           ref={decrementRef.set}
         >
-          <span aria-hidden="true">−</span>
+          {props.decrementIcon ?? <span aria-hidden="true">−</span>}
         </button>
-        <input {...inputElementProps} ref={mergeRefs(inputRef.set, props.ref)} />
+        <input
+          {...inputElementProps}
+          class={props.inputClass}
+          data-slot="number-field-input"
+          ref={mergeRefs(inputRef.set, props.ref)}
+        />
         {() =>
           props.name === undefined ? null : (
             <input
@@ -933,10 +947,12 @@ export function NumberField(props: NumberFieldComponentProps) {
         <button
           {...increment.buttonProps}
           type="button"
+          class={props.stepperClass}
+          data-slot="number-field-increment"
           data-pressed={increment.isPressed}
           ref={incrementRef.set}
         >
-          <span aria-hidden="true">+</span>
+          {props.incrementIcon ?? <span aria-hidden="true">+</span>}
         </button>
       </div>
       <span {...descriptionProps}>{props.description}</span>

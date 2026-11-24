@@ -555,3 +555,27 @@ describe("a controlled number field", () => {
     expect(input.value).toBe("255");
   });
 });
+
+describe("a number field's parts", () => {
+  test("the input and the steppers take a class, a slot and an icon", () => {
+    render(() => (
+      <NumberField
+        label="Seats"
+        defaultValue={2}
+        inputClass="in"
+        stepperClass="step"
+        incrementIcon={<svg data-testid="plus" aria-hidden="true" />}
+        decrementIcon={<svg data-testid="minus" aria-hidden="true" />}
+      />
+    ));
+    const input = document.querySelector('[data-slot="number-field-input"]');
+    expect(input?.className).toBe("in");
+    const up = document.querySelector('[data-slot="number-field-increment"]') as HTMLElement;
+    const down = document.querySelector('[data-slot="number-field-decrement"]') as HTMLElement;
+    expect(up.className).toBe("step");
+    expect(down.className).toBe("step");
+    expect(up.querySelector('[data-testid="plus"]')).not.toBeNull();
+    expect(down.querySelector('[data-testid="minus"]')).not.toBeNull();
+    expect(up.getAttribute("aria-label")).toBe("Increase Seats");
+  });
+});
