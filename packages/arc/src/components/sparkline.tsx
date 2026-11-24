@@ -4,6 +4,7 @@ import type { UiProps } from "@barqjs/ui/props";
 import { uiProps } from "@barqjs/ui/slot";
 
 import { arcLayer as arc } from "../layer.ts";
+import { place } from "../lib/place.ts";
 import { type Customisable, parts } from "../lib/parts.ts";
 import { fg, space, tone as tones } from "../style/index.ts";
 import type { Tone } from "../theme/tokens.ts";
@@ -19,9 +20,7 @@ const INSET = 2;
 
 export const sparklineStyles = variants({
   slots: {
-    root: arc(fg.toneBase, {
-      display: "block",
-      width: "100%",
+    root: arc(fg.toneBase, place.block, {
       height: space.x10,
       overflow: "visible",
     }),

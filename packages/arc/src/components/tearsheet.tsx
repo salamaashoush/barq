@@ -11,6 +11,7 @@ import {
 } from "@barqjs/ui/dialog";
 
 import { arcLayer as arc } from "../layer.ts";
+import { place } from "../lib/place.ts";
 import { type Customisable, parts } from "../lib/parts.ts";
 import { openState } from "../lib/search-state.ts";
 import { edge, gap, layout, panel, space, surface } from "../style/index.ts";
@@ -18,12 +19,7 @@ import { useArcMessages } from "./messages.ts";
 
 export const tearsheetStyles = variants({
   slots: {
-    root: arc(layout.column, gap[0], {
-      padding: "0px",
-      width: "100vw",
-      maxWidth: "100vw",
-      height: "100dvh",
-      maxHeight: "100dvh",
+    root: arc(layout.column, gap[0], place.unpadded, place.screen, {
       borderRadius: "0px",
       insetBlockStart: "auto",
       insetBlockEnd: "0",

@@ -18,6 +18,7 @@ import { srOnly } from "@barqjs/ui/sr-only";
 import { on } from "@barqjs/ui/conditions";
 
 import { arcLayer as arc } from "../layer.ts";
+import { place } from "../lib/place.ts";
 import {
   type ArcFieldProps,
   type FieldSlots,
@@ -474,13 +475,7 @@ function Chip(props: { class: string; color: string | null }) {
 export const colorFieldStyles = variants({
   slots: {
     control: arc(layout.relative, layout.fill),
-    swatch: arc({
-      position: "absolute",
-      insetInlineStart: space.x2,
-      top: "50%",
-      translate: "0 -50%",
-      pointerEvents: "none",
-    }),
+    swatch: arc(place.middle, { insetInlineStart: space.x2, pointerEvents: "none" }),
     input: arc(inputVariants(), type.mono, { paddingInlineStart: space.x9 }),
     chip: arc(layout.noShrink),
     trigger: arc(layout.row, gap[2], { justifyContent: "flex-start", minWidth: "10rem" }),

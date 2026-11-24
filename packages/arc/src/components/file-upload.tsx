@@ -33,6 +33,7 @@ import { on } from "@barqjs/ui/conditions";
 import { when } from "@barqjs/ui/shared-when";
 
 import { arcLayer as arc } from "../layer.ts";
+import { place } from "../lib/place.ts";
 import { type Customisable, parts } from "../lib/parts.ts";
 import {
   bg,
@@ -451,7 +452,7 @@ export const uploadQueueStyles = variants({
   slots: {
     root: arc(plainList, layout.column, gap[2]),
     item: arc(layout.fill),
-    preview: arc({ objectFit: "cover", width: "100%", height: "100%" }),
+    preview: arc(place.fill, { objectFit: "cover" }),
     name: arc({}),
     meta: arc(type.numeric),
     progress: arc(layout.fill),

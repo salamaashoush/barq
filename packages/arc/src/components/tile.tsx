@@ -11,6 +11,7 @@ import { tokens } from "@barqjs/ui/theme/tokens";
 
 import { arcLayer as arc } from "../layer.ts";
 import { type Customisable, parts, rendered } from "../lib/parts.ts";
+import { bareButton } from "../lib/bare.ts";
 import { afterLayer } from "../lib/pseudo.ts";
 import { bg, fg, focus, gap, layout, motion, space, surface, type } from "../style/index.ts";
 
@@ -39,14 +40,9 @@ export const tileStyles = variants({
     heading: arc(layout.column, layout.minZero, layout.grow, gap[1]),
     eyebrow: arc(type.meta),
     title: arc(type.label, layout.flush, fg.default),
-    target: arc(fg.inherit, focus.none, afterLayer, {
+    target: arc(bareButton, focus.none, afterLayer, {
       textDecorationLine: "none",
       textAlign: "start",
-      font: "inherit",
-      padding: "0",
-      backgroundColor: "transparent",
-      borderWidth: "0",
-      cursor: "pointer",
       "::after": { inset: "0", borderRadius: "inherit" },
       "[data-focus-visible]::after": {
         outlineWidth: "2px",

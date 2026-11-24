@@ -5,6 +5,7 @@ import { ref as makeRef } from "@barqjs/primitives/refs";
 import { isServer } from "@barqjs/web";
 
 import { arcLayer as arc } from "../layer.ts";
+import { place } from "../lib/place.ts";
 import { type Customisable, parts } from "../lib/parts.ts";
 import { bg, fg, gap, glyph, layout, motion, rounded, type } from "../style/index.ts";
 import { useArcMessages } from "./messages.ts";
@@ -14,27 +15,28 @@ export type ImageStatus = "loading" | "loaded" | "error";
 export const imageStyles = variants({
   slots: {
     root: arc(layout.relative, layout.clip, bg.muted, { display: "block", isolation: "isolate" }),
-    placeholder: arc({
-      position: "absolute",
-      inset: "0",
+    placeholder: arc(place.cover, {
       backgroundSize: "cover",
       backgroundPosition: "center",
       filter: "blur(16px)",
       scale: "1.1",
     }),
-    image: arc(motion.enter, {
-      position: "relative",
-      display: "block",
-      width: "100%",
-      height: "100%",
+    image: arc(motion.enter, layout.relative, place.block, place.fill, {
       transitionProperty: "opacity",
       "[data-status=loading]": { opacity: "0" },
     }),
-    fallback: arc(layout.column, layout.centre, gap[2], fg.muted, type.meta, glyph.md, {
-      position: "absolute",
-      inset: "0",
-      textAlign: "center",
-    }),
+    fallback: arc(
+      layout.column,
+      layout.centre,
+      gap[2],
+      fg.muted,
+      type.meta,
+      glyph.md,
+      place.cover,
+      {
+        textAlign: "center",
+      },
+    ),
   },
   variants: {
     fit: {

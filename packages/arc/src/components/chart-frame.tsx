@@ -13,6 +13,7 @@ import { srOnly } from "@barqjs/ui/sr-only";
 import type { ChartPoint } from "@tanstack/charts/types";
 
 import { arcLayer as arc } from "../layer.ts";
+import { place } from "../lib/place.ts";
 import { type Customisable, parts } from "../lib/parts.ts";
 import { edge, fg, gap, layout, space, type } from "../style/index.ts";
 import type { Tone } from "../theme/tokens.ts";
@@ -113,9 +114,7 @@ export const chartFrameParts = {
 /** A plot with a figure laid over its middle: a donut's total, a gauge's reading. */
 export const chartCentreParts = {
   plot: arc(layout.relative, layout.column, layout.grow, layout.minZeroBlock),
-  centre: arc(layout.centre, layout.column, {
-    position: "absolute",
-    inset: "0",
+  centre: arc(layout.centre, layout.column, place.cover, {
     margin: "auto",
     inlineSize: "fit-content",
     blockSize: "fit-content",
