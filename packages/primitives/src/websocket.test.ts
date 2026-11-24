@@ -86,24 +86,24 @@ function sleep(ms: number) {
 
 describe("websocket", () => {
   test("onMessage hears every message in order, two before a flush included", () => {
-    const [dispose, heard] = createRoot((d) => {
-      const connection = websocket("wss://example.test/feed");
-      const got: string[] = [];
-      const stop = connection.onMessage((data) => got.push(data));
+    const heard: string[] = [];
+    const [dispose, connection, stop] = createRoot((d) => {
+      const opened = websocket("wss://example.test/feed");
+      const unsubscribe = opened.onMessage((data) => heard.push(data));
       flush();
-      const socket = sockets[0] as Fake & EventTarget;
-      socket.open();
-      for (const data of ["a", "b"]) {
-        const event = new Event("message") as Event & DataEvent;
-        event.data = data;
-        socket.dispatchEvent(event);
-      }
-      flush();
-      expect(connection.message()).toBe("b");
-      stop();
-      socket.deliver("c");
-      return [d, got] as const;
+      return [d, opened, unsubscribe] as const;
     });
+    const socket = sockets[0] as Fake & EventTarget;
+    socket.open();
+    for (const data of ["a", "b"]) {
+      const event = new Event("message") as Event & DataEvent;
+      event.data = data;
+      socket.dispatchEvent(event);
+    }
+    flush();
+    expect(connection.message()).toBe("b");
+    stop();
+    socket.deliver("c");
     expect(heard).toEqual(["a", "b"]);
     dispose();
   });
