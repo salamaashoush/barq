@@ -64,6 +64,16 @@ export {
   readColor,
 } from "./components/color.tsx";
 export {
+  CurrencyField,
+  type CurrencyFieldProps,
+  type FormattedNumberProps,
+  PercentField,
+  type PercentFieldProps,
+  UnitField,
+  type UnitFieldProps,
+  numberFieldStyles,
+} from "./components/number-fields.tsx";
+export {
   CommandMenu,
   commandMenuStyles,
   type CommandMenuAction,

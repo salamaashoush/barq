@@ -4,7 +4,13 @@ import { announce } from "@barqjs/aria/live";
 import { when } from "@barqjs/ui/shared-when";
 
 import { arcLayer as arc } from "../layer.ts";
-import { type ArcFieldProps, type FieldValueProps, Frame, bindField } from "../lib/field.tsx";
+import {
+  type ArcFieldProps,
+  type FieldValueProps,
+  Frame,
+  bareInput,
+  bindField,
+} from "../lib/field.tsx";
 import { type Customisable, parts } from "../lib/parts.ts";
 import {
   bg,
@@ -38,12 +44,7 @@ export const tagInputStyles = variants({
       target.size,
       { minHeight: space.x9, padding: space.x1 },
     ),
-    input: arc(layout.grow, edge.none, bg.transparent, focus.none, type.sm, {
-      color: "inherit",
-      minWidth: "8ch",
-      paddingInline: space.x1_5,
-      minHeight: space.x6,
-    }),
+    input: arc(bareInput, type.sm, { minWidth: "8ch", minHeight: space.x6 }),
   },
 });
 

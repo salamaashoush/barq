@@ -217,6 +217,16 @@ export const segmented = arc(
   },
 );
 
+/**
+ * An input inside a box that draws the edge and the ring: no edge, fill or
+ * outline of its own, the box's text, and the rest of the row.
+ */
+export const bareInput = arc(layout.grow, layout.minZero, edge.none, bg.transparent, focus.none, {
+  color: "inherit",
+  font: "inherit",
+  paddingInline: space.x1_5,
+});
+
 export interface FrameProps {
   of: Wiring;
   /** The field's own props, for its class and its parts' classes. */

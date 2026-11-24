@@ -153,13 +153,19 @@ declaration lands on the class arc's own components already use.
   to nothing under reduced motion so a state still lands.
 - `target.size`: 24px under a fine pointer and 44px under a coarse one, for a
   part that is not one of ui's controls (those grow by themselves).
-- Tokens: `space`, `radius`, `motionTokens` and `zIndex`, as values.
+- Tokens: `space`, `radius`, `motionTokens` and `zIndex`, as values. A colour
+  or a corner ui already names is ui's `tokens`, from
+  `@barqjs/ui/theme/tokens`, rather than a second spelling here.
 
-It is one module on purpose. The compiler folds a group through an import by
-reading the module that declares it, and a re-export is not a declaration, so
-`@barqjs/arc/style` re-exports nothing: ui's groups (`text`, `box`, `ring`,
-`ringSlot`, `icon`, `when`, `touch`, `contrast`) and the conditions are
-imported from ui's own modules, `@barqjs/ui/shared-text` and the rest.
+Each family is a module of its own (`layout`, `gap`, `type`, `colour`,
+`surface`, `focus`, `interaction`, `motion`, `target` and `tokens`, in
+`src/style/`), and `@barqjs/arc/style` re-exports them. A treatment read
+through it folds exactly as one read from its own module, and the stylesheet
+`@barqjs/vite` carries with the fold is that family's, so an app that uses
+`layout` and `gap` ships those two families and none of the rest. ui's groups
+(`text`, `box`, `ring`, `ringSlot`, `icon`, `when`, `touch`, `contrast`) and
+the conditions stay in ui's own modules, `@barqjs/ui/shared-text` and the
+rest, and are composed here, never written again.
 
 ### One set of conditions
 
@@ -202,9 +208,15 @@ once rather than in each app's own flex rules.
 
 A responsive prop is a value or a value per step, mobile first:
 `{ base: 2, md: 4 }` from the viewport, or `{ base: 1, cqMd: 3 }` from the
-nearest query container, one scale per prop. It is written as ranges that
-never overlap, through a dynamic group, so the stylesheet is the same whatever
-the values and two steps never tie on the cascade's hash order. `render` puts
+nearest query container, one scale per prop. The element carries a custom
+property per step it changes at, inline (`--arc-gap-base`, `--arc-gap-md`,
+`--arc-gap-cq-md`), and a fixed rule per step reads it, so the stylesheet is
+the same whatever the values, a server writes everything a step needs into the
+element's own markup, and a nested stack never reads its parent's steps. The
+rules are ranges that never overlap, so two steps never tie on the cascade's
+hash order. A value is one of the system's tokens: a step of the spacing scale,
+an alignment keyword, a column count, a viewport step's width; anything else
+is refused with a `TypeError` naming it. `render` puts
 another element in the component's place: `render={(part, children) => <ul
 {...part.props} ref={part.ref}>{children}</ul>}`.
 
@@ -455,6 +467,13 @@ import { Chip } from "@barqjs/arc";
 
   The three fields are `field.ColorPicker`, `field.ColorField` and
   `field.ColorSwatches` in a form.
+- `CurrencyField`, `PercentField` and `UnitField`: a number written and read
+  in the locale, on `@barqjs/aria`'s number field: `$1,234.50` in a
+  `currency`, `25%` held as `0.25`, `12 kg` in a `unit` as
+  `Intl.NumberFormat` names it. Typed with the locale's separators and
+  digits, stepped by the arrows and by − and + buttons a finger can reach
+  (`hideSteppers` leaves them out), and `field.CurrencyField` and the rest in
+  a form.
 
 ## Code
 
