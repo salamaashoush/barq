@@ -1363,7 +1363,20 @@ first opens. Rich message content is drawn by `RichTextRenderer` from
   on screen are drawn. The data is emojibase's, which follows Unicode's
   list and CLDR's names release by release as plain JSON in two dozen
   languages; English is loaded by default, and `source` takes another
-  language's file or the app's own.
+  language's file or the app's own:
+
+  ```tsx
+  import { arabicEmoji } from "@barqjs/arc/chat";
+
+  <EmojiPicker source={(locale) => import(`emojibase-data/${locale}/compact.json`).then((m) => m.default)} />;
+  <EmojiPicker source={arabicEmoji} />;
+  ```
+
+  emojibase has no Arabic file, so `arabicEmoji` names its list from
+  CLDR's Arabic annotations (Unicode License v3, its notice in the file),
+  loaded only when asked for; `tools/arabic-emoji.ts` writes it again for
+  a new CLDR release. A search folds the spellings Arabic writers use
+  interchangeably, so أهلا and اهلا find the same wave.
 - `EmojiButton`: an icon button that opens the `EmojiPicker` (a popover on
   a wide screen, a sheet under a finger) and closes once one is chosen. A
   message's add-reaction button and `ChatComposer`'s emoji button are both

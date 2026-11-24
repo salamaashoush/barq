@@ -4,7 +4,7 @@ import { provideLocale } from "@barqjs/aria/i18n";
 import { ariaViolations, render, screen, user, waitFor } from "@barqjs/testing";
 
 import { hydrates, settle } from "../test-arc.ts";
-import { emojiDataset, englishEmoji, searchEmoji, withTone } from "./emoji-data.ts";
+import { arabicEmoji, emojiDataset, englishEmoji, searchEmoji, withTone } from "./emoji-data.ts";
 import { EmojiPicker } from "./emoji-picker.tsx";
 import { type CompactEmoji } from "./emoji-data.ts";
 import { SAMPLE_EMOJI, sampleSource, scrollViewport, sizeViewport } from "./test-chat.ts";
@@ -231,5 +231,36 @@ describe("the emoji dataset", () => {
     const data = emojiDataset(SAMPLE_EMOJI);
     expect(searchEmoji(data, "pet").map((one) => one.emoji)).toEqual(["🐱", "🐈", "🐶"]);
     expect(searchEmoji(data, "  ")).toEqual([]);
+  });
+});
+
+describe("Arabic emoji names", () => {
+  test("CLDR's Arabic names over emojibase's list, found as people type them", async () => {
+    const [english, arabic] = await Promise.all([englishEmoji(), arabicEmoji()]);
+    expect(arabic).toHaveLength(english.length);
+    const dataset = emojiDataset(arabic);
+    const wave = dataset.byEmoji.get("👋");
+    expect(wave?.label).toBe("تلويح باليد");
+    expect(wave?.skins).toHaveLength(5);
+    // Typed with or without the hamza, the keyword is the same word.
+    expect(searchEmoji(dataset, "أهلا").map((one) => one.emoji)).toContain("👋");
+    expect(searchEmoji(dataset, "اهلا").map((one) => one.emoji)).toContain("👋");
+    expect(searchEmoji(dataset, "قطة").length).toBeGreaterThan(0);
+  });
+
+  test("a picker in Arabic reads them", async () => {
+    function Arabic() {
+      provideLocale("ar-EG");
+      return (
+        <div dir="rtl">
+          <EmojiPicker source={arabicEmoji} onSelect={() => {}} />
+        </div>
+      );
+    }
+    render(() => <Arabic />);
+    await opened();
+    await user.type(search(), "تلويح");
+    await settle();
+    expect(screen.getAllByRole("option")[0]?.getAttribute("aria-label")).toBe("تلويح باليد");
   });
 });

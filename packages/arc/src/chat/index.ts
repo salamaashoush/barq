@@ -4,6 +4,7 @@ export {
   type EmojiEntry,
   type EmojiGroup,
   type EmojiSource,
+  arabicEmoji,
   emojiDataset,
   englishEmoji,
   loadEmoji,

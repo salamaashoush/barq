@@ -29,5 +29,6 @@ describe("what an app pays for the chat suite", () => {
     const emoji = [...graph.packages.entries()].filter(([name]) => name.startsWith("emojibase"));
     expect(emoji.length).toBeGreaterThan(0);
     for (const [, kinds] of emoji) expect([...kinds]).toEqual(["dynamic-import"]);
+    expect([...graph.files].some((file) => file.endsWith("emoji-ar.json"))).toBe(false);
   });
 });
