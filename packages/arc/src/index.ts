@@ -329,6 +329,13 @@ export {
   donutChartStyles,
 } from "./components/donut-chart.tsx";
 export {
+  Sparkline,
+  type SparklineProps,
+  type SparklineSlots,
+  type SparklineVariant,
+  sparklineStyles,
+} from "./components/sparkline.tsx";
+export {
   ARC_CONTRAST_DARK,
   ARC_CONTRAST_LIGHT,
   ARC_DARK,

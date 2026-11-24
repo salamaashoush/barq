@@ -1,6 +1,5 @@
 import { type Child, Show, cells, createUniqueId } from "@barqjs/core";
 import { variants } from "@barqjs/css";
-import { useLocale } from "@barqjs/aria/i18n";
 import { Minus } from "@barqjs/lucide/icons/minus";
 import { TrendingDown } from "@barqjs/lucide/icons/trending-down";
 import { TrendingUp } from "@barqjs/lucide/icons/trending-up";
@@ -11,7 +10,7 @@ import { arcLayer as arc } from "../layer.ts";
 import { type Customisable, parts, rendered } from "../lib/parts.ts";
 import { fg, gap, glyph, layout, space, surface, tone as tones, type } from "../style/index.ts";
 import type { Tone } from "../theme/tokens.ts";
-import { useArcMessages } from "./messages.ts";
+import { Sparkline } from "./sparkline.tsx";
 
 export const statCardStyles = variants({
   slots: {
@@ -22,22 +21,11 @@ export const statCardStyles = variants({
     delta: arc(layout.inlineRow, gap[1], type.medium, type.numeric, fg.tone, glyph.sm),
     deltaLabel: arc({}),
     description: arc({}),
-    trend: arc(fg.toneBase, {
-      display: "block",
-      width: "100%",
-      height: space.x10,
-      marginBlockStart: space.x2,
-      overflow: "visible",
-    }),
+    trend: arc({ marginBlockStart: space.x2 }),
   },
 });
 
 type Slots = ReturnType<typeof statCardStyles>;
-
-/** The width and height the sparkline is drawn in before it is stretched to its box. */
-const VIEW_WIDTH = 100;
-const VIEW_HEIGHT = 32;
-const INSET = 2;
 
 export interface StatDelta {
   /** The change as the reader should see it, sign included: `"+12%"`. */
@@ -67,22 +55,6 @@ export interface StatCardProps extends Omit<UiProps, "class" | "className">, Cus
   renders?: { label?: RenderPart<Child>; value?: RenderPart<Child> };
 }
 
-/** The two paths of a sparkline over `points`, in the view box. */
-function sparkPaths(points: readonly number[]): { line: string; area: string } {
-  const low = Math.min(...points);
-  const high = Math.max(...points);
-  const span = high - low;
-  const step = VIEW_WIDTH / (points.length - 1);
-  const coordinates = points.map((point, index) => {
-    const x = index * step;
-    const y =
-      span === 0 ? VIEW_HEIGHT / 2 : INSET + (1 - (point - low) / span) * (VIEW_HEIGHT - INSET * 2);
-    return `${x.toFixed(2)},${y.toFixed(2)}`;
-  });
-  const line = `M${coordinates.join("L")}`;
-  return { line, area: `${line}L${VIEW_WIDTH},${VIEW_HEIGHT}L0,${VIEW_HEIGHT}Z` };
-}
-
 /**
  * One number, what it counts, how it moved, and where it has been.
  *
@@ -100,27 +72,8 @@ function sparkPaths(points: readonly number[]): { line: string; area: string } {
  */
 export function StatCard(props: StatCardProps) {
   const labelId = createUniqueId();
-  const locale = useLocale();
-  const messages = useArcMessages();
   const cls = (): Slots => parts(statCardStyles(), props.classes);
-  const format = (n: number): string => new Intl.NumberFormat(locale().locale).format(n);
   const points = (): readonly number[] => props.trend ?? [];
-  const drawn = (): boolean => points().length > 1;
-  const paths = (): { line: string; area: string } => sparkPaths(points());
-  const described = (): string => {
-    if (props.trendLabel !== undefined) return props.trendLabel;
-    const all = points();
-    const first = all[0] ?? 0;
-    const last = all[all.length - 1] ?? 0;
-    return messages().trend(
-      String(all.length),
-      format(first),
-      format(last),
-      format(Math.min(...all)),
-      format(Math.max(...all)),
-    );
-  };
-
   return (
     <div
       {...uiProps("stat-card", () => cls().root, cells(props))}
@@ -180,26 +133,15 @@ export function StatCard(props: StatCardProps) {
           </Show>
         </div>
       </Show>
-      <Show when={drawn()}>
-        <svg
-          class={arc(cls().trend, tones[props.trendTone ?? props.delta?.tone ?? "info"])}
+      <Show when={points().length > 1}>
+        <Sparkline
           data-slot="stat-card-trend"
-          viewBox={`0 0 ${String(VIEW_WIDTH)} ${String(VIEW_HEIGHT)}`}
-          preserveAspectRatio="none"
-          role="img"
-          aria-label={described()}
-        >
-          <path d={paths().area} fill="currentColor" fill-opacity="0.12" stroke="none" />
-          <path
-            d={paths().line}
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.5"
-            stroke-linejoin="round"
-            stroke-linecap="round"
-            vector-effect="non-scaling-stroke"
-          />
-        </svg>
+          class={cls().trend}
+          data={points()}
+          variant="area"
+          tone={props.trendTone ?? props.delta?.tone ?? "info"}
+          label={props.trendLabel}
+        />
       </Show>
     </div>
   );
