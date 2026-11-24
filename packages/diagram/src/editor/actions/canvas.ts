@@ -1,9 +1,15 @@
 import { CODES, KEYS, ZOOM_STEP } from "@excalidraw/common";
-import { CaptureUpdateAction, getCommonBounds, getNonDeletedElements } from "@excalidraw/element";
+import {
+  CaptureUpdateAction,
+  getCommonBounds,
+  getNonDeletedElements,
+  newElementWith,
+} from "@excalidraw/element";
 
 import type { Bounds } from "@excalidraw/common";
 import type { ExcalidrawElement } from "@excalidraw/element/types";
 
+import { getDefaultAppState } from "../../app-state.ts";
 import { getNormalizedZoom } from "../../scene/normalize.ts";
 import {
   constrainScrollState,
@@ -17,7 +23,10 @@ import type { Action, ActionResult } from "../types.ts";
 /** Shows or hides the grid, which new and moved elements snap to. Ctrl or Cmd+'. */
 export const actionToggleGridMode: Action = {
   name: "gridMode",
-  label: "Grid toggled",
+  label: "labels.toggleGrid",
+  keywords: ["snap"],
+  announcement: "Grid toggled",
+  checked: (appState) => appState.gridModeEnabled,
   viewMode: true,
   perform(_elements, appState) {
     return {
@@ -35,7 +44,9 @@ export const actionToggleGridMode: Action = {
 /** Snaps moved, resized and new elements to the others, instead of the grid. Alt+S. */
 export const actionToggleObjectsSnapMode: Action = {
   name: "objectsSnapMode",
-  label: "Snapping to objects toggled",
+  label: "buttons.objectsSnapMode",
+  announcement: "Snapping to objects toggled",
+  checked: (appState) => appState.objectsSnapModeEnabled,
   perform(_elements, appState) {
     return {
       appState: {
@@ -75,7 +86,8 @@ const zoomTo = (appState: AppState, nextZoom: number, anchor: ZoomAnchor | null)
 /** Ctrl or Cmd (or Shift) with =. */
 export const actionZoomIn: Action<ZoomAnchor> = {
   name: "zoomIn",
-  label: "Zoomed in",
+  label: "buttons.zoomIn",
+  announcement: "Zoomed in",
   viewMode: true,
   perform: (_elements, appState, anchor) =>
     zoomTo(appState, appState.zoom.value + ZOOM_STEP, anchor),
@@ -87,7 +99,8 @@ export const actionZoomIn: Action<ZoomAnchor> = {
 /** Ctrl or Cmd (or Shift) with -. */
 export const actionZoomOut: Action<ZoomAnchor> = {
   name: "zoomOut",
-  label: "Zoomed out",
+  label: "buttons.zoomOut",
+  announcement: "Zoomed out",
   viewMode: true,
   perform: (_elements, appState, anchor) =>
     zoomTo(appState, appState.zoom.value - ZOOM_STEP, anchor),
@@ -99,7 +112,8 @@ export const actionZoomOut: Action<ZoomAnchor> = {
 /** Back to 100%, or to a zoom lock's floor. Ctrl or Cmd (or Shift) with 0. */
 export const actionResetZoom: Action<ZoomAnchor> = {
   name: "resetZoom",
-  label: "Zoom reset",
+  label: "buttons.resetZoom",
+  announcement: "Zoom reset",
   viewMode: true,
   perform: (_elements, appState, anchor) =>
     zoomTo(
@@ -145,7 +159,8 @@ const selectionBounds = (
 /** Fits every element, never past 100%. Shift+1. */
 export const actionZoomToFit: Action = {
   name: "zoomToFit",
-  label: "Zoomed to fit",
+  label: "helpDialog.zoomToFit",
+  announcement: "Zoomed to fit",
   viewMode: true,
   perform: (elements, appState) =>
     fitTo(
@@ -162,7 +177,8 @@ export const actionZoomToFit: Action = {
 /** Fits the selection (everything without one), never past 100%. Shift+2. */
 export const actionZoomToFitSelectionInViewport: Action = {
   name: "zoomToFitSelectionInViewport",
-  label: "Zoomed to selection",
+  label: "labels.zoomToFitViewport",
+  announcement: "Zoomed to selection",
   viewMode: true,
   perform: (elements, appState, _formData, app) =>
     fitTo(
@@ -177,7 +193,8 @@ export const actionZoomToFitSelectionInViewport: Action = {
 /** Fits the selection (everything without one), filling the viewport. Shift+3. */
 export const actionZoomToFitSelection: Action = {
   name: "zoomToFitSelection",
-  label: "Zoomed to selection",
+  label: "helpDialog.zoomToSelection",
+  announcement: "Zoomed to selection",
   viewMode: true,
   perform: (elements, appState, _formData, app) =>
     fitTo(
@@ -187,4 +204,73 @@ export const actionZoomToFitSelection: Action = {
     ),
   keyTest: (event) =>
     event.code === CODES.THREE && event.shiftKey && !event.altKey && !event[KEYS.CTRL_OR_CMD],
+};
+
+/** The canvas's colour, from the main menu's picker. */
+export const actionChangeViewBackgroundColor: Action<Partial<AppState>> = {
+  name: "changeViewBackgroundColor",
+  label: "labels.canvasBackground",
+  announcement: "",
+  predicate: (_elements, appState, editor) =>
+    editor.host.UIOptions.canvasActions.changeViewBackgroundColor && !appState.viewModeEnabled,
+  perform: (_elements, appState, value) => ({
+    appState: { ...appState, ...value },
+    captureUpdate: value?.viewBackgroundColor
+      ? CaptureUpdateAction.IMMEDIATELY
+      : CaptureUpdateAction.EVENTUALLY,
+  }),
+};
+
+/** Deletes every element and starts the state over, keeping the preferences. */
+export const actionClearCanvas: Action = {
+  name: "clearCanvas",
+  label: "labels.clearCanvas",
+  announcement: "Canvas cleared",
+  predicate: (_elements, appState, editor) =>
+    editor.host.UIOptions.canvasActions.clearCanvas &&
+    !appState.viewModeEnabled &&
+    appState.openDialog?.name !== "elementLinkSelector",
+  perform: (elements, appState, _formData, editor) => {
+    editor.imageCache.clear();
+    return {
+      elements: elements.map((element) => newElementWith(element, { isDeleted: true })),
+      appState: {
+        ...getDefaultAppState(),
+        theme: appState.theme,
+        penMode: appState.penMode,
+        penDetected: appState.penDetected,
+        exportBackground: appState.exportBackground,
+        exportEmbedScene: appState.exportEmbedScene,
+        gridSize: appState.gridSize,
+        gridStep: appState.gridStep,
+        gridModeEnabled: appState.gridModeEnabled,
+        stats: appState.stats,
+        colorTopPicks: appState.colorTopPicks,
+        fontTopPicks: appState.fontTopPicks,
+        width: appState.width,
+        height: appState.height,
+        offsetLeft: appState.offsetLeft,
+        offsetTop: appState.offsetTop,
+        viewModeEnabled: appState.viewModeEnabled,
+        activeTool:
+          appState.activeTool.type === "image"
+            ? { ...appState.activeTool, type: appState.preferredSelectionTool.type }
+            : appState.activeTool,
+      },
+      files: {},
+      replaceFiles: true,
+      captureUpdate: CaptureUpdateAction.IMMEDIATELY,
+    };
+  },
+};
+
+/** The scene's name, which exports are named after. */
+export const actionChangeProjectName: Action<string | null> = {
+  name: "changeProjectName",
+  label: "labels.fileTitle",
+  announcement: "",
+  perform: (_elements, appState, value) => ({
+    appState: { ...appState, name: value },
+    captureUpdate: CaptureUpdateAction.EVENTUALLY,
+  }),
 };

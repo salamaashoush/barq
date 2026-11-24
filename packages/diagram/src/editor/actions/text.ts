@@ -142,7 +142,8 @@ const changeFontSize = (
 /** Sets the font size of the selected text, and of text drawn next. */
 export const actionChangeFontSize: Action<ExcalidrawTextElement["fontSize"]> = {
   name: "changeFontSize",
-  label: "Font size changed",
+  label: "labels.fontSize",
+  announcement: "Font size changed",
   perform: (elements, appState, value, editor) =>
     changeFontSize(
       elements,
@@ -159,7 +160,8 @@ export const actionChangeFontSize: Action<ExcalidrawTextElement["fontSize"]> = {
 /** Ctrl or Cmd+Shift+`<` (or `,`). */
 export const actionDecreaseFontSize: Action = {
   name: "decreaseFontSize",
-  label: "Font size decreased",
+  label: "labels.decreaseFontSize",
+  announcement: "Font size decreased",
   perform: (elements, appState, _value, editor) =>
     changeFontSize(elements, appState, editor, (element) =>
       Math.round(
@@ -176,7 +178,8 @@ export const actionDecreaseFontSize: Action = {
 /** Ctrl or Cmd+Shift+`>` (or `.`). */
 export const actionIncreaseFontSize: Action = {
   name: "increaseFontSize",
-  label: "Font size increased",
+  label: "labels.increaseFontSize",
+  announcement: "Font size increased",
   perform: (elements, appState, _value, editor) =>
     changeFontSize(elements, appState, editor, (element) =>
       Math.round(
@@ -196,7 +199,8 @@ export const actionIncreaseFontSize: Action = {
  */
 export const actionChangeFontFamily: Action<FontFamilyValues> = {
   name: "changeFontFamily",
-  label: "Font changed",
+  label: "labels.fontFamily",
+  announcement: "Font changed",
   perform: (elements, appState, value, editor) => {
     invariant(value, "actionChangeFontFamily: value must be defined");
     const changed: ExcalidrawTextElement[] = [];
@@ -258,7 +262,7 @@ export const actionChangeFontFamily: Action<FontFamilyValues> = {
 /** Left, centre or right: the selected text, and text drawn next. */
 export const actionChangeTextAlign: Action<TextAlign> = {
   name: "changeTextAlign",
-  label: "Text alignment changed",
+  announcement: "Text alignment changed",
   perform: (elements, appState, value, editor) => {
     invariant(value, "actionChangeTextAlign: value must be defined");
     return {
@@ -291,7 +295,7 @@ export const actionChangeTextAlign: Action<TextAlign> = {
 /** Top, middle or bottom: a label in its container. */
 export const actionChangeVerticalAlign: Action<VerticalAlign> = {
   name: "changeVerticalAlign",
-  label: "Vertical alignment changed",
+  announcement: "Vertical alignment changed",
   perform: (elements, appState, value, editor) => {
     invariant(value, "actionChangeVerticalAlign: value must be defined");
     return {
@@ -392,7 +396,8 @@ export const isTextAutoResizeShortcut = (event: KeyboardEvent): boolean =>
  */
 export const actionTextAutoResize: Action<ExcalidrawElement> = {
   name: "autoResize",
-  label: "Text resizing toggled",
+  label: "labels.autoResize",
+  announcement: "Text resizing toggled",
   predicate: (elements, appState) => {
     const selectedElements = getSelectedElements(elements, appState);
     const [only] = selectedElements;

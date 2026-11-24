@@ -348,6 +348,7 @@ export interface AppState {
     | "compactStrokeStyles"
     | "compactOtherProperties"
     | "compactArrowProperties"
+    | "convertElementType"
     | null;
   openSidebar: { name: SidebarName; tab?: SidebarTabName } | null;
   openDialog: OpenDialog;

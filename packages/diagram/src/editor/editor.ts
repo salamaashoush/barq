@@ -225,6 +225,8 @@ import { EraserTrail, LaserTrails, LassoTrail } from "./trails.ts";
 import { TextTool } from "./text-tool.ts";
 import { TOGGLE_TOOLS, findToolByKey, isEditorTool } from "./tools.ts";
 import { patchLinearEditor } from "./linear.ts";
+import { getContextMenuItems } from "./context-menu.ts";
+import { defaultEditorHost, type EditorHost } from "./ui-options.ts";
 
 import type { DiagramScene } from "../data/types.ts";
 import type { InteractiveSceneRenderAnimationState, ScrollBars } from "../scene/types.ts";
@@ -310,7 +312,39 @@ export interface DiagramEditorOptions {
   theme?: Theme;
   viewModeEnabled?: boolean;
   gridModeEnabled?: boolean;
+  /** What the host decides: the UI options, and the modes it controls. */
+  host?: Partial<EditorHost>;
 }
+
+/**
+ * Marks the editor's own UI inside the container: keys pressed and wheels
+ * turned there are the control's, not the canvas'.
+ */
+export const EDITOR_UI_ATTRIBUTE = "data-diagram-ui";
+
+/** Keys a focused control in the UI owns: moving within it, pressing it, leaving it. */
+const CONTROL_KEYS = new Set<string>([
+  KEYS.ARROW_UP,
+  KEYS.ARROW_DOWN,
+  KEYS.ARROW_LEFT,
+  KEYS.ARROW_RIGHT,
+  KEYS.ENTER,
+  KEYS.SPACE,
+  KEYS.TAB,
+  "Home",
+  "End",
+  KEYS.PAGE_UP,
+  KEYS.PAGE_DOWN,
+  KEYS.ESCAPE,
+]);
+
+/** Whether the event happened in the editor's own UI rather than on the canvas. */
+const isFromEditorUI = (event: Event): boolean => {
+  const target = event.target as Element | null;
+  return (
+    typeof target?.closest === "function" && target.closest(`[${EDITOR_UI_ATTRIBUTE}]`) !== null
+  );
+};
 
 interface Gesture {
   pointers: Map<number, { x: number; y: number }>;
@@ -382,6 +416,8 @@ export class DiagramEditor {
   public readonly ownerDocument: Document;
   public editorInterface: EditorInterface = DEFAULT_EDITOR_INTERFACE;
   public readonly api: DiagramEditorApi;
+  /** What the host decides, which actions read as Excalidraw's read `app.props`. */
+  public host: EditorHost;
 
   /**
    * Text and arrows, Excalidraw's `AppArrowText`: the free endpoint a new
@@ -513,6 +549,14 @@ export class DiagramEditor {
   private resetCacheIgnoreZoom: number | null = null;
   private newElementCanvasDrawn = false;
   private destroyed = false;
+  /**
+   * A secondary-button press: a pan when it drags, the context menu when it
+   * does not. Browsers send `contextmenu` with the press (macOS, Linux) or
+   * after the release (Windows); either way the menu opens once, on release.
+   */
+  private secondaryPress: { x: number; y: number; moved: boolean; menuAsked: boolean } | null =
+    null;
+  private consumeNextContextMenu = false;
 
   public constructor(private readonly options: DiagramEditorOptions) {
     const { container, interactiveCanvas } = options;
@@ -521,6 +565,7 @@ export class DiagramEditor {
     this.ownerWindow = container.ownerDocument.defaultView ?? window;
     this.ownerDocument = this.ownerWindow.document;
     this.renderEnvironment = getRenderEnvironment();
+    this.host = { ...defaultEditorHost(), ...options.host };
 
     const defaults = getDefaultAppState();
     this._state = {
@@ -1458,7 +1503,7 @@ export class DiagramEditor {
         didUpdate = true;
       }
       if (result.files) {
-        this.files = { ...this.files, ...result.files };
+        this.files = result.replaceFiles ? result.files : { ...this.files, ...result.files };
       }
       if (result.appState) {
         const appState = result.appState;
@@ -1476,9 +1521,9 @@ export class DiagramEditor {
       if (!didUpdate) {
         this.scene.triggerUpdate();
       }
-      const label = action?.label;
-      if (label) {
-        this.afterCommit.push(() => this.announce(label));
+      const announcement = action?.announcement;
+      if (announcement) {
+        this.afterCommit.push(() => this.announce(announcement));
       }
     });
   }
@@ -1667,6 +1712,102 @@ export class DiagramEditor {
     ) {
       this.setState({ width, height, offsetLeft: rect.left, offsetTop: rect.top });
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // context menu
+
+  private handleContextMenuEvent(event: MouseEvent): void {
+    if (isFromEditorUI(event)) {
+      return;
+    }
+    // the browser's menu never opens over the canvas
+    event.preventDefault();
+    if (this.secondaryPress) {
+      this.secondaryPress.menuAsked = true;
+      return;
+    }
+    if (this.consumeNextContextMenu) {
+      this.consumeNextContextMenu = false;
+      return;
+    }
+    if (event.target === this.options.container) {
+      // the keyboard's menu key, or Shift+F10: at the selection, or the middle
+      this.openContextMenuFromKeyboard();
+      return;
+    }
+    this.openContextMenu({
+      clientX: event.clientX,
+      clientY: event.clientY,
+      pointerType: (event as PointerEvent).pointerType,
+      button: event.button,
+    });
+  }
+
+  /**
+   * Opens the context menu for the element under the point, selecting it
+   * (locked ones too, for the menu to unlock them), or for the canvas.
+   */
+  public openContextMenu(pointer: {
+    clientX: number;
+    clientY: number;
+    pointerType?: string;
+    button?: number;
+  }): void {
+    if (
+      (pointer.pointerType === "touch" ||
+        (pointer.pointerType === "pen" && pointer.button !== POINTER_BUTTON.SECONDARY)) &&
+      this.state.activeTool.type !== this.state.preferredSelectionTool.type
+    ) {
+      return;
+    }
+    const { x, y } = viewportCoordsToSceneCoords(pointer, this.state);
+    const element = this.getElementAtPosition(x, y, {
+      preferSelected: true,
+      includeLockedElements: true,
+    });
+    const isHittingCommonBoundingBox = this.selection.isHittingCommonBoundingBoxOfSelectedElements(
+      { x, y },
+      this.scene.getSelectedElements(this.state),
+    );
+    const type = element || isHittingCommonBoundingBox ? "element" : "canvas";
+    if (element && !this.state.selectedElementIds[element.id]) {
+      this.selection.select(element, { includeLocked: true });
+    }
+    this.setState({
+      showHyperlinkPopup: false,
+      contextMenu: {
+        top: pointer.clientY - this.state.offsetTop,
+        left: pointer.clientX - this.state.offsetLeft,
+        items: getContextMenuItems(type, this.state.viewModeEnabled),
+      },
+    });
+  }
+
+  private openContextMenuFromKeyboard(): void {
+    const selected = this.scene.getSelectedElements(this.state);
+    let clientX = this.state.offsetLeft + this.state.width / 2;
+    let clientY = this.state.offsetTop + this.state.height / 2;
+    if (selected.length > 0) {
+      const [x1, y1, x2, y2] = getCommonBounds(selected);
+      const centre = sceneCoordsToViewportCoords(
+        { sceneX: (x1 + x2) / 2, sceneY: (y1 + y2) / 2 },
+        this.state,
+      );
+      clientX = centre.x;
+      clientY = centre.y;
+    }
+    this.setState({
+      showHyperlinkPopup: false,
+      contextMenu: {
+        top: clientY - this.state.offsetTop,
+        left: clientX - this.state.offsetLeft,
+        items: getContextMenuItems(
+          selected.length > 0 ? "element" : "canvas",
+          this.state.viewModeEnabled,
+        ),
+      },
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -1935,7 +2076,7 @@ export class DiagramEditor {
     on(interactiveCanvas, "pointercancel", (event) => this.handleCanvasPointerCancel(event));
     on(interactiveCanvas, "dblclick", (event) => this.handleCanvasDoubleClick(event));
     on(interactiveCanvas, "click", (event) => this.handleCanvasClick(event));
-    on(interactiveCanvas, "contextmenu", (event) => event.preventDefault());
+    on(container, "contextmenu", (event) => this.handleContextMenuEvent(event));
     on(container, "keydown", (event) => this.onKeyDown(event));
     // a dropped file never makes the page navigate to it
     on(container, "dragover", (event) => event.preventDefault());
@@ -1988,6 +2129,11 @@ export class DiagramEditor {
   // input: wheel and gestures
 
   private onWheel(event: WheelEvent): void {
+    // a panel scrolls itself; only the browser's own zoom is held back
+    if (isFromEditorUI(event)) {
+      if (event[KEYS.CTRL_OR_CMD]) event.preventDefault();
+      return;
+    }
     // a drag-pan owns the viewport
     if (this.panTeardown !== null && (event.buttons & 4) === 0) {
       return;
@@ -2098,7 +2244,20 @@ export class DiagramEditor {
 
     let lastX = event.clientX;
     let lastY = event.clientY;
+    const secondary =
+      event.button === POINTER_BUTTON.SECONDARY
+        ? { x: event.clientX, y: event.clientY, moved: false, menuAsked: false }
+        : null;
+    this.secondaryPress = secondary;
+    this.consumeNextContextMenu = false;
     const offMove = this.addWindowListener("pointermove", (move) => {
+      if (
+        secondary &&
+        !secondary.moved &&
+        Math.hypot(move.clientX - secondary.x, move.clientY - secondary.y) >= DRAGGING_THRESHOLD
+      ) {
+        secondary.moved = true;
+      }
       const deltaX = lastX - move.clientX;
       const deltaY = lastY - move.clientY;
       lastX = move.clientX;
@@ -2115,7 +2274,18 @@ export class DiagramEditor {
       if (!this.spaceHeld) this.cursor.reset();
       this.setState({ cursorButton: "up" });
     };
-    const offUp = this.addWindowListener("pointerup", teardown);
+    const offUp = this.addWindowListener("pointerup", (up) => {
+      teardown();
+      if (secondary && this.secondaryPress === secondary) {
+        this.secondaryPress = null;
+        if (secondary.menuAsked && !secondary.moved) {
+          this.openContextMenu({ clientX: up.clientX, clientY: up.clientY });
+        } else {
+          // the menu event that follows the release ends this press
+          this.consumeNextContextMenu = secondary.moved || secondary.menuAsked;
+        }
+      }
+    });
     this.panTeardown = teardown;
     return true;
   }
@@ -4493,6 +4663,17 @@ export class DiagramEditor {
       });
     }
 
+    // a key a focused control of the UI moves or presses with is its own
+    if (
+      isFromEditorUI(event) &&
+      CONTROL_KEYS.has(event.key) &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      !event.altKey
+    ) {
+      return;
+    }
+
     // inside an input (but Escape), or arrows over a button
     if (
       (isWritableElement(event.target) && event.key !== KEYS.ESCAPE) ||
@@ -4885,6 +5066,9 @@ export class DiagramEditor {
   }
 
   private onKeyUp(event: KeyboardEvent): void {
+    if (isFromEditorUI(event) && CONTROL_KEYS.has(event.key)) {
+      return;
+    }
     if (event.key === KEYS.SPACE) {
       if (this.state.viewModeEnabled) {
         this.cursor.set(CURSOR_TYPE.GRAB);

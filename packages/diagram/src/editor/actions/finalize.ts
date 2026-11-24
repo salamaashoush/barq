@@ -48,7 +48,7 @@ export interface FinalizeData {
  */
 export const actionFinalize: Action<FinalizeData> = {
   name: "finalize",
-  label: "",
+  announcement: "",
   perform: (elements, appState, data, app) => {
     let shouldCommit = true;
     let newElements = elements;

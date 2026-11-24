@@ -43,7 +43,8 @@ const isSingleFrameSelected = (appState: AppState, editor: DiagramEditor): boole
 /** Selects the selected frame's children instead of it. */
 export const actionSelectAllElementsInFrame: Action = {
   name: "selectAllElementsInFrame",
-  label: "",
+  label: "labels.selectAllElementsInFrame",
+  announcement: "",
   perform: (elements, appState, _value, editor) => {
     const selectedElement = editor.scene.getSelectedElements(appState).at(0) ?? null;
     if (!isFrameLikeElement(selectedElement)) {
@@ -67,7 +68,8 @@ export const actionSelectAllElementsInFrame: Action = {
 /** Takes every child out of the selected frame, which stays. */
 export const actionRemoveAllElementsFromFrame: Action = {
   name: "removeAllElementsFromFrame",
-  label: "Frame emptied",
+  label: "labels.removeAllElementsFromFrame",
+  announcement: "Frame emptied",
   perform: (elements, appState, _value, editor) => {
     const selectedElement = editor.scene.getSelectedElements(appState).at(0) ?? null;
     if (!isFrameLikeElement(selectedElement)) {
@@ -85,7 +87,7 @@ export const actionRemoveAllElementsFromFrame: Action = {
 /** Draws frames, their clipping and their names, or not. */
 export const actionUpdateFrameRendering: Action = {
   name: "updateFrameRendering",
-  label: "Frame rendering toggled",
+  announcement: "Frame rendering toggled",
   viewMode: true,
   perform: (elements, appState) => ({
     elements,
@@ -247,7 +249,14 @@ export const wrapInFrame = (
 /** Wraps the selection in a frame, or unwraps the frame it is all of. */
 export const actionWrapSelectionInFrame: Action = {
   name: "wrapSelectionInFrame",
-  label: "Framed",
+  label: (_elements, appState, editor) =>
+    getFrameToUnwrap(
+      editor.scene.getSelectedElements(appState),
+      editor.scene.getNonDeletedElementsMap(),
+    )
+      ? "labels.removeFrame"
+      : "labels.wrapSelectionInFrame",
+  announcement: "Framed",
   predicate: (elements, appState) => {
     const selectedElements = getSelectedElements(elements, appState);
     return (

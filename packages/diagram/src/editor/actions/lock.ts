@@ -22,7 +22,16 @@ const shouldLock = (elements: readonly ExcalidrawElement[]) => elements.every((e
  */
 export const actionToggleElementLock: Action = {
   name: "toggleElementLock",
-  label: "Lock toggled",
+  label: (_elements, appState, app) =>
+    shouldLock(
+      app.scene.getSelectedElements({
+        selectedElementIds: appState.selectedElementIds,
+        includeBoundTextElement: false,
+      }),
+    )
+      ? "labels.elementLock.lock"
+      : "labels.elementLock.unlock",
+  announcement: "Lock toggled",
   predicate: (_elements, appState, app) => {
     const selectedElements = app.scene.getSelectedElements(appState);
     return (
@@ -122,7 +131,8 @@ export const actionToggleElementLock: Action = {
 /** Unlocks every locked element and selects them. Ctrl or Cmd+Shift+L with nothing selected. */
 export const actionUnlockAllElements: Action = {
   name: "unlockAllElements",
-  label: "Unlocked all",
+  label: "labels.elementLock.unlockAll",
+  announcement: "Unlocked all",
   predicate: (elements, appState) =>
     getSelectedElements(elements, appState).length === 0 &&
     elements.some((element) => element.locked),

@@ -65,7 +65,8 @@ const enableActionGroup = (appState: AppState, app: DiagramEditor) => {
 /** Groups the selection. Ctrl or Cmd+G. */
 export const actionGroup: Action = {
   name: "group",
-  label: "Grouped",
+  label: "labels.group",
+  announcement: "Grouped",
   perform: (elements, appState, _formData, app) => {
     if (!enableActionGroup(appState, app)) {
       return false;
@@ -153,7 +154,8 @@ export const actionGroup: Action = {
 /** Ungroups the selected groups. Ctrl or Cmd+Shift+G. */
 export const actionUngroup: Action = {
   name: "ungroup",
-  label: "Ungrouped",
+  label: "labels.ungroup",
+  announcement: "Ungrouped",
   perform: (elements, appState, _formData, app) => {
     const groupIds = getSelectedGroupIds(appState);
     const elementsMap = arrayToMap(elements);

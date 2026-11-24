@@ -12,7 +12,9 @@ import type { Action } from "../types.ts";
 /** One step back in the stacking order. Ctrl or Cmd+[. */
 export const actionSendBackward: Action = {
   name: "sendBackward",
-  label: "Sent backward",
+  label: "labels.sendBackward",
+  keywords: ["move down", "zindex", "layer"],
+  announcement: "Sent backward",
   perform: (elements, appState, _formData, app) => ({
     elements: moveOneLeft(elements, appState, app.scene),
     appState,
@@ -26,7 +28,9 @@ export const actionSendBackward: Action = {
 /** One step forward in the stacking order. Ctrl or Cmd+]. */
 export const actionBringForward: Action = {
   name: "bringForward",
-  label: "Brought forward",
+  label: "labels.bringForward",
+  keywords: ["move up", "zindex", "layer"],
+  announcement: "Brought forward",
   perform: (elements, appState, _formData, app) => ({
     elements: moveOneRight(elements, appState, app.scene),
     appState,
@@ -40,7 +44,9 @@ export const actionBringForward: Action = {
 /** To the back. Ctrl+Shift+[, or Cmd+Alt+[ on macOS. */
 export const actionSendToBack: Action = {
   name: "sendToBack",
-  label: "Sent to back",
+  label: "labels.sendToBack",
+  keywords: ["move down", "zindex", "layer"],
+  announcement: "Sent to back",
   perform: (elements, appState) => ({
     elements: moveAllLeft(elements, appState),
     appState,
@@ -55,7 +61,9 @@ export const actionSendToBack: Action = {
 /** To the front. Ctrl+Shift+], or Cmd+Alt+] on macOS. */
 export const actionBringToFront: Action = {
   name: "bringToFront",
-  label: "Brought to front",
+  label: "labels.bringToFront",
+  keywords: ["move up", "zindex", "layer"],
+  announcement: "Brought to front",
   perform: (elements, appState) => ({
     elements: moveAllRight(elements, appState),
     appState,

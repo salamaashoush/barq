@@ -13,7 +13,8 @@
     "lib": ["ESNext", "DOM", "DOM.Iterable"],
     "types": ["@types/bun"],
     "allowImportingTsExtensions": true,
-    "noUncheckedIndexedAccess": true
+    "noUncheckedIndexedAccess": true,
+    "resolveJsonModule": true
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]

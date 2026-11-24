@@ -37,7 +37,8 @@ const executeHistoryAction = (
 /** Undoes the last change. Ctrl or Cmd+Z. */
 export const createUndoAction = (history: History): Action => ({
   name: "undo",
-  label: "Undone",
+  label: "buttons.undo",
+  announcement: "Undone",
   perform: (elements, appState, _formData, app) =>
     executeHistoryAction(appState, () =>
       history.undo(arrayToMap(elements) as SceneElementsMap, appState, app.renderEnvironment),
@@ -48,7 +49,8 @@ export const createUndoAction = (history: History): Action => ({
 /** Redoes what was undone. Ctrl or Cmd+Shift+Z, or Ctrl or Cmd+Y. */
 export const createRedoAction = (history: History): Action => ({
   name: "redo",
-  label: "Redone",
+  label: "buttons.redo",
+  announcement: "Redone",
   perform: (elements, appState, _formData, app) =>
     executeHistoryAction(appState, () =>
       history.redo(arrayToMap(elements) as SceneElementsMap, appState, app.renderEnvironment),

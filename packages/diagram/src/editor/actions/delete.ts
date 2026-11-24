@@ -164,7 +164,8 @@ const handleGroupEditingState = (
  */
 export const actionDeleteSelected: Action<{ withFrameChildren?: boolean }> = {
   name: "deleteSelectedElements",
-  label: "Deleted",
+  label: "labels.delete",
+  announcement: "Deleted",
   perform: (elements, appState, formData, app) => {
     if (appState.selectedLinearElement?.isEditing) {
       const { elementId, selectedPointsIndices } = appState.selectedLinearElement;

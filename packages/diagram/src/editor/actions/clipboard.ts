@@ -45,7 +45,8 @@ const selectionForClipboard = (appState: AppState, editor: DiagramEditor) =>
 /** Copies the selection, its frames' children and labels with it, in Excalidraw's clipboard format. */
 export const actionCopy: Action<ClipboardEvent> = {
   name: "copy",
-  label: "Copied",
+  label: "labels.copy",
+  announcement: "Copied",
   viewMode: true,
   perform: async (_elements, appState, event, editor) => {
     try {
@@ -66,7 +67,8 @@ export const actionCopy: Action<ClipboardEvent> = {
 /** Reads the system clipboard and pastes it, as a paste event would. */
 export const actionPaste: Action = {
   name: "paste",
-  label: "",
+  label: "labels.paste",
+  announcement: "",
   perform: async (_elements, appState, _value, editor) => {
     let types;
     try {
@@ -98,7 +100,8 @@ export const actionPaste: Action = {
 /** Copies the selection and deletes it, a frame's children going with it. */
 export const actionCut: Action<ClipboardEvent> = {
   name: "cut",
-  label: "Cut",
+  label: "labels.cut",
+  announcement: "Cut",
   perform: (elements, appState, event, editor) => {
     void actionCopy.perform(elements, appState, event, editor);
     return actionDeleteSelected.perform(elements, appState, { withFrameChildren: true }, editor);
@@ -192,7 +195,8 @@ const copyAsImage = async (
 /** Copies the selection (or everything) to the clipboard as SVG markup, through the export. */
 export const actionCopyAsSvg: Action = {
   name: "copyAsSvg",
-  label: "Copied as SVG",
+  label: "labels.copyAsSvg",
+  announcement: "Copied as SVG",
   perform: (elements, appState, _value, editor) => copyAsImage("svg", elements, appState, editor),
   predicate: (elements) => probablySupportsClipboardWriteText && elements.length > 0,
 };
@@ -200,7 +204,8 @@ export const actionCopyAsSvg: Action = {
 /** Copies the selection (or everything) to the clipboard as a PNG. Shift+Alt+C. */
 export const actionCopyAsPng: Action = {
   name: "copyAsPng",
-  label: "Copied as PNG",
+  label: "labels.copyAsPng",
+  announcement: "Copied as PNG",
   perform: (elements, appState, _value, editor) => copyAsImage("png", elements, appState, editor),
   predicate: (elements) => probablySupportsClipboardBlob && elements.length > 0,
   keyTest: (event) => event.code === CODES.C && event.altKey && event.shiftKey,
@@ -209,7 +214,8 @@ export const actionCopyAsPng: Action = {
 /** Copies the selection's text, as plain text. */
 export const actionCopyText: Action = {
   name: "copyText",
-  label: "Text copied",
+  label: "labels.copyText",
+  announcement: "Text copied",
   perform: (_elements, appState, _value, editor) => {
     const selectedElements = editor.scene.getSelectedElements({
       selectedElementIds: appState.selectedElementIds,
@@ -231,7 +237,9 @@ export const actionCopyText: Action = {
 /** Opens the crop editor on the selected image. */
 export const actionToggleCropEditor: Action = {
   name: "cropEditor",
-  label: "Cropping",
+  label: "helpDialog.cropStart",
+  keywords: ["image", "crop"],
+  announcement: "Cropping",
   viewMode: true,
   perform: (_elements, appState, _value, editor) => {
     const [selectedElement] = editor.scene.getSelectedElements({

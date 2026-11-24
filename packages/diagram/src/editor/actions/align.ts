@@ -11,6 +11,7 @@ import {
 import type { Alignment, Distribution } from "@excalidraw/element";
 import type { ExcalidrawElement } from "@excalidraw/element/types";
 
+import type { TranslationKey } from "../../i18n.ts";
 import type { AppState } from "../../types.ts";
 import type { DiagramEditor } from "../editor.ts";
 import type { Action } from "../types.ts";
@@ -49,12 +50,14 @@ const withUpdated = (
 
 const alignAction = (
   name: Action["name"],
-  label: string,
+  label: TranslationKey,
+  announcement: string,
   alignment: Alignment,
   keyTest: Action["keyTest"],
 ): Action => ({
   name,
   label,
+  announcement,
   predicate: (_elements, appState, app) => alignActionsPredicate(appState, app),
   perform: (elements, appState, _formData, app) => {
     if (!alignActionsPredicate(appState, app)) {
@@ -78,12 +81,14 @@ const alignAction = (
 
 const distributeAction = (
   name: Action["name"],
-  label: string,
+  label: TranslationKey,
+  announcement: string,
   distribution: Distribution,
   keyTest: Action["keyTest"],
 ): Action => ({
   name,
   label,
+  announcement,
   predicate: (_elements, appState, app) => distributeActionsPredicate(appState, app),
   perform: (elements, appState, _formData, app) => {
     if (!distributeActionsPredicate(appState, app)) {
@@ -112,6 +117,7 @@ const ctrlShift = (event: KeyboardEvent, key: string) =>
 /** Ctrl or Cmd+Shift+Up. */
 export const actionAlignTop = alignAction(
   "alignTop",
+  "labels.alignTop",
   "Aligned top",
   { position: "start", axis: "y" },
   (event) => ctrlShift(event, KEYS.ARROW_UP),
@@ -120,6 +126,7 @@ export const actionAlignTop = alignAction(
 /** Ctrl or Cmd+Shift+Down. */
 export const actionAlignBottom = alignAction(
   "alignBottom",
+  "labels.alignBottom",
   "Aligned bottom",
   { position: "end", axis: "y" },
   (event) => ctrlShift(event, KEYS.ARROW_DOWN),
@@ -128,6 +135,7 @@ export const actionAlignBottom = alignAction(
 /** Ctrl or Cmd+Shift+Left. */
 export const actionAlignLeft = alignAction(
   "alignLeft",
+  "labels.alignLeft",
   "Aligned left",
   { position: "start", axis: "x" },
   (event) => ctrlShift(event, KEYS.ARROW_LEFT),
@@ -136,6 +144,7 @@ export const actionAlignLeft = alignAction(
 /** Ctrl or Cmd+Shift+Right. */
 export const actionAlignRight = alignAction(
   "alignRight",
+  "labels.alignRight",
   "Aligned right",
   { position: "end", axis: "x" },
   (event) => ctrlShift(event, KEYS.ARROW_RIGHT),
@@ -147,6 +156,7 @@ export const actionAlignRight = alignAction(
  */
 export const actionAlignVerticallyCentered = alignAction(
   "alignVerticallyCentered",
+  "labels.centerVertically",
   "Centred vertically",
   { position: "center", axis: "y" },
   (event) => !event[KEYS.CTRL_OR_CMD] && event.altKey && event.shiftKey && event.code === CODES.V,
@@ -155,6 +165,7 @@ export const actionAlignVerticallyCentered = alignAction(
 /** Centres horizontally. Alt+Shift+H. */
 export const actionAlignHorizontallyCentered = alignAction(
   "alignHorizontallyCentered",
+  "labels.centerHorizontally",
   "Centred horizontally",
   { position: "center", axis: "x" },
   (event) => !event[KEYS.CTRL_OR_CMD] && event.altKey && event.shiftKey && event.code === CODES.H,
@@ -163,6 +174,7 @@ export const actionAlignHorizontallyCentered = alignAction(
 /** Spaces the selection evenly across. Alt+H. */
 export const actionDistributeHorizontally = distributeAction(
   "distributeHorizontally",
+  "labels.distributeHorizontally",
   "Distributed horizontally",
   { space: "between", axis: "x" },
   (event) => !event[KEYS.CTRL_OR_CMD] && event.altKey && !event.shiftKey && event.code === CODES.H,
@@ -171,6 +183,7 @@ export const actionDistributeHorizontally = distributeAction(
 /** Spaces the selection evenly down. Alt+V. */
 export const actionDistributeVertically = distributeAction(
   "distributeVertically",
+  "labels.distributeVertically",
   "Distributed vertically",
   { space: "between", axis: "y" },
   (event) => !event[KEYS.CTRL_OR_CMD] && event.altKey && !event.shiftKey && event.code === CODES.V,

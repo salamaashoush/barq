@@ -440,6 +440,29 @@ export class Pointer {
     this.upAt();
   }
 
+  /**
+   * A right click: the secondary button down and up, with the browser's
+   * `contextmenu` event sent with the press (macOS, Linux) or after the
+   * release (Windows).
+   */
+  public contextMenuAt(x: number, y: number, order: "press" | "release" = "press"): void {
+    const menu = () =>
+      interactiveCanvas().dispatchEvent(
+        new MouseEvent("contextmenu", {
+          clientX: x,
+          clientY: y,
+          button: 2,
+          bubbles: true,
+          cancelable: true,
+          ...modifierFlags(),
+        }),
+      );
+    this.downAt(x, y, 2);
+    if (order === "press") menu();
+    this.upAt(x, y, 2);
+    if (order === "release") menu();
+  }
+
   public doubleClickAt(x: number, y: number): void {
     this.moveTo(x, y);
     this.doubleClick();
@@ -732,8 +755,8 @@ export const API = {
     return (h().scene.getElementsMapIncludingDeleted().get(element.id) as T | undefined) ?? element;
   },
 
-  executeAction(action: Action): void {
-    h().batch(() => h().actionManager.executeAction(action));
+  executeAction<T>(action: Action<T>, value: T | null = null): void {
+    h().batch(() => h().actionManager.executeAction(action, value));
   },
 
   /** An element built as Excalidraw's `API.createElement` builds it, with the editor's current style. */

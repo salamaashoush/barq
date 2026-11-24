@@ -27,8 +27,9 @@ import type { Action } from "../types.ts";
 /** Selects every unlocked element. Ctrl or Cmd+A. */
 export const actionSelectAll: Action = {
   name: "selectAll",
+  label: "labels.selectAll",
   // the selection it makes is announced
-  label: "",
+  announcement: "",
   perform: (elements, appState, _formData, app) => {
     if (appState.selectedLinearElement?.isEditing) {
       return false;
@@ -116,7 +117,7 @@ const getParentEditingGroupId = (
  */
 export const actionDeselect: Action = {
   name: "deselect",
-  label: "",
+  announcement: "",
   perform: (_elements, appState, _formData, app) => {
     const activeTool = getNextActiveTool(appState, app);
     app.cursor.applyForTool(activeTool);

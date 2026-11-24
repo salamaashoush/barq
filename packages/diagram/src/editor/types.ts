@@ -14,6 +14,7 @@ import type {
 
 import type { isOverScrollBars } from "../scene/scrollbars.ts";
 import type { DiagramEditor } from "./editor.ts";
+import type { TranslationKey } from "../i18n.ts";
 import type { AppState, BinaryFiles } from "../types.ts";
 
 /**
@@ -94,6 +95,8 @@ export type ActionResult =
       elements?: readonly ExcalidrawElement[] | null;
       appState?: Partial<AppState> | null;
       files?: BinaryFiles | null;
+      /** `files` replaces the scene's files rather than adding to them. */
+      replaceFiles?: boolean;
       captureUpdate: CaptureUpdateActionType;
     }
   | false;
@@ -148,7 +151,57 @@ export type ActionName =
   | "deselect"
   | "unlockAllElements"
   | "toggleElementLock"
-  | "toggleLinearEditor";
+  | "toggleLinearEditor"
+  | "changeStrokeColor"
+  | "changeBackgroundColor"
+  | "changeFillStyle"
+  | "changeStrokeWidth"
+  | "changeSloppiness"
+  | "changeFreedrawMode"
+  | "changeStrokeStyle"
+  | "changeOpacity"
+  | "changeRoundness"
+  | "changeArrowhead"
+  | "changeArrowType"
+  | "flipHorizontal"
+  | "flipVertical"
+  | "copyStyles"
+  | "pasteStyles"
+  | "bindText"
+  | "unbindText"
+  | "wrapTextInContainer"
+  | "togglePolygon"
+  | "arrowBinding"
+  | "midpointSnapping"
+  | "zenMode"
+  | "viewMode"
+  | "stats"
+  | "minimap"
+  | "showHints"
+  | "toggleTheme"
+  | "toggleShapeSwitch"
+  | "toggleShortcuts"
+  | "commandPalette"
+  | "searchMenu"
+  | "clearCanvas"
+  | "changeViewBackgroundColor"
+  | "changeProjectName"
+  | "hyperlink"
+  | "copyElementLink"
+  | "linkToElement"
+  | "addToLibrary"
+  | "saveToActiveFile"
+  | "saveFileToDisk"
+  | "loadScene";
+
+/** What an action is called in a menu: a translation key, or one chosen from the state. */
+export type ActionLabel =
+  | TranslationKey
+  | ((
+      elements: readonly ExcalidrawElement[],
+      appState: Readonly<AppState>,
+      editor: DiagramEditor,
+    ) => TranslationKey);
 
 /**
  * An editing operation: Excalidraw's action, without its panel. `perform`
@@ -157,8 +210,14 @@ export type ActionName =
  */
 export interface Action<TData = unknown> {
   name: ActionName;
+  /** Its name in menus and the command palette, Excalidraw's `label`. */
+  label?: ActionLabel;
+  /** More words the command palette finds it by. */
+  keywords?: readonly string[];
+  /** For a toggle, whether it is on. */
+  checked?: (appState: Readonly<AppState>) => boolean;
   /** What the live region announces once the action has run; nothing when empty. */
-  label: string;
+  announcement: string;
   perform: (
     elements: readonly OrderedExcalidrawElement[],
     appState: Readonly<AppState>,

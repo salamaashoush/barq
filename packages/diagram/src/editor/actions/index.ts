@@ -8,7 +8,11 @@ import {
   actionDistributeHorizontally,
   actionDistributeVertically,
 } from "./align.ts";
+import { actionBindText, actionUnbindText, actionWrapTextInContainer } from "./bound-text.ts";
 import {
+  actionChangeProjectName,
+  actionChangeViewBackgroundColor,
+  actionClearCanvas,
   actionResetZoom,
   actionToggleGridMode,
   actionToggleObjectsSnapMode,
@@ -30,6 +34,7 @@ import {
 import { actionDeleteSelected } from "./delete.ts";
 import { actionDuplicateSelection } from "./duplicate.ts";
 import { actionFinalize } from "./finalize.ts";
+import { actionFlipHorizontal, actionFlipVertical } from "./flip.ts";
 import {
   actionRemoveAllElementsFromFrame,
   actionSelectAllElementsInFrame,
@@ -37,9 +42,12 @@ import {
   actionWrapSelectionInFrame,
 } from "./frame.ts";
 import { actionGroup, actionUngroup } from "./group.ts";
-import { actionToggleLinearEditor } from "./linear-editor.ts";
+import { actionTogglePolygon, actionToggleLinearEditor } from "./linear-editor.ts";
+import { actionCopyElementLink, actionLink, actionLinkToElement } from "./link.ts";
 import { actionToggleElementLock, actionUnlockAllElements } from "./lock.ts";
+import { propertyActions } from "./properties.ts";
 import { actionDeselect, actionSelectAll } from "./select.ts";
+import { actionCopyStyles, actionPasteStyles } from "./styles.ts";
 import {
   actionChangeFontFamily,
   actionChangeFontSize,
@@ -49,6 +57,19 @@ import {
   actionIncreaseFontSize,
   actionTextAutoResize,
 } from "./text.ts";
+import {
+  actionShortcuts,
+  actionToggleArrowBinding,
+  actionToggleCommandPalette,
+  actionToggleMidpointSnapping,
+  actionToggleMinimap,
+  actionToggleShapeSwitch,
+  actionToggleShowHints,
+  actionToggleStats,
+  actionToggleTheme,
+  actionToggleViewMode,
+  actionToggleZenMode,
+} from "./toggles.ts";
 import {
   actionBringForward,
   actionBringToFront,
@@ -110,4 +131,30 @@ export const editorActions: readonly Action[] = [
   actionCopyAsSvg,
   actionCopyText,
   actionToggleCropEditor,
+  ...propertyActions,
+  actionFlipHorizontal,
+  actionFlipVertical,
+  actionCopyStyles,
+  actionPasteStyles,
+  actionBindText,
+  actionUnbindText,
+  actionWrapTextInContainer,
+  actionTogglePolygon,
+  actionToggleArrowBinding,
+  actionToggleMidpointSnapping,
+  actionToggleZenMode,
+  actionToggleViewMode,
+  actionToggleStats,
+  actionToggleMinimap,
+  actionToggleShowHints,
+  actionToggleTheme as Action,
+  actionToggleShapeSwitch,
+  actionShortcuts,
+  actionToggleCommandPalette,
+  actionChangeViewBackgroundColor as Action,
+  actionClearCanvas,
+  actionChangeProjectName as Action,
+  actionLink,
+  actionCopyElementLink,
+  actionLinkToElement,
 ];

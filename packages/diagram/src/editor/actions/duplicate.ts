@@ -20,7 +20,8 @@ import type { Action } from "../types.ts";
  */
 export const actionDuplicateSelection: Action = {
   name: "duplicateSelection",
-  label: "Duplicated",
+  label: "labels.duplicateSelection",
+  announcement: "Duplicated",
   perform: (elements, appState, _formData, app) => {
     if (appState.selectedElementsAreBeingDragged) {
       return false;
