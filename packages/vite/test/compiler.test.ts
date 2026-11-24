@@ -751,6 +751,36 @@ export const a = app(shared.ring, { color: colours.brand, padding: colours.gap.m
     expect(code).not.toContain(`${join(DIR, "style.ts")}.barq.css`);
   });
 
+  test("a package the dev server pre-bundles is folded against its own source", async () => {
+    // The optimizer answers with its bundle, which wraps the values in code a
+    // fold cannot read and is not even written while it is still discovering.
+    const bundle = join(DIR, ".vite/deps/tokens.js");
+    const context = {
+      ...withResolver(),
+      resolve: async (source: string) =>
+        source === "./tokens.ts" ? { id: `${bundle}?v=1f2e`, external: false } : null,
+      environment: {
+        depsOptimizer: {
+          metadata: {
+            optimized: {},
+            discovered: { tokens: { file: bundle, src: join(DIR, "tokens.ts") } },
+          },
+        },
+      },
+    };
+    const { code } = await transform(
+      barqVitePlugin(),
+      `import { layer } from "@barqjs/css";
+import { BRAND } from "./tokens.ts";
+const app = layer("app");
+export const a = app({ color: BRAND });
+`,
+      context,
+    );
+    expect(code).not.toContain("app({");
+    expect(code).toContain("a-color_");
+  });
+
   test("a value read through a barrel is read again once the file behind it changes", async () => {
     writeFileSync(join(DIR, "ink.ts"), `export const ink = { fg: "red" } as const;\n`);
     writeFileSync(join(DIR, "inks.ts"), `export { ink } from "./ink.ts";\n`);

@@ -522,6 +522,14 @@ interface FoldedModule {
   stamps: ReadonlyMap<string, number>;
 }
 
+/** What a fold reads of Vite's dependency optimizer: where each pre-bundled package came from. */
+interface DepsOptimizer {
+  readonly metadata: {
+    readonly optimized: Readonly<Record<string, { readonly file: string; readonly src?: string }>>;
+    readonly discovered: Readonly<Record<string, { readonly file: string; readonly src?: string }>>;
+  };
+}
+
 const NOTHING_FOLDED: FoldedModule = { rows: [], css: "", carried: new Map(), stamps: new Map() };
 
 /**
@@ -1573,6 +1581,24 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
        * tree nor acyclic. A file that will not resolve contributes nothing and
        * the fold declines exactly as it would have.
        */
+      /**
+       * The file a resolved dependency's values are read from. A package the
+       * dev server pre-bundles resolves to the bundle, which wraps the source
+       * in code a fold cannot read and may not be written yet while the
+       * optimizer is still discovering; its own source is the same values.
+       */
+      const optimizer = (this as { environment?: { depsOptimizer?: DepsOptimizer } }).environment
+        ?.depsOptimizer;
+      const sourceOf = (resolvedId: string): string => {
+        const file = resolvedId.split("?", 1)[0] ?? resolvedId;
+        if (optimizer === undefined) return file;
+        const { optimized, discovered } = optimizer.metadata;
+        for (const info of [...Object.values(optimized), ...Object.values(discovered)]) {
+          if (info.file === file && info.src !== undefined) return info.src;
+        }
+        return file;
+      };
+
       const unchanged = async (stamps: ReadonlyMap<string, number>): Promise<boolean> => {
         for (const [file, at] of stamps) {
           try {
@@ -1674,7 +1700,7 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
             own = true;
             continue;
           }
-          const origin = resolved.id.split("?", 1)[0] ?? resolved.id;
+          const origin = sourceOf(resolved.id);
           await carry(origin, from[2] ?? "", depth - 1, seen, into);
         }
         if (!own) return;
@@ -1765,7 +1791,7 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
             const resolved = await this.resolve?.(specifier ?? "", file);
             if (!resolved || resolved.external === true || resolved.external === "absolute")
               continue;
-            const dependency = resolved.id.split("?", 1)[0] ?? resolved.id;
+            const dependency = sourceOf(resolved.id);
             // A watched dependency, so editing the token file retransforms
             // every module that folded against it.
             this.addWatchFile?.(dependency);
