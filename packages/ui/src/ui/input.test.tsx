@@ -3,7 +3,7 @@ import { render, screen, user } from "@barqjs/testing";
 
 import { rulesFor } from "../test-rules.ts";
 
-import { Input } from "./input.tsx";
+import { Input, inputVariants } from "./input.tsx";
 
 describe("Input density", () => {
   test("the default is the height it always was", () => {
@@ -60,5 +60,13 @@ describe("Input, as a native input", () => {
   test("a checkbox input can be checked from the prop", () => {
     render(() => <Input type="checkbox" aria-label="Agree" checked />);
     expect(screen.getByLabelText<HTMLInputElement>("Agree").checked).toBe(true);
+  });
+});
+
+describe("inputVariants", () => {
+  test("is the input's own classes, for an input another component draws", () => {
+    render(() => <Input aria-label="Name" />);
+    const drawn = screen.getByRole("textbox").className.split(" ");
+    for (const one of inputVariants().split(" ")) expect(drawn).toContain(one);
   });
 });

@@ -1,5 +1,5 @@
 import { cells } from "@barqjs/core";
-import { layer } from "@barqjs/css";
+import { layer, variants } from "@barqjs/css";
 import { mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
 
 import "../theme/layers.ts";
@@ -89,6 +89,13 @@ const input = ui(
   },
 );
 
+/**
+ * The classes, without the component: for an `<input>` another component
+ * draws, such as `@barqjs/aria`'s colour or number field, that should look
+ * like every other input. `data-size="sm"` on it is the dense one.
+ */
+export const inputVariants = variants({ base: input, variants: {} });
+
 export type InputSize = "default" | "sm";
 
 export interface InputProps extends Omit<UiProps, "ref"> {
@@ -152,7 +159,7 @@ export interface InputProps extends Omit<UiProps, "ref"> {
 export function Input(props: InputProps) {
   return (
     <input
-      {...controlProps("input", input, omit(cells(props), ["size"]))}
+      {...controlProps("input", inputVariants(), omit(cells(props), ["size"]))}
       data-size={props.size ?? "default"}
       ref={mergeRefs(props.ref)}
     />
