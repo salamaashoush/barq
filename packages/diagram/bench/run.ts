@@ -32,6 +32,18 @@ const native = createRequire(import.meta.url)("@barqjs/compiler") as {
 const barqCompiler: BunPlugin = {
   name: "barq-diagram-bench",
   setup(build) {
+    // a language other than English is a chunk of its own, fetched when
+    // asked for: the bench's English page never loads one
+    build.onResolve({ filter: /locales\/(?!en\.json|percentages\.json)[^/]+\.json$/ }, (args) => ({
+      path: args.path,
+      external: true,
+    }));
+    // the UI's styles, and `@barqjs/ui`'s, fold to classes as an app build folds them
+    build.onLoad({ filter: /\/(packages\/ui\/src|diagram\/src\/ui)\/.*\.ts$/ }, async (args) => {
+      const source = await Bun.file(args.path).text();
+      const result = native.transform(source, { filename: args.path });
+      return { contents: result.code, loader: "ts" };
+    });
     build.onLoad({ filter: /\.tsx$/ }, async (args) => {
       const source = await Bun.file(args.path).text();
       if (source.includes("@jsxImportSource react")) return { contents: source, loader: "tsx" };
@@ -67,11 +79,11 @@ async function bundle(entry: string): Promise<Bundle> {
   return { js, css };
 }
 
-const page = (name: string) =>
+const page = (name: string, setup = "") =>
   '<!doctype html><meta charset="utf-8"><body style="margin:0">' +
   `<link rel="stylesheet" href="/${name}.css"><div id="app"></div>` +
   // both load their fonts from here, where there are none, so neither waits on a CDN
-  '<script>window.EXCALIDRAW_ASSET_PATH = "/assets/"</script>' +
+  `<script>window.EXCALIDRAW_ASSET_PATH = "/assets/";${setup}</script>` +
   `<script type="module" src="/${name}.js"></script>`;
 
 const median = (values: number[]): number => {
@@ -217,6 +229,8 @@ const barq = await bundle("barq.tsx");
 const excalidraw = await bundle("excalidraw.tsx");
 const files = new Map([
   ["/barq.html", page("barq")],
+  // the same editor without its UI, which shows what the UI costs
+  ["/barq-canvas.html", page("barq", "window.__noUI = true;")],
   ["/barq.js", barq.js],
   ["/barq.css", barq.css],
   ["/excalidraw.html", page("excalidraw")],
@@ -230,10 +244,15 @@ const size = (bundled: Bundle) => ({
   gzipKb: (gzipSync(bundled.js).length + gzipSync(bundled.css).length) / 1024,
 });
 
-const results: Record<string, Record<string, Row>> = { barq: {}, excalidraw: {} };
+const EDITORS = ["barq", "barq-canvas", "excalidraw"] as const;
+const results: Record<string, Record<string, Row>> = {
+  barq: {},
+  "barq-canvas": {},
+  excalidraw: {},
+};
 try {
   for (const count of SIZES) {
-    for (const name of ["barq", "excalidraw"] as const) {
+    for (const name of EDITORS) {
       if (PROFILE && PROFILE !== name) continue;
       const rows: Row[] = [];
       for (let round = 0; round < ROUNDS; round++) {
@@ -261,7 +280,7 @@ const lines = [
   "| --- | --- | --- | --- | --- | --- | --- |",
 ];
 for (const count of SIZES) {
-  for (const name of ["barq", "excalidraw"] as const) {
+  for (const name of EDITORS) {
     const row = results[name][count];
     lines.push(
       `| ${count} | ${name} | ${fixed(row.mount, 0)} | ${fixed(row.drag)} | ${fixed(row.pan)} | ${fixed(row.zoom)} | ${fixed(row.heap / 1024 / 1024)} |`,

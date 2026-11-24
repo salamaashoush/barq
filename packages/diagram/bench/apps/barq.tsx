@@ -8,6 +8,7 @@ declare global {
     __mount(count: number): Promise<number>;
     __select(): void;
     __ready: boolean;
+    __noUI?: boolean;
   }
 }
 
@@ -20,7 +21,12 @@ window.__mount = async (count) => {
   const start = performance.now();
   render(
     () => (
-      <DiagramEditor initialData={scene as never} height="1024px" api={(given) => (api = given)} />
+      <DiagramEditor
+        initialData={scene as never}
+        height="1024px"
+        ui={window.__noUI !== true}
+        api={(given) => (api = given)}
+      />
     ),
     document.getElementById("app")!,
   );
