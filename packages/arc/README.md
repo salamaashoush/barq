@@ -584,6 +584,41 @@ import { ResponsiveTabs } from "@barqjs/arc";
   level of links below an item. Across a narrow container the groups run as
   one row that scrolls sideways (`collapse="never"` keeps the column).
 
+## Settings
+
+```tsx
+import { DangerZone, SettingsLayout, SettingsSection } from "@barqjs/arc";
+
+<SettingsLayout navigation={SECTIONS} selected={section() !== undefined} back={{ to: "/settings" }}>
+  <SettingsSection heading="Profile" description="How others see you." form={form}>
+    <form.AppField name="name">{(field) => <field.TextField label="Name" />}</form.AppField>
+  </SettingsSection>
+  <DangerZone
+    actions={[
+      {
+        id: "delete",
+        title: "Delete the workspace",
+        label: "Delete workspace",
+        confirm: { title: "Delete the workspace?", confirmLabel: "Delete" },
+        onAction: remove,
+      },
+    ]}
+  />
+</SettingsLayout>;
+```
+
+- `SettingsLayout`: a settings area's sections in a `SideNav` beside the open
+  one across a wide container; across a narrow one the list of sections
+  first and, once one is `selected`, that section alone with a link `back`
+  to the list.
+- `SettingsSection`: one block of settings with its heading, a line about it,
+  its fields and a bar at its foot. Given its own `form`, Save waits for a
+  change, a moment of "Saved" follows a save, and leaving with unsaved
+  changes asks through `UnsavedChangesGuard`; without one, `footer` holds
+  the bar's actions.
+- `DangerZone`: the actions that cannot be undone, in the danger tone, each
+  with a line about it and a button that asks through `confirm()` first.
+
 ## Data display
 
 - `Indicator`: a count or a dot in a tone, on its own or pinned to the top

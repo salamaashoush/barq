@@ -224,6 +224,16 @@ export {
   passwordStrength,
 } from "./components/auth.tsx";
 export {
+  type DangerAction,
+  DangerZone,
+  type DangerZoneProps,
+  SettingsLayout,
+  type SettingsLayoutProps,
+  SettingsSection,
+  type SettingsSectionProps,
+  settingsStyles,
+} from "./components/settings.tsx";
+export {
   ClipRecorder,
   type ClipRecorderProps,
   type RecordedClip,
