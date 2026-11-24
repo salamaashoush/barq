@@ -267,3 +267,46 @@ describe("the inputs, actions and overlays on the server", () => {
     expect(html).not.toContain('data-slot="coachmark"');
   });
 });
+
+describe("the charts on the server", () => {
+  test("every chart writes its drawing and its table with no DOM", async () => {
+    const jsx = `
+      <main>
+        <DonutChart label="Checks" data={[{ key: "up", label: "Up", value: 4, tone: "success" }]} />
+        <ComboChart
+          label="Runs"
+          data={[{ day: "Mon", runs: 3, rate: 0.1 }]}
+          x="day"
+          bars={[{ key: "runs", label: "Runs" }]}
+          lines={[{ key: "rate", label: "Rate" }]}
+          dualAxis
+        />
+        <ScatterChart label="Requests" data={[{ a: 1, b: 2, c: 3 }]} x="a" y="b" size="c" />
+        <FunnelChart label="Sign-ups" data={[{ key: "a", label: "Visited", value: 10 }]} />
+        <Gauge label="Storage" value={72} thresholds={[{ value: 70, tone: "warning" }]} />
+        <Heatmap label="Load" data={[{ d: "Mon", h: "09", v: 2 }]} x="h" y="d" value="v" />
+        <Sparkline data={[1, 3, 2]} variant="bar" />
+      </main>
+    `;
+    const names = [
+      "DonutChart",
+      "ComboChart",
+      "ScatterChart",
+      "FunnelChart",
+      "Gauge",
+      "Heatmap",
+      "Sparkline",
+    ];
+    const { code, html, errors } = await serverProcess(routed(names, jsx, "/"));
+    expect(errors).toBe("");
+    expect(code).toBe(0);
+    for (const label of ["Checks", "Runs", "Requests", "Sign-ups", "Load"]) {
+      expect(html).toContain(`aria-label="${label}"`);
+      expect(html).toContain(`>${label}</caption>`);
+    }
+    expect(html).toContain('role="meter progressbar"');
+    expect(html).toContain('aria-valuetext="72"');
+    expect(html).toContain('data-slot="sparkline-bar"');
+    expect(html).toContain("var(--success)");
+  });
+});
