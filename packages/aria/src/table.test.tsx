@@ -34,6 +34,7 @@ import { stubIntersections } from "./test-load-more.ts";
 import { listLayout, Virtualizer } from "./virtualizer.tsx";
 import {
   Cell,
+  cellKeyFor,
   Column,
   type ColumnRenderState,
   ColumnResizer,
@@ -126,6 +127,22 @@ function cell(rowName: string, columnName: string): HTMLElement {
   );
   return cells[at] as HTMLElement;
 }
+
+describe("a cell's key", () => {
+  test("tells apart keys a separator would join alike, and survives an HTML parser", () => {
+    expect(cellKeyFor("a-b", "c")).not.toBe(cellKeyFor("a", "b-c"));
+    expect(cellKeyFor("a:b", "c")).not.toBe(cellKeyFor("a", "b:c"));
+    expect(cellKeyFor(7, "name")).not.toBe(cellKeyFor("7", "name:x"));
+    // Written as `data-key`: a browser's parser turns a NUL in server markup
+    // into U+FFFD, so the key holds no control character for it to rewrite.
+    const key = cellKeyFor("inv-1062", "__arc-select");
+    expect(Array.from({ length: key.length }, (_, at) => key.charCodeAt(at) < 0x20)).not.toContain(
+      true,
+    );
+    const parsed = new DOMParser().parseFromString(`<div data-key="${key}"></div>`, "text/html");
+    expect(parsed.querySelector("div")?.getAttribute("data-key")).toBe(key);
+  });
+});
 
 describe("Table", () => {
   test("is a named grid of rows, headers and cells", () => {

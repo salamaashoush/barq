@@ -152,12 +152,16 @@ import {
 /**
  * A cell's key, from its row's and its column's.
  *
- * A NUL between them, because a key is a string or a number and either may
- * contain any printable character: `"a-b" + "c"` and `"a" + "b-c"` are
- * different cells that a hyphen would give the same key.
+ * The row's key is prefixed with its length, because a key is a string or a
+ * number and either may contain any character: `"a-b" + "c"` and `"a" +
+ * "b-c"` are different cells that a plain separator would give the same key.
+ * No control character, either: the key is written as the cell's `data-key`,
+ * and an HTML parser turns a NUL in server markup into U+FFFD, so a hydrated
+ * cell was never found by its key again.
  */
 export function cellKeyFor(rowKey: Key, columnKey: Key): string {
-  return `${String(rowKey)}\u0000${String(columnKey)}`;
+  const row = String(rowKey);
+  return `${row.length}:${row}:${String(columnKey)}`;
 }
 
 export interface TableColumnProps {
