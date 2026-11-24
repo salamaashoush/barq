@@ -83,6 +83,13 @@ export {
   phoneFieldStyles,
 } from "./components/phone-field.tsx";
 export {
+  type Range,
+  RangeSlider,
+  type RangeSliderProps,
+  rangeSliderStyles,
+} from "./components/range-slider.tsx";
+export { Rating, type RatingProps, ratingStyles } from "./components/rating.tsx";
+export {
   CommandMenu,
   commandMenuStyles,
   type CommandMenuAction,

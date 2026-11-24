@@ -481,6 +481,14 @@ import { Chip } from "@barqjs/arc";
   number too short or too long to dial says so when the field is left.
   `parsePhone` and `formatPhone` are the same reading and writing on their
   own.
+- `Rating`: a score in stars, as a radio group with each star named ("3
+  stars"), the arrows choosing in the reading direction and the stars under
+  the pointer filling as a preview; `allowClear` takes a score back.
+  `isReadOnly` shows a score, a fraction included, as one image read "Rated
+  3.5 out of 5".
+- `RangeSlider`: a low and a high value on one track, the two thumbs named
+  "Minimum" and "Maximum" before the label, the range written beside it in
+  the locale with `formatOptions`, and the ends kept from crossing.
 
 ## Code
 

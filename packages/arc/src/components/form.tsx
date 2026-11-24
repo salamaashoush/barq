@@ -39,6 +39,8 @@ import { ColorField, ColorPicker, ColorSwatches } from "./color.tsx";
 import { DateRangeField } from "./date-range-field.tsx";
 import { CurrencyField, PercentField, UnitField } from "./number-fields.tsx";
 import { PhoneField } from "./phone-field.tsx";
+import { RangeSlider } from "./range-slider.tsx";
+import { Rating } from "./rating.tsx";
 import { TagInput } from "./tag-input.tsx";
 import { TimeField, TimePicker } from "./time-field.tsx";
 
@@ -657,6 +659,8 @@ const arcFieldComponents = {
   PercentField,
   UnitField,
   PhoneField,
+  RangeSlider,
+  Rating,
 };
 
 const arcFormComponents = { SubmitButton, FormError };

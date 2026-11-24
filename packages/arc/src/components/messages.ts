@@ -76,6 +76,10 @@ export interface ArcMessages {
   pickColour: string;
   country: string;
   invalidPhone: string;
+  minimum: string;
+  maximum: string;
+  stars: (count: number) => string;
+  rated: (value: string, max: string) => string;
 }
 
 export const ENGLISH: ArcMessages = {
@@ -148,6 +152,10 @@ export const ENGLISH: ArcMessages = {
   pickColour: "Pick a colour",
   country: "Country",
   invalidPhone: "Enter a phone number with its area code",
+  minimum: "Minimum",
+  maximum: "Maximum",
+  stars: (count) => (count === 1 ? "1 star" : `${String(count)} stars`),
+  rated: (value, max) => `Rated ${value} out of ${max}`,
 };
 
 const MessagesContext = createContext<ArcMessages>(ENGLISH, "ArcMessages");

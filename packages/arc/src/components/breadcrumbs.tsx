@@ -15,6 +15,7 @@ import type { UiProps } from "@barqjs/ui/props";
 import { srOnly } from "@barqjs/ui/sr-only";
 
 import { arcLayer as arc } from "../layer.ts";
+import { square } from "../lib/size.ts";
 import { type Customisable, parts } from "../lib/parts.ts";
 import {
   bg,
@@ -24,7 +25,6 @@ import {
   glyph,
   layout,
   rounded,
-  space,
   interaction,
   truncate,
 } from "../style/index.ts";
@@ -82,7 +82,8 @@ export const breadcrumbsStyles = variants({
       interaction.hoverText,
       interaction.pressable,
       glyph.md,
-      { width: space.x6, height: space.x6, padding: "0px" },
+      square.x6,
+      { padding: "0px" },
     ),
   },
 });

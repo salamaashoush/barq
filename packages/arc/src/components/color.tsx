@@ -27,6 +27,7 @@ import {
   fieldStyles,
 } from "../lib/field.tsx";
 import { type Customisable, parts } from "../lib/parts.ts";
+import { square } from "../lib/size.ts";
 import { fg, focus, gap, layout, rounded, space, target, truncate, type } from "../style/index.ts";
 import { useArcMessages } from "./messages.ts";
 
@@ -50,14 +51,11 @@ const ink = arc({
   boxShadow: "inset 0 0 0 1px color-mix(in oklab, currentColor 20%, transparent)",
 });
 
-/** A swatch's and a thumb's square. */
-const square = arc({ width: space.x5, height: space.x5 });
-
 /** What a colour holds when nothing was given: black, as a picker's own default is. */
 const BLACK = "#000000";
 
 /** A thumb on a track or in an area: a white ring around the colour, a finger's size on touch. */
-const thumb = arc(rounded.full, contrast.focus, square, {
+const thumb = arc(rounded.full, contrast.focus, square.x5, {
   borderWidth: "2px",
   borderStyle: "solid",
   borderColor: "white",
@@ -81,7 +79,7 @@ export const colorStyles = variants({
     thumb: arc(thumb, { top: "50%" }),
     areaThumb: thumb,
     output: srOnly,
-    swatch: arc(rounded.md, ink, square),
+    swatch: arc(rounded.md, ink, square.x5),
   },
 });
 
@@ -183,9 +181,9 @@ export const colorSwatchesStyles = variants({
   },
   variants: {
     size: {
-      sm: { swatch: arc({ width: space.x4, height: space.x4 }) },
+      sm: { swatch: square.x4 },
       md: {},
-      lg: { swatch: arc({ width: space.x8, height: space.x8 }) },
+      lg: { swatch: square.x8 },
     },
     shape: {
       square: {},
