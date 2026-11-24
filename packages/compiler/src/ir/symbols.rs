@@ -3,6 +3,7 @@ use oxc::ast::ast::{Expression, JSXAttributeValue};
 use oxc::semantic::{ScopeId, SymbolId};
 use oxc::span::Span;
 use oxc_index::IndexVec;
+use rustc_hash::FxHashSet;
 
 use crate::diag::Code;
 
@@ -363,6 +364,21 @@ pub struct ReactiveEnv<'a> {
     /// subtree, because a hand-written caller can still hand it one — that is
     /// what the fixture's controls drive.
     pub root_jsx_args: Vec<Span>,
+    /// JSX written as a value that something renders later: an object
+    /// property, a member of an array literal that is not itself being
+    /// rendered, or a JSX argument a signal stores. Built where it is written,
+    /// it ran outside the claim walk of the position that finally inserts it
+    /// and, on a hydrating page, claimed whatever server node was next. The
+    /// shape pass wraps each into a Block, which the insert builds in place,
+    /// as it already does for a JSX-valued prop.
+    ///
+    /// The span of the JSX itself and of every parenthesis around it, since
+    /// lowering names a native element's placeholder by the outermost one.
+    pub stored_jsx: FxHashSet<Span>,
+    /// The subset of [`Self::stored_jsx`] a signal stores. The engine calls a
+    /// function handed to `createSignal` or to a setter, so the Block goes in a
+    /// one-member array, which every renderer places as a fragment.
+    pub boxed_jsx: FxHashSet<Span>,
     /// Zero-arity functions whose body reads something tracked, sorted.
     ///
     /// `const double = () => count() * 2` is a function and stays one: a
@@ -415,6 +431,8 @@ impl<'a> ReactiveEnv<'a> {
             cell_slots: Vec::new(),
             root_blocks: Vec::new(),
             root_jsx_args: Vec::new(),
+            stored_jsx: FxHashSet::default(),
+            boxed_jsx: FxHashSet::default(),
             derived: Vec::new(),
             plain_rows: Vec::new(),
             rows_read_once: Vec::new(),

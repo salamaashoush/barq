@@ -516,6 +516,13 @@ every hop.
 `template()` **is** a legal Block and is passed by name with zero allocation. Slot parameters are
 extra `Cell` arguments to the Block.
 
+JSX stored as a value lowers to a `Block` too: an object property, a member of an array literal
+that is not rendered where it is written (a JSX child, a return value, an arrow's body), and the
+value a signal is created with or a setter writes. It is built where it is finally inserted, inside
+that position's claim walk; built where it was written, it claimed whatever server node the walk
+had reached. The engine calls a function written to a signal, so a signal's Block travels in a
+one-member array. A declarator's JSX (`const el = <div />`) stays a built value.
+
 **Falsified by.** An emitted `children:` whose value is a built node, an already-invoked expression, an
 unbranded nullary thunk, or an array of nodes. All four are O2's negation in different clothes.
 
@@ -525,7 +532,8 @@ runtime reads every renderable slot by calling it. Nothing the compiler emits ta
 `compile.rs`'s `the_whole_corpus_emits_one_calling_convention_at_both_levels` fails on any of the
 four falsifiers in any slot, and `the_calling_convention_audit_sees_all_four_of_c6s_falsifiers` shows
 it can see each. Pinned by `component-children-slot.tsx`, `sem-own-slot-arguments.tsx` and
-`sem-props-cast-keeps-the-brand.tsx`.
+`sem-props-cast-keeps-the-brand.tsx`; stored JSX by `test/stored-jsx-hydration.test.ts`, which
+hydrates each shape across the four pairings of `dev`.
 
 ### C7 — a Block is called exactly once per activation
 

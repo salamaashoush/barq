@@ -1,6 +1,7 @@
-use oxc::allocator::{Allocator, TakeIn};
+use oxc::allocator::{Allocator, TakeIn, Vec as ArenaVec};
 use oxc::ast::ast::{
-    ArrowFunctionExpression, Expression, Program, ReturnStatement, VariableDeclarator,
+    Argument, ArrayExpressionElement, ArrowFunctionBody, ArrowFunctionExpression, Expression,
+    FormalParameterKind, FormalParameters, Program, ReturnStatement, VariableDeclarator,
 };
 use oxc::ast::builder::AstBuilder;
 use oxc::ast_visit::VisitMut;
@@ -10,6 +11,7 @@ use oxc::ast_visit::walk_mut::{
 };
 use oxc::span::GetSpan;
 
+use crate::codegen::Helper;
 use crate::ir::{Module, Root, Site};
 
 /// The single point where the AST and the IR touch, and the only stage before
@@ -57,6 +59,53 @@ impl<'a> Harvest<'a, '_> {
         // Nested JSX travels inside the taken root, so the walk stops here.
         *it = Expression::new_identifier(span, name, &self.ast);
     }
+
+    /// JSX the program stores as a value (`ReactiveEnv::stored_jsx`) becomes
+    /// `_$block(() => root)`, built where it is inserted. Its spans are taken
+    /// off the list here, so the shape pass does not wrap the root again.
+    fn take_stored(&mut self, it: &mut Expression<'a>) -> bool {
+        let span = it.span();
+        let env = &mut self.module.env;
+        if !env.stored_jsx.remove(&span) {
+            return false;
+        }
+        let mut inner = &*it;
+        while let Expression::ParenthesizedExpression(parens) = inner {
+            env.stored_jsx.remove(&parens.expression.span());
+            inner = &parens.expression;
+        }
+        let boxed = env.boxed_jsx.contains(&span);
+        self.take(it, Site::ArrowBody(span));
+        let root = it.take_in(&self.allocator);
+        let params = FormalParameters::boxed(
+            span,
+            FormalParameterKind::ArrowFormalParameters,
+            ArenaVec::new_in(&self.allocator),
+            None,
+            &self.ast,
+        );
+        let body = ArrowFunctionBody::from(root);
+        let arrow = Expression::new_arrow_function_expression(
+            span, false, None, params, None, body, &self.ast,
+        );
+        self.module.used_helpers[Helper::Block as usize] = true;
+        let callee = Expression::new_identifier(
+            span,
+            self.module.helpers[Helper::Block as usize],
+            &self.ast,
+        );
+        let arguments = ArenaVec::from_iter_in([Argument::from(arrow)], &self.allocator);
+        let deferred =
+            Expression::new_call_expression(span, callee, None, arguments, false, &self.ast);
+        *it = if boxed {
+            let members =
+                ArenaVec::from_iter_in([ArrayExpressionElement::from(deferred)], &self.allocator);
+            Expression::new_array_expression(span, members, &self.ast)
+        } else {
+            deferred
+        };
+        true
+    }
 }
 
 /// The three positions a JSX root can occupy where its compiled statements
@@ -96,6 +145,9 @@ impl<'a> VisitMut<'a> for Harvest<'a, '_> {
 
     fn visit_expression(&mut self, it: &mut Expression<'a>) {
         if Self::is_jsx(it) {
+            if self.take_stored(it) {
+                return;
+            }
             let span = it.span();
             self.take(it, Site::Nested(span));
             return;

@@ -10,8 +10,9 @@ import { ScopeMissingError, block, readSlot, toString } from "@barqjs/core";
 import { underScope } from "@barqjs/core/internal";
 
 const TAIL =
-  " JSX where a value is expected. JSX passed as a prop or as children is built only where it " +
-  "is rendered, so there is no value to read from it here. Render it as a child, " +
+  " JSX where a value is expected. JSX passed as a prop, as children or stored as a value is " +
+  "built only where it is rendered, so there is no value to read from it here. Render it as a " +
+  "child, " +
   "`<span>{props.children}</span>`, or pass a string, a number or an accessor.";
 
 function thrownBy(body: () => unknown): ScopeMissingError {

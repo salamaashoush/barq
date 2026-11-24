@@ -1731,6 +1731,19 @@ impl<'a> VisitMut<'a> for Shaper<'a, '_> {
         let mount = matches!(it, Expression::JSXElement(_) | Expression::JSXFragment(_))
             .then(|| it.span())
             .filter(|span| self.lift.env().root_jsx_args.contains(span));
+        // JSX stored as a value (`ReactiveEnv::stored_jsx`): an object
+        // property, an array member, a signal's value. A native element
+        // arrives here as its lowered placeholder, under the same span.
+        let stored = match &*it {
+            Expression::JSXElement(_) | Expression::JSXFragment(_) => Some(it.span()),
+            Expression::Identifier(identifier)
+                if self.uids.root_index(identifier.name.as_str()).is_some() =>
+            {
+                Some(it.span())
+            }
+            _ => None,
+        }
+        .filter(|span| self.lift.env().stored_jsx.contains(span));
 
         if let Expression::JSXFragment(fragment) = it {
             self.live_fragment(fragment);
@@ -1776,6 +1789,17 @@ impl<'a> VisitMut<'a> for Shaper<'a, '_> {
         if let Some(span) = mount {
             let built = it.take_in(&self.allocator);
             *it = self.block(built, span);
+        }
+        if let Some(span) = stored {
+            let built = it.take_in(&self.allocator);
+            let deferred = self.block(built, span);
+            *it = if self.lift.env().boxed_jsx.contains(&span) {
+                let member = ArrayExpressionElement::from(deferred);
+                let members = ArenaVec::from_iter_in([member], &self.allocator);
+                Expression::new_array_expression(span, members, &self.ast)
+            } else {
+                deferred
+            };
         }
     }
 

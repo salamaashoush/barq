@@ -264,8 +264,8 @@ export function jsxAsValue(origin: string, returned = false): ScopeMissingError 
   return new ScopeMissingError(
     origin,
     `${where} ${returned ? "is a function that returned" : "was given"} JSX where a value is ` +
-      "expected. JSX passed as a prop or as children is built only where it is rendered, so " +
-      "there is no value to read from it here. Render it as a child, " +
+      "expected. JSX passed as a prop, as children or stored as a value is built only where " +
+      "it is rendered, so there is no value to read from it here. Render it as a child, " +
       "`<span>{props.children}</span>`, or pass a string, a number or an accessor.",
   );
 }

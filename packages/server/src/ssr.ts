@@ -1013,8 +1013,9 @@ function cellSlot(value: unknown, origin: string): void {
   const where = label === null ? origin : `The \`${label[2]}\` prop of \`<${label[1]}>\``;
   throw new ScopeMissingError(
     origin,
-    `${where} was given JSX where a value is expected. JSX passed as a prop or as children is ` +
-      "built only where it is rendered, so there is no value to read from it here. Render it as " +
+    `${where} was given JSX where a value is expected. JSX passed as a prop, as children or ` +
+      "stored as a value is built only where it is rendered, so there is no value to read from " +
+      "it here. Render it as " +
       "a child, `<span>{props.children}</span>`, or pass a string, a number or an accessor.",
   );
 }

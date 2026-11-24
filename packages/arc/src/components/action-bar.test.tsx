@@ -131,4 +131,53 @@ describe("ActionBar", () => {
     expect(actions[1]?.getAttribute("aria-label")).toBe("Send");
     result.unmount();
   });
+
+  test("hydrates the icons written in its actions", async () => {
+    const result = await hydrates(`
+      import { ActionBar } from "<arc>";
+      import { Download } from "@barqjs/lucide/icons/download";
+      function Glyph() {
+        return <svg data-glyph="send" viewBox="0 0 1 1"><path d="M0 0" /></svg>;
+      }
+      export function Page() {
+        return (
+          <ActionBar
+            aria-label="Invoice"
+            overflow="wrap"
+            actions={[
+              { id: "pdf", label: "Download PDF", icon: <Download /> },
+              { id: "send", label: "Send", icon: <Glyph />, iconOnly: true },
+              { id: "void", label: "Void" },
+            ]}
+            onAction={() => {}}
+          />
+        );
+      }
+    `);
+    const icons = [...result.container.querySelectorAll('[data-slot="action-bar-icon"]')];
+    expect(icons).toHaveLength(2);
+    expect(icons[0]?.querySelector("svg")).not.toBeNull();
+    expect(icons[1]?.querySelector('[data-glyph="send"]')).not.toBeNull();
+    result.unmount();
+  });
+
+  test("hydrates icons from actions declared apart from it, inside a <Show>", async () => {
+    const result = await hydrates(`
+      import { Show } from "@barqjs/core";
+      import { ActionBar } from "<arc>";
+      const actions = [
+        { id: "copy", label: "Copy", icon: <svg data-glyph="copy" viewBox="0 0 1 1" /> },
+        { id: "send", label: "Send" },
+      ];
+      export function Page() {
+        return (
+          <Show when={actions.length > 0}>
+            <ActionBar aria-label="Record" actions={actions} onAction={() => {}} />
+          </Show>
+        );
+      }
+    `);
+    expect(result.container.querySelector('[data-glyph="copy"]')).not.toBeNull();
+    result.unmount();
+  });
 });

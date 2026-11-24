@@ -13,6 +13,7 @@ use oxc::ast_visit::Visit;
 use oxc::ast_visit::walk;
 use oxc::semantic::{Scoping, SymbolId};
 use oxc::span::Span;
+use rustc_hash::FxHashSet;
 
 use crate::diag::Code;
 use crate::ir::{
@@ -147,6 +148,8 @@ pub fn classify<'a>(
         row_readers: Vec::new(),
         function_params: Vec::new(),
         named_callbacks: Vec::new(),
+        placed: FxHashSet::default(),
+        written: Vec::new(),
     };
     binder.imports(
         program,
@@ -168,6 +171,7 @@ pub fn classify<'a>(
     binder.publish_components();
     binder.publish_cell_slots();
     binder.publish_rows_read_once();
+    binder.publish_signal_writes();
 
     number_reactive_symbols(&mut module.env);
 }
@@ -275,6 +279,13 @@ struct Binder<'p, 'a> {
     /// flow construct's callback child, which is invoked exactly as an inline
     /// callback there would be.
     named_callbacks: Vec<(SymbolId, Vec<SourceKind>, bool)>,
+    /// Array literals whose members are rendered where the array is written: a
+    /// JSX child, a function's return value or an arrow's body. Every other
+    /// array literal holds data, and JSX in it is stored (`env.stored_jsx`).
+    placed: FxHashSet<Span>,
+    /// `(callee, span)` for JSX written as a call's first argument, kept until
+    /// the fixpoint has said which callees are signal setters.
+    written: Vec<(SymbolId, Span)>,
 }
 
 /// A D1 candidate: an identifier in a syntactic slot where no correct program
@@ -1173,6 +1184,131 @@ impl<'a> Binder<'_, 'a> {
         }
     }
 
+    /// JSX a setter writes is stored the way the signal's initial value is.
+    fn publish_signal_writes(&mut self) {
+        let setters: Vec<SymbolId> = self
+            .decls
+            .iter()
+            .filter(|decl| {
+                decl.element == Some(1)
+                    && !decl.member
+                    && !self.scoping.symbol_is_mutated(decl.symbol)
+                    && match decl.init {
+                        InitOf::Call(callee) => matches!(
+                            self.env.kind_of(callee),
+                            SourceKind::Primitive(Prim::Signal | Prim::Optimistic)
+                        ),
+                        InitOf::NamespaceCall(prim) => {
+                            matches!(prim, Prim::Signal | Prim::Optimistic)
+                        }
+                        _ => false,
+                    }
+            })
+            .map(|decl| decl.symbol)
+            .collect();
+        for (callee, span) in std::mem::take(&mut self.written) {
+            if setters.contains(&callee) {
+                self.env.stored_jsx.insert(span);
+                self.env.boxed_jsx.insert(span);
+            }
+        }
+    }
+
+    /// Whether `callee` is `createSignal` or `createOptimistic`, by import or
+    /// through a namespace.
+    fn constructs_signal(&self, callee: &Expression<'a>) -> bool {
+        if let Some(symbol) = symbol_of(self.scoping, callee) {
+            return matches!(
+                self.env.kind_of(symbol),
+                SourceKind::Primitive(Prim::Signal | Prim::Optimistic)
+            );
+        }
+        if let Expression::StaticMemberExpression(member) = callee
+            && let Some(namespace) = symbol_of(self.scoping, &member.object)
+            && self.namespaces.contains(&namespace)
+        {
+            return matches!(
+                Prim::of_export(member.property.name.as_str()),
+                Some(Prim::Signal | Prim::Optimistic)
+            );
+        }
+        false
+    }
+
+    /// The JSX a value ends in, through what passes it on unchanged:
+    /// parentheses, casts, a conditional's arms, a logical's operands. An array
+    /// literal on the way holds data, so its members are stored here and the
+    /// array is not looked at again.
+    fn jsx_leaves(&mut self, value: &Expression<'a>, leaves: &mut Vec<Span>) {
+        match value {
+            Expression::JSXElement(element) => leaves.push(element.span),
+            Expression::JSXFragment(fragment) => leaves.push(fragment.span),
+            Expression::ParenthesizedExpression(inner) => {
+                if matches!(
+                    inner.expression.without_parentheses(),
+                    Expression::JSXElement(_) | Expression::JSXFragment(_)
+                ) {
+                    leaves.push(inner.span);
+                }
+                self.jsx_leaves(&inner.expression, leaves);
+            }
+            Expression::TSAsExpression(inner) => self.jsx_leaves(&inner.expression, leaves),
+            Expression::TSSatisfiesExpression(inner) => self.jsx_leaves(&inner.expression, leaves),
+            Expression::TSNonNullExpression(inner) => self.jsx_leaves(&inner.expression, leaves),
+            Expression::ConditionalExpression(inner) => {
+                self.jsx_leaves(&inner.consequent, leaves);
+                self.jsx_leaves(&inner.alternate, leaves);
+            }
+            Expression::LogicalExpression(inner) => {
+                self.jsx_leaves(&inner.left, leaves);
+                self.jsx_leaves(&inner.right, leaves);
+            }
+            Expression::ArrayExpression(array) => {
+                self.placed.insert(array.span);
+                self.store_members(array);
+            }
+            _ => {}
+        }
+    }
+
+    fn store_members(&mut self, array: &oxc::ast::ast::ArrayExpression<'a>) {
+        let mut leaves = Vec::new();
+        for element in &array.elements {
+            if let Some(member) = element.as_expression() {
+                self.jsx_leaves(member, &mut leaves);
+            }
+        }
+        self.env.stored_jsx.extend(leaves);
+    }
+
+    /// An array literal at a position that renders it: its members are built
+    /// in place, inside the claim walk, and stay as they are.
+    fn place(&mut self, value: &Expression<'a>) {
+        match value {
+            Expression::ParenthesizedExpression(inner) => self.place(&inner.expression),
+            Expression::TSAsExpression(inner) => self.place(&inner.expression),
+            Expression::TSSatisfiesExpression(inner) => self.place(&inner.expression),
+            Expression::TSNonNullExpression(inner) => self.place(&inner.expression),
+            Expression::ConditionalExpression(inner) => {
+                self.place(&inner.consequent);
+                self.place(&inner.alternate);
+            }
+            Expression::LogicalExpression(inner) => {
+                self.place(&inner.left);
+                self.place(&inner.right);
+            }
+            Expression::ArrayExpression(array) => {
+                self.placed.insert(array.span);
+                for element in &array.elements {
+                    if let Some(member) = element.as_expression() {
+                        self.place(member);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
     fn publish_rows_read_once(&mut self) {
         for (span, symbol) in std::mem::take(&mut self.named_rows) {
             let once = self
@@ -1586,7 +1722,50 @@ impl<'a> Visit<'a> for Binder<'_, 'a> {
         {
             self.record_route_options(object);
         }
+        // JSX a signal stores, given to `createSignal` or to a setter.
+        if let Some(first) = it.arguments.first()
+            && let Some(value) = first.as_expression()
+        {
+            let mut leaves = Vec::new();
+            self.jsx_leaves(value, &mut leaves);
+            if self.constructs_signal(&it.callee) {
+                self.env.stored_jsx.extend(leaves.iter().copied());
+                self.env.boxed_jsx.extend(leaves);
+            } else if let Some(callee) = symbol_of(self.scoping, &it.callee) {
+                self.written.extend(leaves.into_iter().map(|span| (callee, span)));
+            }
+        }
         walk::walk_call_expression(self, it);
+    }
+
+    fn visit_array_expression(&mut self, it: &oxc::ast::ast::ArrayExpression<'a>) {
+        if self.placed.insert(it.span) {
+            self.store_members(it);
+        }
+        walk::walk_array_expression(self, it);
+    }
+
+    fn visit_jsx_child(&mut self, it: &JSXChild<'a>) {
+        if let JSXChild::ExpressionContainer(container) = it
+            && let Some(value) = container.expression.as_expression()
+        {
+            self.place(value);
+        }
+        walk::walk_jsx_child(self, it);
+    }
+
+    fn visit_return_statement(&mut self, it: &oxc::ast::ast::ReturnStatement<'a>) {
+        if let Some(argument) = &it.argument {
+            self.place(argument);
+        }
+        walk::walk_return_statement(self, it);
+    }
+
+    fn visit_arrow_function_expression(&mut self, it: &ArrowFunctionExpression<'a>) {
+        if let Some(body) = it.body.as_expression() {
+            self.place(body);
+        }
+        walk::walk_arrow_function_expression(self, it);
     }
 
     fn visit_variable_declarator(&mut self, it: &VariableDeclarator<'a>) {
@@ -1759,6 +1938,14 @@ impl<'a> Visit<'a> for Binder<'_, 'a> {
                 self.valued.push(symbol);
             }
         }
+        // An object is never rendered, so JSX among its values is stored.
+        let mut leaves = Vec::new();
+        for property in &it.properties {
+            if let oxc::ast::ast::ObjectPropertyKind::ObjectProperty(property) = property {
+                self.jsx_leaves(&property.value, &mut leaves);
+            }
+        }
+        self.env.stored_jsx.extend(leaves);
         walk::walk_object_expression(self, it);
     }
 
