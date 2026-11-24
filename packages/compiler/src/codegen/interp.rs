@@ -438,10 +438,20 @@ impl<'a> Backend<'a> for Interp<'a, '_, '_, '_, '_> {
         let slot = if live { self.read(value, span) } else { self.once(value, span) };
         let live = Expression::new_boolean_literal(span, live, &self.ctx.ast);
         let mut fields = vec![node, slot, live];
-        if let Some(later) = super::dom::spread_later(self.ctx, self.unit, span) {
+        let later = super::dom::spread_later(self.ctx, self.unit, span);
+        if super::dom::holds_selection(self.unit, at.target()) {
+            fields.push(later.unwrap_or_else(|| Expression::new_null_literal(span, &self.ctx.ast)));
+            fields.push(Expression::new_boolean_literal(span, true, &self.ctx.ast));
+        } else if let Some(later) = later {
             fields.push(later);
         }
         Some(self.record("spread", fields, span))
+    }
+
+    fn spread_selection(&mut self, at: At<'_>) -> Self::Out {
+        let span = at.span();
+        let node = self.node(at.target(), span);
+        Some(self.record("spreadSelection", vec![node], span))
     }
 }
 

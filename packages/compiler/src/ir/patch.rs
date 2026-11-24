@@ -100,6 +100,10 @@ pub enum Op {
         value: ExprId,
         live: bool,
     },
+    /// The `value` and `selectedIndex` a spread on a `<select>` held back,
+    /// written once the options they name exist. Lowering puts it after the
+    /// children, and its presence is what tells the element's spread to hold.
+    SpreadSelection {},
     // ── children ──────────────────────────────────────────────────────────
     Insert {
         slot: SlotId,

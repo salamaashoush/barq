@@ -62,6 +62,7 @@ import {
   setHtml,
   setStyle,
   spread,
+  spreadSelection,
   type Channel,
 } from "./dom.ts";
 import { boundary, branch, each, island, portal } from "./dom-flow.ts";
@@ -103,7 +104,8 @@ export type Op =
   | readonly ["ref", number, number, "assign" | "apply"]
   | readonly ["formAction", number, number]
   | readonly ["bind", number, string, string, number]
-  | readonly ["spread", number, number, boolean, (readonly string[])?]
+  | readonly ["spread", number, number, boolean, (readonly string[] | null)?, boolean?]
+  | readonly ["spreadSelection", number]
   | readonly ["insert", number, number, Plan, number | null]
   | Region
   | readonly ["effectGroup", readonly (SetLive | SetOpaque)[]];
@@ -149,6 +151,7 @@ export const HANDLED: readonly string[] = [
   "formAction",
   "bind",
   "spread",
+  "spreadSelection",
   "insert",
   "region",
   "effectGroup",
@@ -272,7 +275,16 @@ function apply(op: Op, nodes: readonly Node[], slots: readonly Slot[]): void {
     // compiler saying the source may change, and it is the same bit that makes
     // the DOM backend hand `spread` a thunk instead of an object.
     case "spread":
-      spread(nodes[op[1]] as Element, (op[3] ? slots[op[2]] : slots[op[2]]()) as never, op[4]);
+      spread(
+        nodes[op[1]] as Element,
+        (op[3] ? slots[op[2]] : slots[op[2]]()) as never,
+        op[4],
+        op[5],
+      );
+      return;
+
+    case "spreadSelection":
+      spreadSelection(nodes[op[1]] as Element);
       return;
 
     case "insert": {

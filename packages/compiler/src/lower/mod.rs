@@ -435,15 +435,30 @@ impl<'a> Lower<'a, '_> {
         // `bind:group` compares the field's own `value`, so it follows every
         // other attribute; a `<select>`'s value or selected index names one
         // of its options, so it follows the children that build them.
+        //
+        // A spread on a `<select>` cannot move: its `multiple` has to precede
+        // the options marked `selected`. It stays, holding its value and
+        // selected index for a `SpreadSelection` among the writes that follow.
         let mut unit = build.unit;
         let mut grouped = Vec::new();
-        let mut selecting = Vec::new();
+        let mut selecting: Vec<Patch> = Vec::new();
         for patch in build.attribute_patches {
             if self.binds_group(&patch) {
                 grouped.push(patch);
             } else if self.selects_an_option(&unit, &patch) {
                 selecting.push(patch);
             } else {
+                if self.spreads_on_a_select(&unit, &patch)
+                    && !selecting.iter().any(|held| {
+                        held.target == patch.target && matches!(held.op, Op::SpreadSelection {})
+                    })
+                {
+                    selecting.push(Patch {
+                        target: patch.target,
+                        span: patch.span,
+                        op: Op::SpreadSelection {},
+                    });
+                }
                 unit.patch.push(patch);
             }
         }
@@ -835,6 +850,16 @@ impl<'a> Lower<'a, '_> {
 
     fn binds_group(&self, patch: &Patch) -> bool {
         matches!(patch.op, Op::Bind { prop, .. } if self.module.interner.name(prop).text == "group")
+    }
+
+    fn spreads_on_a_select(&self, unit: &Unit<'a>, patch: &Patch) -> bool {
+        if self.universal || !matches!(patch.op, Op::Spread { .. }) {
+            return false;
+        }
+        let SkelNode::Element(element) = &unit.skeleton.nodes[patch.target as usize] else {
+            return false;
+        };
+        element.ns == Ns::Html && self.module.interner.tag(element.tag).text == "select"
     }
 
     fn selects_an_option(&self, unit: &Unit<'a>, patch: &Patch) -> bool {

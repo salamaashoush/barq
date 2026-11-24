@@ -688,8 +688,9 @@ export function element(tag: string, props: Record<string, unknown>): Element {
   // `<template>` — so a document-hydrated page has its whole frame on this path,
   // and an unconditional `withoutClaim` here meant it claimed nothing at all.
   const claimed = claimElement(tag);
+  const select = tag.toLowerCase() === "select";
   if (claimed !== null) {
-    spread(claimed, props);
+    spread(claimed, props, undefined, select);
     const children = props.children;
     // `WHOLE`, because that is exactly what this position is: the server wrote
     // this element's children with no boundary comments, so the claim is every
@@ -699,14 +700,16 @@ export function element(tag: string, props: Record<string, unknown>): Element {
     if (children !== undefined && children !== null) {
       insert(claimed, children, null, WHOLE);
     }
+    if (select) spreadSelection(claimed);
     return claimed;
   }
   return withoutClaim(() => {
     const node =
       tag in SVG_TAGS ? document.createElementNS(SVG_NS, tag) : document.createElement(tag);
-    spread(node, props);
+    spread(node, props, undefined, select);
     const children = props.children;
     if (children !== undefined && children !== null) insert(node, children);
+    if (select) spreadSelection(node);
     return node;
   });
 }
@@ -2469,11 +2472,18 @@ export function bindEvent(element: Element, type: string, value: unknown, captur
  * `<div {...rest} title={label()}>` keeps the explicit title, as the object it
  * reads like would, and a spread that applied its own on every update took it
  * back each time `rest` moved.
+ *
+ * @param holdsSelection The element is a `<select>` whose options are built
+ * after this call. Its `value` and `selectedIndex` name one of them, so they
+ * wait for {@link spreadSelection}. Everything else is written now, `multiple`
+ * above all: written after options marked `selected`, it finds only the last
+ * of them still selected.
  */
 export function spread(
   element: Element,
   props: Record<string, unknown> | (() => Record<string, unknown>),
-  later?: readonly string[],
+  later?: readonly string[] | null,
+  holdsSelection = false,
 ): void {
   const given = getOwner();
   const isSvg = element.namespaceURI === SVG_NS;
@@ -2484,6 +2494,8 @@ export function spread(
   // because a spread re-applies its props on every run of the effect below.
   const owned = new Set<string>();
   let first = true;
+  let holding = holdsSelection;
+  let pending: Record<string, unknown> = {};
 
   const applyOne = (key: string, value: unknown): void => {
     // Events: delegated handlers swap by expando; direct ones re-listen
@@ -2549,7 +2561,7 @@ export function spread(
     const resolved: Record<string, unknown> = {};
     for (const key in next) {
       if (key === "children") continue;
-      if (later !== undefined && later.includes(spreadKey(key, isSvg))) continue;
+      if (later !== undefined && later !== null && later.includes(spreadKey(key, isSvg))) continue;
       const value = next[key];
       if (key === "ref" || isEventKey(key)) {
         resolved[key] = value;
@@ -2569,6 +2581,16 @@ export function spread(
     return resolved;
   };
 
+  if (holding) {
+    const releases = HELD_SELECTIONS.get(element) ?? [];
+    releases.push(() => {
+      holding = false;
+      for (const key in pending) applyOne(key, pending[key]);
+      pending = {};
+    });
+    HELD_SELECTIONS.set(element, releases);
+  }
+
   renderEffect(read, (next) => {
     // Removal pass: props that vanished since the last run are cleared
     for (const key in applied) {
@@ -2578,6 +2600,7 @@ export function spread(
       }
     }
 
+    if (holding) pending = {};
     for (const key in next) {
       if (key === "ref") {
         // Under the scope the spread was given, so what the callback hands
@@ -2585,10 +2608,29 @@ export function spread(
         if (first) runWithOwner(given, () => ref(element, next[key]));
         continue;
       }
+      if (holding && (key === "value" || key === "selectedIndex")) {
+        pending[key] = next[key];
+        continue;
+      }
       applyOne(key, next[key]);
     }
     first = false;
   });
+}
+
+/** The writes each `<select>`'s spreads are holding until its options exist. */
+const HELD_SELECTIONS = new WeakMap<Element, (() => void)[]>();
+
+/**
+ * Write the `value` and `selectedIndex` that {@link spread} held back on a
+ * `<select>`, now that its options are built. A spread whose first run has not
+ * happened yet writes them itself when it does.
+ */
+export function spreadSelection(element: Element): void {
+  const releases = HELD_SELECTIONS.get(element);
+  if (releases === undefined) return;
+  HELD_SELECTIONS.delete(element);
+  for (const release of releases) release();
 }
 
 /**

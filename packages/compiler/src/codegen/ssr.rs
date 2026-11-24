@@ -577,6 +577,9 @@ fn attribute_slot(op: Op) -> Slot {
         // in the child list (`node_into`), or is a grouping marker with no
         // effects to group. `Region` is a child position like `Insert`.
         Op::Insert { .. } | Op::Region { .. } | Op::EffectGroup { .. } => Slot::Elsewhere,
+        // The client's second half of a spread on a `<select>`; the first
+        // half already wrote every attribute the wire has.
+        Op::SpreadSelection {} => Slot::Elsewhere,
     }
 }
 
@@ -703,6 +706,8 @@ impl<'a> Backend<'a> for Ssr<'a, '_, '_, '_, '_> {
         let call = self.ctx.call(callee, arguments, span);
         self.chunks.hole(call);
     }
+
+    fn spread_selection(&mut self, _at: At<'_>) {}
 
     /// `dangerouslySetInnerHTML` names no attribute, so it owns the child
     /// position outright and `content_patch` is what routes it here.

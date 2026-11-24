@@ -452,12 +452,38 @@ impl<'a> Backend<'a> for Dom<'a, '_, '_, '_> {
         };
         let callee = self.ctx.helper(Helper::Spread, span);
         let mut arguments = vec![Argument::from(element), Argument::from(value)];
-        if let Some(later) = spread_later(self.ctx, self.unit, span) {
+        let later = spread_later(self.ctx, self.unit, span);
+        if holds_selection(self.unit, at.target()) {
+            arguments.push(Argument::from(
+                later.unwrap_or_else(|| Expression::new_null_literal(span, &self.ctx.ast)),
+            ));
+            arguments.push(Argument::from(Expression::new_boolean_literal(
+                span,
+                true,
+                &self.ctx.ast,
+            )));
+        } else if let Some(later) = later {
             arguments.push(Argument::from(later));
         }
         let call = self.ctx.call(callee, arguments, span);
         Some(Statement::new_expression_statement(span, call, &self.ctx.ast))
     }
+
+    fn spread_selection(&mut self, at: At<'_>) -> Self::Out {
+        let span = at.span();
+        let element = ref_ident(self.ctx, self.unit, at.target(), span);
+        let callee = self.ctx.helper(Helper::SpreadSelection, span);
+        let call = self.ctx.call(callee, vec![Argument::from(element)], span);
+        Some(Statement::new_expression_statement(span, call, &self.ctx.ast))
+    }
+}
+
+/// Whether a spread on `target` holds its `value` and `selectedIndex` for the
+/// [`Op::SpreadSelection`] lowering placed after the element's children.
+pub(super) fn holds_selection(unit: &Unit<'_>, target: NodeId) -> bool {
+    unit.patch
+        .iter()
+        .any(|patch| patch.target == target && matches!(patch.op, Op::SpreadSelection {}))
 }
 
 /// The names written after the spread at `span`, as the array `spread` takes.

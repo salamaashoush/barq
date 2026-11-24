@@ -123,6 +123,7 @@ backend! {
     /// resolved from the tag and the `type` attribute.
     Bind { prop: NameId, event: NameId, value: ExprId } => bind;
     Spread { value: ExprId, live: bool } => spread;
+    SpreadSelection {} => spread_selection;
     /// A child hole. `plan` is what the analysis proved about its value.
     Insert { slot: SlotId, anchor: Anchor, value: ExprId, plan: InsertPlan } => insert;
     /// A child hole the flow pass lowered onto one of `flow.ts`'s four
@@ -197,6 +198,9 @@ mod tests {
         fn spread(&mut self, _at: At<'_>, _value: ExprId, _live: bool) {
             self.0.push("Spread");
         }
+        fn spread_selection(&mut self, _at: At<'_>) {
+            self.0.push("SpreadSelection");
+        }
         fn insert(
             &mut self,
             _at: At<'_>,
@@ -237,6 +241,7 @@ mod tests {
             Op::FormAction { value: 0 },
             Op::Bind { prop: 0, event: 0, value: 0 },
             Op::Spread { value: 0, live: false },
+            Op::SpreadSelection {},
             Op::Insert { slot: 0, anchor: Anchor::End, value: 0, plan: InsertPlan::Once },
             Op::Region { slot: 0, anchor: Anchor::End, region: 0 },
             Op::EffectGroup { len: 0 },

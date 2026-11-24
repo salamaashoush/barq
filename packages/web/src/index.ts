@@ -64,6 +64,7 @@ export {
   listen,
   delegate,
   spread,
+  spreadSelection,
   delegateEvents,
   classToString,
   type Channel,

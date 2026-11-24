@@ -1173,7 +1173,8 @@ program in document order through the `Backend` trait.
 | `Ref` | `_$ref(el, r)`, or `binding = el` when `write` |
 | `FormAction` | `_$formAction(el, v)` |
 | `Bind` | `_$bindValue(el, "value", "input", v)` |
-| `Spread` | `_$spread(el, o)`; a live spread passes `() => o`, and the names written after it on the element follow as an array |
+| `Spread` | `_$spread(el, o)`; a live spread passes `() => o`, and the names written after it on the element follow as an array; on a `<select>` a fourth `true` holds its `value` and `selectedIndex` |
+| `SpreadSelection` | `_$spreadSelection(el)`, after the `<select>`'s children: writes what its spread held |
 | `Insert{Once}` / `Insert{Opaque}` | `_$insert(p, v, a)` |
 | `Insert{Live, eta}` | `_$insert(p, accessor, a)` |
 | `Insert{Live}` | `_$insert(p, () => v, a)` |

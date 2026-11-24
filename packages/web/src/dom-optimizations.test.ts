@@ -5,7 +5,17 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { bindProp, element, hydrate, insert, render, setDomProp, setProp, spread } from "./dom.ts";
+import {
+  bindProp,
+  element,
+  hydrate,
+  insert,
+  render,
+  setDomProp,
+  setProp,
+  spread,
+  spreadSelection,
+} from "./dom.ts";
 import { createRoot, flush, createSignal } from "@barqjs/core";
 
 // The container is a render root, as every element an application shows is
@@ -152,6 +162,69 @@ describe("prev-value diffing", () => {
 });
 
 describe("spread", () => {
+  function options(names: string[], selected: string[] = []): HTMLOptionElement[] {
+    return names.map((name) => {
+      const option = document.createElement("option");
+      option.value = name;
+      option.textContent = name.toUpperCase();
+      option.selected = selected.includes(name);
+      return option;
+    });
+  }
+
+  test("a select's spread holds its value for spreadSelection, after the options", () => {
+    const select = document.createElement("select");
+    const [props, setProps] = createSignal<Record<string, unknown>>({
+      title: "people",
+      value: "grace",
+    });
+    createRoot(() => {
+      spread(select, () => props(), null, true);
+      expect(select.getAttribute("title")).toBe("people");
+      select.append(...options(["ada", "grace", "edsger"]));
+      spreadSelection(select);
+    });
+    expect(select.value).toBe("grace");
+
+    setProps({ title: "people", value: "edsger" });
+    flush();
+    expect(select.value).toBe("edsger");
+  });
+
+  test("multiple is written before the options and the value after them", () => {
+    const select = document.createElement("select");
+    createRoot(() => {
+      spread(select, { multiple: true, value: "edsger" }, null, true);
+      expect(select.multiple).toBe(true);
+      select.append(...options(["ada", "grace", "edsger"], ["ada", "grace"]));
+      expect([...select.selectedOptions].map((option) => option.value)).toEqual(["ada", "grace"]);
+      spreadSelection(select);
+    });
+    expect(select.value).toBe("edsger");
+  });
+
+  test("a select's spread holds its selectedIndex too", () => {
+    const select = document.createElement("select");
+    createRoot(() => {
+      spread(select, { selectedIndex: 2 }, null, true);
+      select.append(...options(["ada", "grace", "edsger"]));
+      spreadSelection(select);
+    });
+    expect(select.value).toBe("edsger");
+  });
+
+  test("element() builds a select's options before its spread value lands", () => {
+    const select = createRoot(() =>
+      element("select", {
+        multiple: true,
+        value: "edsger",
+        children: options(["ada", "grace", "edsger"], ["ada"]),
+      }),
+    ) as HTMLSelectElement;
+    expect(select.multiple).toBe(true);
+    expect([...select.selectedOptions].map((option) => option.value)).toEqual(["edsger"]);
+  });
+
   test("applies, updates, and removes props reactively", () => {
     const el = document.createElement("div");
     const [props, setProps] = createSignal<Record<string, unknown>>({ id: "a", title: "t1" });

@@ -65,7 +65,7 @@ impl Target {
     }
 }
 
-pub const HELPER_COUNT: usize = 68;
+pub const HELPER_COUNT: usize = 69;
 
 /// The module a helper is imported from.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -145,6 +145,7 @@ pub fn home(helper: Helper, target: Target) -> Home {
         | H::SetProp
         | H::Element
         | H::Spread
+        | H::SpreadSelection
         | H::DelegateEvents
         | H::SetAttr
         | H::SetDomProp
@@ -399,6 +400,9 @@ pub enum Helper {
     /// in a compile that carries source names: the effect made inside is named
     /// for the element and attribute it writes, with its position and element.
     Labelled = 67,
+    /// `_$spreadSelection(el)` — the `value` and `selectedIndex` a spread on a
+    /// `<select>` held, written after the options they name.
+    SpreadSelection = 68,
 }
 
 /// Whether evaluating `value` runs nothing that could make an owner: a name, a
@@ -499,6 +503,7 @@ const IMPORTED: [(Helper, &str); HELPER_COUNT] = [
     (Helper::BindSlot, "bindSlot"),
     (Helper::BindPlain, "bindPlain"),
     (Helper::Labelled, "labelled"),
+    (Helper::SpreadSelection, "spreadSelection"),
 ];
 
 /// The name a helper is imported under, for a test that has to check the table

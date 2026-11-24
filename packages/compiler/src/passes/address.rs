@@ -270,10 +270,11 @@ pub fn locate(module: &mut Module<'_>) {
 
 /// What an opcode is a position OF, and the key that names it inside its unit.
 ///
-/// `EffectGroup` is the one opcode with no position: it is a marker over
-/// records later in the program, and giving it an address would shift every
-/// address after it the moment effect fusion was turned off — which is exactly
-/// the instability `-O0` exists to expose rather than to introduce.
+/// `EffectGroup` has no position: it is a marker over records later in the
+/// program, and giving it an address would shift every address after it the
+/// moment effect fusion was turned off — which is exactly the instability
+/// `-O0` exists to expose rather than to introduce. `SpreadSelection` has none
+/// either: it finishes the write of a spread that already has one.
 fn classify_position(op: Op) -> Option<(PositionKind, u32)> {
     Some(match op {
         Op::SetOnce { name, .. } | Op::SetLive { name, .. } | Op::SetOpaque { name, .. } => {
@@ -287,7 +288,7 @@ fn classify_position(op: Op) -> Option<(PositionKind, u32)> {
         Op::FormAction { .. } => (PositionKind::Bind, 0),
         Op::Spread { .. } => (PositionKind::Spread, 0),
         Op::Insert { slot, .. } | Op::Region { slot, .. } => (PositionKind::Slot, slot),
-        Op::EffectGroup { .. } => return None,
+        Op::EffectGroup { .. } | Op::SpreadSelection {} => return None,
     })
 }
 

@@ -700,6 +700,12 @@ impl<'a> Backend<'a> for Universal<'a, '_, '_, '_> {
         Some(Statement::new_expression_statement(span, call, &self.ctx.ast))
     }
 
+    /// Never lowered here: a custom host has no `<select>` whose options a
+    /// value has to wait for.
+    fn spread_selection(&mut self, _at: At<'_>) -> Self::Out {
+        None
+    }
+
     fn insert(
         &mut self,
         at: At<'_>,
