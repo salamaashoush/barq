@@ -79,8 +79,9 @@ export function useLexicalEditorState(): Accessor<EditorState>;
 export function useLexicalEditorState<T>($select: () => T): Accessor<T>;
 export function useLexicalEditorState<T>($select?: () => T): Accessor<T | EditorState> {
   const editor = useLexicalEditor();
-  const read = (state: EditorState): T | EditorState =>
-    $select === undefined ? state : state.read($select, { editor });
+  function read(state: EditorState): T | EditorState {
+    return $select === undefined ? state : state.read($select, { editor });
+  }
   const [value, setValue] = mirror<T | EditorState>(
     $select === undefined ? editor.getEditorState() : editor.read("latest", $select),
   );
@@ -111,7 +112,9 @@ function canShowPlaceholder(editor: LexicalEditor): boolean {
 /** Whether a placeholder belongs over the editor: empty, not composing, one paragraph. */
 export function useLexicalCanShowPlaceholder(editor: LexicalEditor): Accessor<boolean> {
   const [canShow, setCanShow] = mirror(canShowPlaceholder(editor));
-  const reset = (): void => setCanShow(canShowPlaceholder(editor));
+  function reset(): void {
+    return setCanShow(canShowPlaceholder(editor));
+  }
   onCleanup(
     mergeRegister(editor.registerUpdateListener(reset), editor.registerEditableListener(reset)),
   );
@@ -137,7 +140,7 @@ export function useLexicalNodeSelection(
   const [isSelected, setIsSelected] = mirror(isNodeSelected(editor, key));
   onCleanup(editor.registerUpdateListener(() => setIsSelected(isNodeSelected(editor, key))));
 
-  const setSelected = (selected: boolean): void => {
+  function setSelected(selected: boolean): void {
     editor.update(() => {
       let selection = $getSelection();
       if (!$isNodeSelection(selection)) {
@@ -153,14 +156,14 @@ export function useLexicalNodeSelection(
         else selection.delete(key);
       }
     });
-  };
+  }
 
-  const clearSelected = (): void => {
+  function clearSelected(): void {
     editor.update(() => {
       const selection = $getSelection();
       if ($isNodeSelection(selection)) selection.clear();
     });
-  };
+  }
 
   return [isSelected, setSelected, clearSelected];
 }

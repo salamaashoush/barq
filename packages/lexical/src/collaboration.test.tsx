@@ -174,8 +174,14 @@ function startClient(room: Room, name: string, shouldBootstrap: boolean): Client
   };
 }
 
-const text = (editor: LexicalEditor): string =>
-  editor.getEditorState().read(() => $getRoot().getTextContent());
+function text(editor: LexicalEditor): string {
+  return editor.getEditorState().read(() => $getRoot().getTextContent());
+}
+
+interface StartedEditor {
+  editor: () => LexicalEditor;
+  element: HTMLElement;
+}
 
 describe("collaboration", () => {
   test("two editors on one shared document see each other's edits", async () => {
@@ -282,10 +288,7 @@ describe("collaboration", () => {
 
   test("the second binding syncs two editors over documents the application owns", async () => {
     const room = new Room();
-    const start = (
-      name: string,
-      bootstrap: boolean,
-    ): { editor: () => LexicalEditor; element: HTMLElement } => {
+    function start(name: string, bootstrap: boolean): StartedEditor {
       let editor!: LexicalEditor;
       function Grab() {
         editor = useLexicalEditor();
@@ -318,7 +321,7 @@ describe("collaboration", () => {
         ),
       );
       return { editor: () => editor, element };
-    };
+    }
     const first = start("Salama", true);
     const second = start("Reviewer", false);
     await settle(5);

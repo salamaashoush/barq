@@ -16,7 +16,11 @@ import { RESULT } from "./ssr-harness.ts";
 plugin(compilerLoader({ transform: { ssr: true, hydratable: true } }));
 
 const [modulePath = ""] = process.argv.slice(2);
-const fixture = (await import(modulePath)) as { page: () => () => unknown };
+interface PageModule {
+  page: () => () => unknown;
+}
+
+const fixture = (await import(modulePath)) as PageModule;
 const page = await renderPage(fixture.page() as never);
 
 process.stdout.write(RESULT + JSON.stringify({ html: page.html, script: page.script }));

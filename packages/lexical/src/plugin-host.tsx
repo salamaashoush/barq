@@ -42,14 +42,18 @@ export const BARQ_PLUGIN_HOST_MOUNT_ROOT_COMMAND: LexicalCommand<HostMountComman
 export const BARQ_PLUGIN_HOST_MOUNT_PLUGIN_COMMAND: LexicalCommand<MountPluginCommandArg> =
   createCommand("BARQ_PLUGIN_HOST_MOUNT_PLUGIN_COMMAND");
 
-function MountedPlugin(props: {
+interface MountedPluginProps {
   plugin: MountPluginCommandArg;
   editor: LexicalEditor;
-}): JSX.Element {
+}
+
+function MountedPlugin(props: MountedPluginProps): JSX.Element {
   const { render: build, domNode } = props.plugin;
   const editor = props.editor;
   const Boundary = getExtensionDependencyFromEditor(editor, BarqExtension).config.ErrorBoundary;
-  const onError = (error: Error): void => editor._onError(error);
+  function onError(error: Error): void {
+    return editor._onError(error);
+  }
   if (build === null) return null;
   return domNode === null || domNode === undefined ? (
     <Boundary onError={onError}>{build()}</Boundary>
@@ -157,15 +161,17 @@ export function mountBarqPluginElement(editor: LexicalEditor, opts: MountPluginC
   getExtensionDependencyFromEditor(editor, BarqPluginHostExtension).output.mountBarqPlugin(opts);
 }
 
+export interface BarqPluginMount<P extends object> {
+  key: string;
+  Component: (props: P) => JSX.Element;
+  props: P | null;
+  domNode?: Element | DocumentFragment | null;
+}
+
 /** Mounts a component with `props` into `editor`'s host, or unmounts it when `props` is `null`. */
 export function mountBarqPluginComponent<P extends object>(
   editor: LexicalEditor,
-  opts: {
-    key: string;
-    Component: (props: P) => JSX.Element;
-    props: P | null;
-    domNode?: Element | DocumentFragment | null;
-  },
+  opts: BarqPluginMount<P>,
 ): void {
   const { Component, props, key, domNode } = opts;
   mountBarqPluginElement(editor, {
@@ -184,20 +190,22 @@ export function mountBarqPluginComponent<P extends object>(
   });
 }
 
+export interface BarqExtensionMount {
+  extension: AnyLexicalExtension;
+  props: object | null;
+  key: string;
+  domNode?: Element | DocumentFragment | null;
+}
+
+interface OptionalComponentOutput {
+  Component?: (props: object) => JSX.Element;
+}
+
 /** Mounts the `Component` an extension outputs, with `props`, into `editor`'s host. */
-export function mountBarqExtensionComponent(
-  editor: LexicalEditor,
-  opts: {
-    extension: AnyLexicalExtension;
-    props: object | null;
-    key: string;
-    domNode?: Element | DocumentFragment | null;
-  },
-): void {
+export function mountBarqExtensionComponent(editor: LexicalEditor, opts: BarqExtensionMount): void {
   const { extension, ...rest } = opts;
-  const output = getExtensionDependencyFromEditor(editor, extension).output as {
-    Component?: (props: object) => JSX.Element;
-  };
+  const output = getExtensionDependencyFromEditor(editor, extension)
+    .output as OptionalComponentOutput;
   const Component = output.Component;
   if (Component === undefined) {
     throw new Error(`[barq] The extension ${extension.name} outputs no Component to mount.`);

@@ -15,10 +15,14 @@ import {
   TextNode,
 } from "lexical";
 
-export type SerializedMentionNode = Spread<
-  { mentionName: string; mentionId: string; type: "mention"; version: 1 },
-  SerializedTextNode
->;
+type SerializedMentionFields = {
+  mentionName: string;
+  mentionId: string;
+  type: "mention";
+  version: 1;
+};
+
+export type SerializedMentionNode = Spread<SerializedMentionFields, SerializedTextNode>;
 
 function convertMentionElement(domNode: HTMLElement): DOMConversionOutput | null {
   const text = domNode.textContent;

@@ -38,13 +38,17 @@ export function useOptionalExtensionDependency<Extension extends AnyLexicalExten
 export function useExtensionComponent<Extension extends AnyLexicalExtension>(
   extension: Extension,
 ): ComponentOf<Extension> {
-  return (useExtensionDependency(extension).output as { Component: ComponentOf<Extension> })
+  return (useExtensionDependency(extension).output as ComponentOutput<ComponentOf<Extension>>)
     .Component;
+}
+
+interface ComponentOutput<Component> {
+  Component: Component;
 }
 
 /** The `Component` an extension's output carries. */
 export type ComponentOf<Extension extends AnyLexicalExtension> =
-  LexicalExtensionOutput<Extension> extends { Component: infer Component } ? Component : never;
+  LexicalExtensionOutput<Extension> extends ComponentOutput<infer Component> ? Component : never;
 
 /**
  * A signal from `@lexical/extension`, the framework-free signals extensions

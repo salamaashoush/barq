@@ -150,13 +150,13 @@ export function LexicalTypeaheadMenuPlugin<TOption extends MenuOption>(
   let isOpen = false;
   let generation = 0;
 
-  const close = (): void => {
+  function close(): void {
     if (!isOpen) return;
     isOpen = false;
     const closing = generation;
-    const finish = (): void => {
+    function finish(): void {
       if (generation === closing) setResolution(null);
-    };
+    }
     let result: void | PromiseLike<void> = undefined;
     try {
       result = props.onClose?.();
@@ -164,26 +164,26 @@ export function LexicalTypeaheadMenuPlugin<TOption extends MenuOption>(
       if (result) result.then(finish, finish);
       else finish();
     }
-  };
+  }
 
-  const open = (next: MenuResolution): void => {
+  function open(next: MenuResolution): void {
     generation++;
     setResolution(next);
     if (!isOpen) {
       isOpen = true;
       props.onOpen?.(next);
     }
-  };
+  }
 
-  const onUpdate = (): void => {
+  function onUpdate(): void {
     editor.read("latest", () => {
       if (!editor.isEditable()) {
         close();
         return;
       }
-      const closeUnlessComposing = (): void => {
+      function closeUnlessComposing(): void {
         if (!editor.isComposing()) close();
-      };
+      }
       const editorWindow = editor._window ?? window;
       const range = editorWindow.document.createRange();
       const selection = $getSelection();
@@ -205,7 +205,7 @@ export function LexicalTypeaheadMenuPlugin<TOption extends MenuOption>(
       }
       closeUnlessComposing();
     });
-  };
+  }
 
   onCleanup(editor.registerUpdateListener(onUpdate));
   onCleanup(

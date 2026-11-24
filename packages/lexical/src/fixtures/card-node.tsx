@@ -14,11 +14,20 @@ import {
   useLexicalNodeSelection,
 } from "../index.ts";
 
-export type SerializedCardNode = Spread<{ title: string }, SerializedDecoratorBlockNode>;
+type SerializedCardFields = {
+  title: string;
+};
+
+export type SerializedCardNode = Spread<SerializedCardFields, SerializedDecoratorBlockNode>;
 
 export const lifecycle = { built: 0, disposed: 0 };
 
-function Card(props: { nodeKey: NodeKey; title: string }) {
+interface CardProps {
+  nodeKey: NodeKey;
+  title: string;
+}
+
+function Card(props: CardProps) {
   const editor = useLexicalEditor();
   const editable = useLexicalEditable();
   const [selected, setSelected, clearSelected] = useLexicalNodeSelection(props.nodeKey);

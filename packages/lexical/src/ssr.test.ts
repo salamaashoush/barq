@@ -45,7 +45,9 @@ export const page = () => () => (
 `;
 
 let compiled: Compiled | undefined;
-const fixture = (): Compiled => (compiled ??= compile(PAGE, "composer"));
+function fixture(): Compiled {
+  return (compiled ??= compile(PAGE, "composer"));
+}
 
 let cleanup: (() => void) | undefined;
 afterEach(() => {
@@ -53,6 +55,15 @@ afterEach(() => {
   cleanup = undefined;
   document.body.innerHTML = "";
 });
+
+interface DomModule {
+  page: () => () => unknown;
+  handle: EditorHandle;
+}
+
+interface EditorHandle {
+  editor: LexicalEditor | null;
+}
 
 test("the server sends an empty editable shell with its placeholder, and the browser hydrates and edits it", async () => {
   const served = serve(fixture().ssr);
@@ -69,10 +80,7 @@ test("the server sends an empty editable shell with its placeholder, and the bro
   expect(container.querySelector(".frame em")?.textContent).toBe("Write something");
   expect(container.querySelector(".mode")?.textContent).toBe("editing");
 
-  const module = (await import(`${fixture().dom}?${Math.random()}`)) as {
-    page: () => () => unknown;
-    handle: { editor: LexicalEditor | null };
-  };
+  const module = (await import(`${fixture().dom}?${Math.random()}`)) as DomModule;
   resetChildIds();
   cleanup = hydrate(module.page() as never, container);
   flush();
@@ -125,6 +133,10 @@ export const page = () => () => (
 )
 `;
 
+interface PageModule {
+  page: () => () => unknown;
+}
+
 test("a stored document with a block decorator hydrates, then the block's component mounts into its node", async () => {
   const compiledCard = compile(WITH_CARD, "card");
   const served = serve(compiledCard.ssr);
@@ -136,9 +148,7 @@ test("a stored document with a block decorator hydrates, then the block's compon
   expect(container.querySelector("em")).toBeNull();
   expect(container.querySelector("footer")?.textContent).toBe("end");
 
-  const module = (await import(`${compiledCard.dom}?${Math.random()}`)) as {
-    page: () => () => unknown;
-  };
+  const module = (await import(`${compiledCard.dom}?${Math.random()}`)) as PageModule;
   resetChildIds();
   cleanup = hydrate(module.page() as never, container);
   flush();
@@ -192,10 +202,7 @@ test("serverContent is written in the root, kept through hydration, then the edi
   expect(shell?.style.whiteSpace).toBe("pre-wrap");
   expect(shell?.style.wordBreak).toBe("break-word");
 
-  const module = (await import(`${compiledStatic.dom}?${Math.random()}`)) as {
-    page: () => () => unknown;
-    handle: { editor: LexicalEditor | null };
-  };
+  const module = (await import(`${compiledStatic.dom}?${Math.random()}`)) as DomModule;
   resetChildIds();
   cleanup = hydrate(module.page() as never, container);
   expect(hydrate.report.recovered).toBe(false);
@@ -216,10 +223,7 @@ test("serverContent is written in the root, kept through hydration, then the edi
 
 test("a browser rendering from scratch never draws serverContent", async () => {
   const compiledStatic = compile(WITH_STATIC, "static-fresh");
-  const module = (await import(`${compiledStatic.dom}?${Math.random()}`)) as {
-    page: () => () => unknown;
-    handle: { editor: LexicalEditor | null };
-  };
+  const module = (await import(`${compiledStatic.dom}?${Math.random()}`)) as DomModule;
   const container = host();
   const { render } = await import("@barqjs/web");
   cleanup = render(module.page() as never, container);

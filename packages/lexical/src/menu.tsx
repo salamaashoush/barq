@@ -167,8 +167,12 @@ function menuParent(editor: LexicalEditor, parent: HTMLElement | undefined): Nod
 export function LexicalMenu<TOption extends MenuOption>(props: MenuProps<TOption>): JSX.Element {
   const editor = props.editor;
   const close = props.onClose;
-  const resolution = (): MenuResolution => props.resolution;
-  const options = (): TOption[] => props.options;
+  function resolution(): MenuResolution {
+    return props.resolution;
+  }
+  function options(): TOption[] {
+    return props.options;
+  }
   const onSelectOption = props.onSelectOption;
   const onHidden = props.onHidden;
   const render = props.menuRenderFn;
@@ -179,7 +183,9 @@ export function LexicalMenu<TOption extends MenuOption>(props: MenuProps<TOption
   const mount = menuParent(editor, props.parent);
 
   const listboxId = `typeahead-menu-${++menus}`;
-  const optionId = (index: number): string => `${listboxId}-item-${index}`;
+  function optionId(index: number): string {
+    return `${listboxId}-item-${index}`;
+  }
 
   const [rawSelected, setHighlightedIndex] = mirror<number | null>(null);
   const selectedIndex = createMemo((): number | null => {
@@ -192,21 +198,23 @@ export function LexicalMenu<TOption extends MenuOption>(props: MenuProps<TOption
     if (preselect) setHighlightedIndex(0);
   });
 
-  const selectOptionAndCleanUp = (option: TOption): void => {
+  function selectOptionAndCleanUp(option: TOption): void {
     const current = untrack(resolution);
     editor.update(() => {
       const node =
         current.match !== undefined && split ? $splitNodeContainingQuery(current.match) : null;
       onSelectOption(option, node, close, current.match?.matchingString ?? "");
     });
-  };
+  }
 
   // With the default menu and nothing to show, nothing is on screen, and the
   // keys have to reach the editor. A custom menu may draw a "no results" panel
   // that still takes them.
-  const rendersNothing = (): boolean => render === undefined && options().length === 0;
+  function rendersNothing(): boolean {
+    return render === undefined && options().length === 0;
+  }
 
-  const move = (event: KeyboardEvent, step: 1 | -1): boolean => {
+  function move(event: KeyboardEvent, step: 1 | -1): boolean {
     if (rendersNothing()) return false;
     const list = options();
     const current = selectedIndex();
@@ -225,9 +233,9 @@ export function LexicalMenu<TOption extends MenuOption>(props: MenuProps<TOption
     event.preventDefault();
     event.stopImmediatePropagation();
     return true;
-  };
+  }
 
-  const choose = (event: KeyboardEvent | null): boolean => {
+  function choose(event: KeyboardEvent | null): boolean {
     const index = selectedIndex();
     const option = index === null ? undefined : options()[index];
     if (option === undefined) return false;
@@ -237,7 +245,7 @@ export function LexicalMenu<TOption extends MenuOption>(props: MenuProps<TOption
     }
     selectOptionAndCleanUp(option);
     return true;
-  };
+  }
 
   onCleanup(
     mergeRegister(
@@ -296,7 +304,7 @@ export function LexicalMenu<TOption extends MenuOption>(props: MenuProps<TOption
         getBoundingClientRect: () => current.getRect(),
         contextElement: editor.getRootElement() ?? undefined,
       };
-      const place = (): void => {
+      const place: () => void = () => {
         void computePosition(reference, element, {
           strategy: "absolute",
           placement: "bottom-start",
@@ -309,12 +317,12 @@ export function LexicalMenu<TOption extends MenuOption>(props: MenuProps<TOption
       const root = editor.getRootElement();
       const scroller = root === null ? element.ownerDocument.body : getScrollParent(root, false);
       let wasVisible = isVisibleIn(current.getRect(), scroller);
-      const onScroll = (): void => {
+      function onScroll(): void {
         const visible = isVisibleIn(current.getRect(), scroller);
         if (visible === wasVisible) return;
         wasVisible = visible;
         if (!visible) onHidden();
-      };
+      }
       // Scroll events do not leave a shadow tree, so each one the editor is
       // inside is listened to as well as the document.
       const shadows = root === null ? [] : getDOMShadowRoots(root);
@@ -331,7 +339,9 @@ export function LexicalMenu<TOption extends MenuOption>(props: MenuProps<TOption
     },
   );
 
-  const bind = (element: HTMLDivElement): void => setPlaced(element);
+  function bind(element: HTMLDivElement): void {
+    return setPlaced(element);
+  }
 
   const menu: MenuRenderProps<TOption> = {
     options,
@@ -359,9 +369,11 @@ export function LexicalMenu<TOption extends MenuOption>(props: MenuProps<TOption
   );
 }
 
-function DefaultMenu<TOption extends MenuOption>(props: {
+interface DefaultMenuProps<TOption extends MenuOption> {
   menu: MenuRenderProps<TOption>;
-}): JSX.Element {
+}
+
+function DefaultMenu<TOption extends MenuOption>(props: DefaultMenuProps<TOption>): JSX.Element {
   const menu = props.menu;
   return (
     <div class="typeahead-popover mentions-menu">

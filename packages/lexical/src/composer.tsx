@@ -61,11 +61,15 @@ function rootExtension(config: InitialConfig): AnyLexicalExtensionArgument {
   });
 }
 
+export interface DisposeHandle {
+  dispose: () => void;
+}
+
 /** The editor a composer renders, built from its extensions and initial config. */
 export function buildComposerEditor(
   extensions: readonly AnyLexicalExtensionArgument[] = [],
   initialConfig?: InitialConfig,
-): LexicalEditor & { dispose: () => void } {
+): LexicalEditor & DisposeHandle {
   const editor = LexicalBuilder.fromExtensions([
     BarqProviderExtension,
     BarqExtension,

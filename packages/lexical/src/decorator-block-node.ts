@@ -15,6 +15,11 @@ import {
   withField,
 } from "lexical";
 
+interface BivariantDecoration<N extends LexicalNode> {
+  // A method, so a node's `Decoration<this>` is one of the base class's.
+  bivarianceHack(node: Accessor<N>): JSX.Element;
+}
+
 /**
  * What a decorator node's `decorate()` returns in barq: a function that
  * builds the node's component, handed the node as an accessor.
@@ -32,13 +37,15 @@ import {
  * }
  * ```
  */
-export type Decoration<N extends LexicalNode = LexicalNode> = {
-  // A method, so a node's `Decoration<this>` is one of the base class's.
-  bivarianceHack(node: Accessor<N>): JSX.Element;
-}["bivarianceHack"];
+export type Decoration<N extends LexicalNode = LexicalNode> =
+  BivariantDecoration<N>["bivarianceHack"];
+
+type SerializedDecoratorBlockFields = {
+  format: ElementFormatType;
+};
 
 export type SerializedDecoratorBlockNode = Spread<
-  { format: ElementFormatType },
+  SerializedDecoratorBlockFields,
   SerializedLexicalNode
 >;
 

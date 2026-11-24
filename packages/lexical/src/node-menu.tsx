@@ -38,13 +38,13 @@ export function LexicalNodeMenuPlugin<TOption extends MenuOption>(
   const editor = useLexicalEditor();
   const [resolution, setResolution] = mirror<MenuResolution | null>(null);
 
-  const closeNodeMenu = (): void => {
+  function closeNodeMenu(): void {
     const wasOpen = untrack(resolution) !== null;
     setResolution(null);
     if (wasOpen) props.onClose?.();
-  };
+  }
 
-  const positionOrCloseMenu = (key: NodeKey | null): void => {
+  function positionOrCloseMenu(key: NodeKey | null): void {
     if (key === null) {
       if (untrack(resolution) !== null) closeNodeMenu();
       return;
@@ -56,7 +56,7 @@ export function LexicalNodeMenuPlugin<TOption extends MenuOption>(
     const next: MenuResolution = { getRect: () => element.getBoundingClientRect() };
     setResolution(next);
     props.onOpen?.(next);
-  };
+  }
 
   createEffect(
     () => props.nodeKey,

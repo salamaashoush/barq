@@ -145,12 +145,13 @@ async function mountCourse(children?: () => unknown): Promise<Mounted> {
   await settle();
   const root = element.querySelector<HTMLElement>(".lesson");
   if (root === null) throw new Error("no editable root");
-  const cardKey = (): NodeKey =>
-    editor.getEditorState().read(() => {
+  function cardKey(): NodeKey {
+    return editor.getEditorState().read(() => {
       const card = $getRoot().getChildren().find($isCardNode);
       if (card === undefined) throw new Error("no card");
       return card.getKey();
     });
+  }
   return { editor, element, root, errors, cardKey };
 }
 
@@ -305,6 +306,10 @@ describe("a course editor", () => {
   });
 });
 
+interface BadgeProps {
+  label: string;
+}
+
 describe("the same extensions without a composer", () => {
   test("a headless editor reads and writes stored content, decorators included, without calling decorate", () => {
     const editor = buildEditorFromExtensions(courseExtension());
@@ -336,7 +341,7 @@ describe("the same extensions without a composer", () => {
     frame.append(plugins);
     editor.setRootElement(editable);
     mountBarqPluginHost(editor, plugins);
-    function Badge(props: { label: string }) {
+    function Badge(props: BadgeProps) {
       const words = useLexicalEditorState(
         () => $getRoot().getTextContent().split(/\s+/).filter(Boolean).length,
       );

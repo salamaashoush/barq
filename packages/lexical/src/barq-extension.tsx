@@ -63,7 +63,9 @@ function buildEditorComponent(
   const Root = config.contentEditable;
   const Boundary = config.ErrorBoundary;
   const decorators = config.decorators;
-  const onError = (error: Error): void => editor._onError(error);
+  function onError(error: Error): void {
+    return editor._onError(error);
+  }
 
   return function EditorComponent(props: EditorComponentProps): JSX.Element {
     const replaced = props.contentEditable;

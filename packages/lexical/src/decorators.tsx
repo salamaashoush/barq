@@ -25,6 +25,11 @@ function latestNode(editor: LexicalEditor, key: NodeKey): LexicalNode | null {
   return editor.getEditorState().read(() => $getNodeByKey(key));
 }
 
+export interface NodeDecoratorsProps {
+  editor: LexicalEditor;
+  ErrorBoundary: ErrorBoundaryType;
+}
+
 /**
  * Every decorator node's component, each mounted into the element Lexical made
  * for the node and disposed when that element goes.
@@ -34,15 +39,12 @@ function latestNode(editor: LexicalEditor, key: NodeKey): LexicalNode | null {
  * rebuilding, which is what lets a component inside the document keep its
  * state while the node it draws is edited.
  */
-export function NodeDecorators(props: {
-  editor: LexicalEditor;
-  ErrorBoundary: ErrorBoundaryType;
-}): JSX.Element {
+export function NodeDecorators(props: NodeDecoratorsProps): JSX.Element {
   const editor = props.editor;
   const Boundary = props.ErrorBoundary;
   let mounted = new Map<NodeKey, Mounted>();
 
-  const collect = (): Mounted[] => {
+  function collect(): Mounted[] {
     const decorators = editor.getDecorators<unknown>();
     const next = new Map<NodeKey, Mounted>();
     for (const key of Object.keys(decorators)) {
@@ -61,21 +63,23 @@ export function NodeDecorators(props: {
     }
     mounted = next;
     return [...next.values()];
-  };
+  }
 
   // The server never draws a decorator, so hydration starts from none and the
   // components mount once the page is the browser's.
   const claiming = isHydrating();
   const [entries, setEntries] = mirror(claiming ? [] : collect());
-  const sync = (): void => {
+  function sync(): void {
     setEntries(collect());
-  };
+  }
   onCleanup(
     mergeRegister(editor.registerDecoratorListener(sync), editor.registerRootListener(sync)),
   );
   if (claiming) onHydrationEnd(sync);
 
-  const onError = (error: Error): void => editor._onError(error);
+  function onError(error: Error): void {
+    return editor._onError(error);
+  }
 
   return (
     <For each={entries()}>

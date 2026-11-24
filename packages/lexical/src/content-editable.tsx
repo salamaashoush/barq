@@ -71,15 +71,17 @@ export function ContentEditableElement(props: ContentEditableElementProps): JSX.
   const editor = props.editor;
   const isEditable = watchEditable(editor);
 
-  const role = (): string | undefined => {
+  function role(): string | undefined {
     const given = props.role as string | undefined;
     if (given !== undefined) return given;
     return isEditable() || hasName([props["aria-label"], props["aria-labelledby"], props.title])
       ? "textbox"
       : undefined;
-  };
+  }
   // Widget attributes mean nothing on an element with no role.
-  const widget = (): boolean => role() !== undefined;
+  function widget(): boolean {
+    return role() !== undefined;
+  }
 
   // Only a server and a page claiming its markup draw the static document.
   const given = untrack(() => props.serverContent !== undefined);
@@ -90,20 +92,20 @@ export function ContentEditableElement(props: ContentEditableElementProps): JSX.
   // A root element needs a window. One cloned from a template belongs to the
   // template's document, which has none, until it is inserted into the page;
   // a frame being torn down has none either.
-  const attach = (element: HTMLDivElement): void => {
+  function attach(element: HTMLDivElement): void {
     if (element.ownerDocument.defaultView === null) return;
     // Lexical runs its root and update listeners as the root is set, from
     // inside whatever set it; what they read is theirs, not this effect's.
     if (editor.getRootElement() !== element) untrack(() => editor.setRootElement(element));
-  };
-  const bind = (element: HTMLDivElement): (() => void) => {
+  }
+  function bind(element: HTMLDivElement): () => void {
     root = element;
     if (!untrack(held)) attach(element);
     return () => {
       root = null;
       editor.setRootElement(null);
     };
-  };
+  }
   if (claiming) onHydrationEnd(() => setHeld(false));
   // Once the element is in the page, and with `serverContent` once that has
   // been taken out: Lexical empties the root it is given, and those nodes are
@@ -159,7 +161,12 @@ function rootStyle(given: DivAttributes["style"]): Style {
   return { ...ROOT_STYLE, ...value };
 }
 
-function Placeholder(props: { editor: LexicalEditor; content: PlaceholderContent }): JSX.Element {
+interface PlaceholderProps {
+  editor: LexicalEditor;
+  content: PlaceholderContent;
+}
+
+function Placeholder(props: PlaceholderProps): JSX.Element {
   const editor = props.editor;
   const content = props.content;
   const canShow = useLexicalCanShowPlaceholder(editor);

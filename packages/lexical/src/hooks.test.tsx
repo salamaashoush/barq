@@ -81,7 +81,11 @@ class CaptionNode extends ElementNode {
   }
 }
 
-function Figure(props: { nodeKey: NodeKey }) {
+interface FigureProps {
+  nodeKey: NodeKey;
+}
+
+function Figure(props: FigureProps) {
   const editor = useLexicalEditor();
   return (
     <figure class="figure">
@@ -99,10 +103,15 @@ class FigureNode extends CardNode {
   }
 }
 
+interface MountedEditor {
+  editor: LexicalEditor;
+  element: HTMLElement;
+}
+
 async function mount(
   extensions: Parameters<typeof LexicalComposer>[0]["extensions"],
   children: () => unknown,
-): Promise<{ editor: LexicalEditor; element: HTMLElement }> {
+): Promise<MountedEditor> {
   let editor!: LexicalEditor;
   function Grab() {
     editor = useLexicalEditor();

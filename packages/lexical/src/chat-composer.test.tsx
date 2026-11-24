@@ -79,7 +79,11 @@ class MentionOption extends MenuOption {
   }
 }
 
-function MentionMenu(props: { menu: MenuRenderProps<MentionOption> }) {
+interface MentionMenuProps {
+  menu: MenuRenderProps<MentionOption>;
+}
+
+function MentionMenu(props: MentionMenuProps) {
   const menu = props.menu;
   return (
     <div class="mention-menu">
@@ -102,22 +106,26 @@ function MentionMenu(props: { menu: MenuRenderProps<MentionOption> }) {
   );
 }
 
-function MentionPlugin(props: { users: Member[] }) {
+interface MentionPluginProps {
+  users: Member[];
+}
+
+function MentionPlugin(props: MentionPluginProps) {
   const [query, setQuery] = createSignal<string | null>(null);
   const [trigger, setTrigger] = createSignal<"@" | "#" | null>(null, { ownedWrite: true });
   const users = basicTypeaheadTriggerMatch("@", { minLength: 0 });
   const rooms = basicTypeaheadTriggerMatch("#", { minLength: 0 });
 
-  const triggerFn = (text: string, editor: LexicalEditor) => {
-    const user = users(text, editor);
+  function triggerFn(typed: string, editor: LexicalEditor) {
+    const user = users(typed, editor);
     if (user !== null) {
       setTrigger("@");
       return user;
     }
-    const room = rooms(text, editor);
+    const room = rooms(typed, editor);
     setTrigger(room === null ? null : "#");
     return room;
-  };
+  }
 
   const options = createMemo((): MentionOption[] => {
     const typed = query();
@@ -283,9 +291,9 @@ async function mountComposer(): Promise<Mounted> {
   return { editor, root, element, changes };
 }
 
-/** Types `text` at the end of the document, one character per update, as keystrokes would. */
-async function type(editor: LexicalEditor, text: string): Promise<void> {
-  for (const character of text) {
+/** Types `keys` at the end of the document, one character per update, as keystrokes would. */
+async function type(editor: LexicalEditor, keys: string): Promise<void> {
+  for (const character of keys) {
     editor.update(() => {
       let selection = $getSelection();
       if (!$isRangeSelection(selection)) {
@@ -298,8 +306,9 @@ async function type(editor: LexicalEditor, text: string): Promise<void> {
   }
 }
 
-const text = (editor: LexicalEditor): string =>
-  editor.getEditorState().read(() => $getRoot().getTextContent());
+function text(editor: LexicalEditor): string {
+  return editor.getEditorState().read(() => $getRoot().getTextContent());
+}
 
 describe("a chat composer", () => {
   test("renders the root, a placeholder while empty, and the toolbar outside the root", async () => {
