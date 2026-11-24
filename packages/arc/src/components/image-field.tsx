@@ -121,12 +121,7 @@ export const imageFieldStyles = variants({
       width: "100%",
       maxHeight: "60dvh",
     }),
-    stageImage: arc({
-      position: "absolute",
-      maxWidth: "none",
-      userSelect: "none",
-      pointerEvents: "none",
-    }),
+    stageImage: arc(place.passive, { maxWidth: "none" }),
     frame: arc(place.cover, rounded.inherit, {
       boxShadow: `0 0 0 2px ${tokens.background} inset`,
     }),

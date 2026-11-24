@@ -36,8 +36,22 @@
         "@codemirror/search": "^6.7.2",
         "@codemirror/state": "^6.7.6",
         "@codemirror/view": "^6.43.15",
+        "@lexical/code-core": "0.53.0",
+        "@lexical/extension": "0.53.0",
+        "@lexical/history": "0.53.0",
+        "@lexical/link": "0.53.0",
+        "@lexical/list": "0.53.0",
+        "@lexical/markdown": "0.53.0",
+        "@lexical/rich-text": "0.53.0",
+        "@lexical/selection": "0.53.0",
+        "@lexical/table": "0.53.0",
+        "@lexical/utils": "0.53.0",
+        "@lexical/yjs": "0.53.0",
         "@lezer/highlight": "^1.2.5",
+        "@lezer/markdown": "^1.8.1",
         "@tanstack/charts": "^1.5.0",
+        "emojibase-data": "^18.0.0",
+        "lexical": "0.53.0",
       },
       "devDependencies": {
         "@barqjs/aria": "workspace:*",
@@ -45,6 +59,7 @@
         "@barqjs/core": "workspace:*",
         "@barqjs/css": "workspace:*",
         "@barqjs/form": "workspace:*",
+        "@barqjs/lexical": "workspace:*",
         "@barqjs/lucide": "workspace:*",
         "@barqjs/primitives": "workspace:*",
         "@barqjs/router": "workspace:*",
@@ -57,12 +72,14 @@
         "@happy-dom/global-registrator": "^21.0.4",
         "@types/bun": "^1.4.4",
         "typescript": "^7.0.2",
+        "yjs": "^13.6.33",
       },
       "peerDependencies": {
         "@barqjs/aria": ">=0.2.0-next.3",
         "@barqjs/core": ">=0.2.0-next.3",
         "@barqjs/css": ">=0.2.0-next.3",
         "@barqjs/form": ">=0.2.0-next.3",
+        "@barqjs/lexical": ">=0.2.0-next.3",
         "@barqjs/lucide": ">=0.2.0-next.3",
         "@barqjs/primitives": ">=0.2.0-next.3",
         "@barqjs/router": ">=0.2.0-next.3",
@@ -70,7 +87,12 @@
         "@barqjs/table": ">=0.2.0-next.3",
         "@barqjs/ui": ">=0.2.0-next.3",
         "@barqjs/web": ">=0.2.0-next.3",
+        "yjs": ">=13.5.37",
       },
+      "optionalPeers": [
+        "@barqjs/lexical",
+        "yjs",
+      ],
     },
     "packages/aria": {
       "name": "@barqjs/aria",
@@ -1148,6 +1170,8 @@
 
     "@lexical/selection": ["@lexical/selection@0.53.0", "", { "dependencies": { "@lexical/internal": "0.53.0", "lexical": "0.53.0" }, "peerDependencies": { "typescript": ">=5.2" }, "optionalPeers": ["typescript"] }, "sha512-K7yTg/7PRZTKZ8UzzTC1tme4WEAz39vg4MqteHqrspmXFM3OubTXcANdXZFvMyzTDJ7g3sIoDkjD73kroDvO2Q=="],
 
+    "@lexical/table": ["@lexical/table@0.53.0", "", { "dependencies": { "@lexical/clipboard": "0.53.0", "@lexical/extension": "0.53.0", "@lexical/html": "0.53.0", "@lexical/internal": "0.53.0", "@lexical/utils": "0.53.0", "lexical": "0.53.0" }, "peerDependencies": { "typescript": ">=5.2" }, "optionalPeers": ["typescript"] }, "sha512-He2dAALEW7yvAon0t56m0tMF/oDYX/llHPM+oRc/BvAzpRkkFuV/0oGkJNoEZ1TFvK7tT0OSme0kYW3TLI2FZw=="],
+
     "@lexical/text": ["@lexical/text@0.53.0", "", { "dependencies": { "@lexical/internal": "0.53.0", "lexical": "0.53.0" }, "peerDependencies": { "typescript": ">=5.2" }, "optionalPeers": ["typescript"] }, "sha512-s0zWuQZH7MMl0tNb9qs+GptTv1459lBzsYV7UrrsPVuvD1otHgw3qE9rCSkv2C5oXkTy8MR7t14dFIgqybJhBQ=="],
 
     "@lexical/utils": ["@lexical/utils@0.53.0", "", { "dependencies": { "@lexical/internal": "0.53.0", "@lexical/selection": "0.53.0", "lexical": "0.53.0" }, "peerDependencies": { "typescript": ">=5.2" }, "optionalPeers": ["typescript"] }, "sha512-Uq+zEWPnX0eZqRw0gTe3NuPOduePHVmP0dQ3jyoi8JIN3HIQOIn5yTFGejX8j4M3RcYXwgsm89pNWflNWV/8tw=="],
@@ -1793,6 +1817,10 @@
     "embla-carousel": ["embla-carousel@8.6.0", "", {}, "sha512-SjWyZBHJPbqxHOzckOfo8lHisEaJWmwd23XppYFYVh10bU66/Pn5tkVkbkCMZVdbUE5eTCI2nD8OyIP4Z+uwkA=="],
 
     "emoji-regex": ["emoji-regex@8.0.0", "", {}, "sha512-MSjYzcWNOA0ewAHpz0MxpYFvwg6yjy1NG3xteoqz644VCo/RPgnr1/GGt+ic3iJTzQ8Eu3TdM14SawnVUmGE6A=="],
+
+    "emojibase": ["emojibase@18.0.0", "", {}, "sha512-5PG+EEt5zQ9qvqdHZw61+T9iz96g+r621QS/w8jEzPg+3mjzAdjl8LPLc+e9ABv/yboNfMwEair7aK9qKnwAbQ=="],
+
+    "emojibase-data": ["emojibase-data@18.0.0", "", { "peerDependencies": { "emojibase": "*" } }, "sha512-TPPRRYv2zPd0jKI+pTpMquwWNZXYAsC3IVsCMeg2X8y8fEzKwOks4/5bz0YavF5r6d71aGPpb6oDnUEwSLLMoA=="],
 
     "emojilib": ["emojilib@2.4.0", "", {}, "sha512-5U0rVMU5Y2n2+ykNLQqMoqklN9ICBT/KsvC1Gz6vqHbz2AXXGkG+Pm5rMWk/8Vjrr/mY9985Hi8DYzn1F09Nyw=="],
 

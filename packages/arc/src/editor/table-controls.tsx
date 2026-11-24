@@ -1,0 +1,234 @@
+import { For, Show } from "@barqjs/core";
+import { variants } from "@barqjs/css";
+import { useLocale } from "@barqjs/aria/i18n";
+import {
+  type AnchorRect,
+  overlayPosition,
+  portalContainer,
+  usePortalTarget,
+} from "@barqjs/aria/overlays";
+import { ref as makeRef } from "@barqjs/primitives/refs";
+import { useLexicalEditor } from "@barqjs/lexical";
+import { Table2 } from "@barqjs/lucide/icons/table-2";
+import { Button } from "@barqjs/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@barqjs/ui/dropdown-menu";
+import { Portal } from "@barqjs/web";
+import {
+  $deleteTableColumnAtSelection,
+  $deleteTableRowAtSelection,
+  $findCellNode,
+  $findTableNode,
+  $getTableRowIndexFromTableCellNode,
+  $insertTableColumnAtSelection,
+  $insertTableRowAtSelection,
+  $isTableCellNode,
+  $isTableRowNode,
+  $setTableRowIsHeader,
+  TableCellHeaderStates,
+} from "@lexical/table";
+import { $getSelection, $isRangeSelection, type LexicalEditor, type NodeKey } from "lexical";
+
+import { type ArcMessages, useArcMessages } from "../components/messages.ts";
+import { arcLayer as arc } from "../layer.ts";
+import { type Customisable, parts } from "../lib/parts.ts";
+import { zIndex } from "../style/index.ts";
+import { editorSignal, useRegistration } from "./hooks.ts";
+
+export const tableControlsStyles = variants({
+  slots: {
+    root: arc({ zIndex: zIndex.popover }),
+    trigger: arc({}),
+  },
+});
+
+type Slots = ReturnType<typeof tableControlsStyles>;
+
+interface CellPlace {
+  key: NodeKey;
+  header: boolean;
+  rect: AnchorRect;
+}
+
+type TableAction =
+  | "rowBefore"
+  | "rowAfter"
+  | "columnBefore"
+  | "columnAfter"
+  | "deleteRow"
+  | "deleteColumn"
+  | "deleteTable";
+
+const ACTIONS: readonly { id: TableAction; label: (messages: ArcMessages) => string }[] = [
+  { id: "rowBefore", label: (m) => m.insertRowBefore },
+  { id: "rowAfter", label: (m) => m.insertRowAfter },
+  { id: "columnBefore", label: (m) => m.insertColumnBefore },
+  { id: "columnAfter", label: (m) => m.insertColumnAfter },
+  { id: "deleteRow", label: (m) => m.deleteRow },
+  { id: "deleteColumn", label: (m) => m.deleteColumn },
+  { id: "deleteTable", label: (m) => m.deleteTable },
+];
+
+/** Changes the table the selection is in, as the table actions menu does. */
+export function runTableAction(editor: LexicalEditor, action: TableAction): void {
+  editor.update(() => {
+    const selection = $getSelection();
+    if (!$isRangeSelection(selection)) return;
+    const table = $findTableNode(selection.anchor.getNode());
+    if (table === null) return;
+    switch (action) {
+      case "rowBefore":
+      case "rowAfter":
+        $insertTableRowAtSelection(action === "rowAfter");
+        break;
+      case "columnBefore":
+      case "columnAfter":
+        $insertTableColumnAtSelection(action === "columnAfter");
+        break;
+      case "deleteRow":
+        $deleteTableRowAtSelection();
+        break;
+      case "deleteColumn":
+        $deleteTableColumnAtSelection();
+        break;
+      case "deleteTable": {
+        const next = table.getNextSibling() ?? table.getPreviousSibling();
+        table.remove();
+        next?.selectStart();
+        break;
+      }
+    }
+  });
+}
+
+/** Makes the first row of the table the selection is in a header row, or plain again. */
+export function setHeaderRow(editor: LexicalEditor, header: boolean): void {
+  editor.update(() => {
+    const selection = $getSelection();
+    if (!$isRangeSelection(selection)) return;
+    const table = $findTableNode(selection.anchor.getNode());
+    if (table !== null) $setTableRowIsHeader(table, 0, header);
+  });
+}
+
+export interface TableControlsProps extends Customisable<Slots> {}
+
+/**
+ * A button at the corner of the cell the caret is in that opens what can be
+ * done to its table: rows and columns added before or after, either
+ * deleted, the header row switched, the table removed. A button rather than
+ * a hover grip, so a keyboard and a finger reach it as a pointer does;
+ * "before" and "after" follow the reading direction.
+ */
+export function TableControls(props: TableControlsProps) {
+  const editor = useLexicalEditor();
+  const messages = useArcMessages();
+  const locale = useLocale();
+  const cls = (): Slots => parts(tableControlsStyles(), props.classes);
+  const [cell, setCell] = editorSignal<CellPlace | null>(null);
+  const ref = makeRef<HTMLDivElement>();
+  const target = usePortalTarget();
+
+  const read = (): void => {
+    const found = editor.read(() => {
+      const selection = $getSelection();
+      if (!editor.isEditable() || !$isRangeSelection(selection)) return null;
+      const node = $findCellNode(selection.anchor.getNode());
+      if (node === null) return null;
+      const table = $findTableNode(node);
+      const first = table?.getFirstChild();
+      const header =
+        $isTableRowNode(first) &&
+        first
+          .getChildren()
+          .every(
+            (one) =>
+              $isTableCellNode(one) && (one.getHeaderStyles() & TableCellHeaderStates.ROW) !== 0,
+          );
+      return { key: node.getKey(), header, row: $getTableRowIndexFromTableCellNode(node) };
+    });
+    const element = found === null ? null : editor.getElementByKey(found.key);
+    if (found === null || element === null) {
+      setCell(null);
+      return;
+    }
+    const box = element.getBoundingClientRect();
+    setCell({
+      key: found.key,
+      header: found.header,
+      rect: { top: box.top, left: box.left, width: box.width, height: box.height },
+    });
+  };
+  useRegistration(() => editor.registerUpdateListener(read));
+
+  const position = overlayPosition({
+    targetRef: () => (cell() === null ? null : editor.getElementByKey(cell()!.key)),
+    overlayRef: ref,
+    placement: () => "top end",
+    offset: () => -12,
+    isOpen: () => cell() !== null,
+    direction: () => locale().direction,
+  });
+
+  return (
+    <Show when={cell()}>
+      {(current: () => CellPlace) => (
+        <Portal mount={portalContainer(target)}>
+          <div
+            {...position.overlayProps}
+            ref={ref.set}
+            class={arc(cls().root, props.class, props.className)}
+            data-slot="table-controls"
+          >
+            <DropdownMenu>
+              <DropdownMenuTrigger>
+                <Button
+                  variant="outline"
+                  size="icon-xs"
+                  class={cls().trigger}
+                  aria-label={messages().tableActions}
+                  data-slot="table-controls-trigger"
+                >
+                  <Table2 aria-hidden="true" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent aria-label={messages().tableActions} align="end">
+                <For each={ACTIONS}>
+                  {(action: (typeof ACTIONS)[number], index: () => number) => (
+                    <>
+                      <Show when={index() === 4}>
+                        <DropdownMenuSeparator />
+                      </Show>
+                      <DropdownMenuItem
+                        variant={action.id.startsWith("delete") ? "destructive" : "default"}
+                        onSelect={() => {
+                          runTableAction(editor, action.id);
+                          editor.focus();
+                        }}
+                      >
+                        {action.label(messages())}
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                </For>
+                <DropdownMenuSeparator />
+                <DropdownMenuCheckboxItem
+                  checked={current().header}
+                  onCheckedChange={(checked: boolean) => setHeaderRow(editor, checked)}
+                >
+                  {messages().headerRow}
+                </DropdownMenuCheckboxItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </Portal>
+      )}
+    </Show>
+  );
+}

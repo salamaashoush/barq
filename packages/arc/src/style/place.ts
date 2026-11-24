@@ -18,6 +18,8 @@ export const place = {
   screen: arc({ width: "100vw", maxWidth: "100vw", height: "100dvh", maxHeight: "100dvh" }),
   /** No padding: a part whose content sets its size. */
   unpadded: arc({ padding: "0px" }),
+  /** Over its positioned parent and out of the way: the pointer passes through it and it is never selected. */
+  passive: arc({ position: "absolute", pointerEvents: "none", userSelect: "none" }),
   /** An `::after` drawn over its positioned parent, for a part that adds a mark or a hit area of its own. */
   afterLayer: arc({ "::after": { content: '""', position: "absolute" } }),
 };

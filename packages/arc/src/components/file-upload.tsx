@@ -86,7 +86,8 @@ export interface UploadQueueOptions {
 
 export interface UploadQueueApi {
   readonly items: Accessor<readonly UploadItem[]>;
-  add: (files: readonly File[]) => void;
+  /** Queues `files`, and answers with the items made for them, in order. */
+  add: (files: readonly File[]) => readonly UploadItem[];
   retry: (id: string) => void;
   cancel: (id: string) => void;
   remove: (id: string) => void;
@@ -193,6 +194,7 @@ export function useUploadQueue(options: UploadQueueOptions): UploadQueueApi {
       }));
       write([...current, ...added]);
       pump();
+      return added;
     },
     retry: (id) => {
       update(id, { status: "queued", progress: 0, error: undefined });

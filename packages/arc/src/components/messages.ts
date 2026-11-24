@@ -554,6 +554,8 @@ export interface ArcMessages {
   saveChanges: string;
   editingMessage: string;
   remoteCursor: (name: string) => string;
+  saving: string;
+  saveFailed: string;
 }
 
 export const ENGLISH: ArcMessages = {
@@ -1131,6 +1133,8 @@ export const ENGLISH: ArcMessages = {
   saveChanges: "Save changes",
   editingMessage: "Editing message",
   remoteCursor: (name) => `${name}'s cursor`,
+  saving: "Saving…",
+  saveFailed: "Not saved",
 };
 
 const MessagesContext = createContext<ArcMessages>(ENGLISH, "ArcMessages");
