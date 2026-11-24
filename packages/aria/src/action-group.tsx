@@ -598,8 +598,8 @@ export function ActionGroup<T>(props: ActionGroupComponentProps<T>) {
               moreClass={props.moreClass}
               menuClass={props.menuClass}
               menuItemClass={props.menuItemClass}
-              aria-label={props["aria-label"]}
-              aria-labelledby={props["aria-labelledby"]}
+              aria-label={onlyMenu() ? props["aria-label"] : undefined}
+              aria-labelledby={onlyMenu() ? props["aria-labelledby"] : undefined}
               onAction={(key: Key, item: unknown) => value.onAction(key, item)}
             />
           </Show>

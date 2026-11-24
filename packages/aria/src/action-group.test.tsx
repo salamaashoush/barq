@@ -834,6 +834,13 @@ describe('ActionGroup overflowMode="collapse"', () => {
     expect(item.getAttribute("data-slot")).toBe("action-group-menu-item");
   });
 
+  test("in a named group only partly collapsed, the menu button is still More items", () => {
+    render(() => <Collapsing aria-label="Text" />);
+    flush();
+    const shown = within(screen.getByRole("toolbar", { name: "Text" })).getAllByRole("button");
+    expect(shown[1]?.getAttribute("aria-label")).toBe("More items");
+  });
+
   test("an item's data attributes follow it into the menu", () => {
     render(() => (
       <ActionGroup items={four} overflowMode="collapse">
