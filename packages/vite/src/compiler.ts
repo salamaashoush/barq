@@ -507,6 +507,17 @@ const ATOMS_ID = "/__barq_atoms.css";
 const ATOMS_MARKER = ".__barq_atoms__{--barq-atoms:0}";
 const ATOMS_MARKER_RULE = /\.__barq_atoms__\{[^}]*\}/;
 
+/** What one file exports that another folds against, and the stylesheets behind it. */
+interface FoldedModule {
+  rows: string[][];
+  /** The file's own stylesheet. */
+  css: string;
+  /** The stylesheets of the files it folded a value out of, by file. */
+  carried: Map<string, string>;
+}
+
+const NOTHING_FOLDED: FoldedModule = { rows: [], css: "", carried: new Map() };
+
 /**
  * The name the atoms' own asset is emitted under, which is how the router and
  * Start find it in a bundle to link it after every other stylesheet.
@@ -1114,7 +1125,7 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
    * What each file exports that another can fold against, keyed by path and
    * mtime so an edit is a different key and a build reads each file once.
    */
-  const exportsByFile = new Map<string, string[][]>();
+  const exportsByFile = new Map<string, FoldedModule>();
 
   /** Whether a directory sits in a package that publishes its source. */
   const barqPackageCache = new Map<string, boolean>();
@@ -1548,38 +1559,26 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
       }
 
       /**
-       * What one imported file exports, compiled once and remembered.
+       * What one imported file exports, compiled once and remembered: its
+       * rows, its own stylesheet, and the stylesheets it folded against.
        *
        * Recursive, because a token file can itself import a token file, and
        * depth-bounded and cycle-guarded because a module graph is neither a
        * tree nor acyclic. A file that will not resolve contributes nothing and
        * the fold declines exactly as it would have.
        */
-      /**
-       * The stylesheet of every file this module folded a value out of.
-       *
-       * Folding an imported value INLINES it, which can leave that module with
-       * no used export — and a bundler then drops the module and the
-       * `import "….barq.css"` inside it. Measured on a four-file app: the JS
-       * carried `a-outline-width_o01p2h` and the asset defined nothing, because
-       * `shared.ts` had been tree-shaken whole. So the consumer carries the
-       * stylesheet of everything it read from, which is a side-effect import
-       * and survives.
-       */
-      const foldedAgainst = new Map<string, string>();
-
       const exportsOf = async (
         dependency: string,
         depth: number,
         seen: Set<string>,
-      ): Promise<string[][]> => {
-        if (depth <= 0 || seen.has(dependency)) return [];
+      ): Promise<FoldedModule> => {
+        if (depth <= 0 || seen.has(dependency)) return NOTHING_FOLDED;
         seen.add(dependency);
         let key = dependency;
         try {
           key = `${dependency}:${(await stat(dependency)).mtimeMs}`;
         } catch {
-          return [];
+          return NOTHING_FOLDED;
         }
         const hit = exportsByFile.get(key);
         if (hit !== undefined) return hit;
@@ -1588,20 +1587,75 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
         try {
           source = await readFile(dependency, "utf8");
         } catch {
-          return [];
+          return NOTHING_FOLDED;
         }
-        let rows: string[][] = [];
+        let folded = NOTHING_FOLDED;
         try {
-          const out = await compileWithImports(source, dependency, depth - 1, seen, {
+          const carried = new Map<string, string>();
+          const out = await compileWithImports(source, dependency, depth - 1, seen, carried, {
             cssExports: true,
           });
-          rows = out.cssExports ?? [];
-          if (out.css !== undefined && out.css !== "") foldedAgainst.set(dependency, out.css);
+          folded = { rows: out.cssExports ?? [], css: out.css ?? "", carried };
         } catch {
-          rows = [];
+          folded = NOTHING_FOLDED;
         }
-        exportsByFile.set(key, rows);
-        return rows;
+        exportsByFile.set(key, folded);
+        return folded;
+      };
+
+      /**
+       * The stylesheets a fold of `name` out of `dependency` needs.
+       *
+       * Folding an imported value INLINES it, which can leave that module with
+       * no used export, and a bundler then drops the module and the
+       * `import "….barq.css"` inside it. Measured on a four-file app: the JS
+       * carried `a-outline-width_o01p2h` and the asset defined nothing, because
+       * `shared.ts` had been tree-shaken whole. So the consumer carries the
+       * stylesheet the value's rules are in, as a side-effect import that
+       * survives.
+       *
+       * Through a barrel, that is the module the barrel's `from` row names
+       * rather than the barrel, which holds no rules, and rather than everything
+       * the barrel re-exports, which is every module behind it: an application
+       * reading one treatment through `@barqjs/arc/style` would otherwise carry
+       * the stylesheet of every family.
+       */
+      const carry = async (
+        dependency: string,
+        name: string,
+        depth: number,
+        seen: Set<string>,
+        into: Map<string, string>,
+      ): Promise<void> => {
+        const folded = await exportsOf(dependency, depth, new Set(seen));
+        const names =
+          name === "*"
+            ? [...new Set(folded.rows.map((row) => row[0] ?? ""))].filter(
+                (one) => one !== "default",
+              )
+            : [name];
+        let own = false;
+        for (const one of names) {
+          const from = folded.rows.find((row) => row[0] === one && row[1] === "from");
+          const resolved =
+            from === undefined || depth <= 1
+              ? undefined
+              : await this.resolve?.(from[3] ?? "", dependency);
+          if (
+            from === undefined ||
+            !resolved ||
+            resolved.external === true ||
+            resolved.external === "absolute"
+          ) {
+            own = true;
+            continue;
+          }
+          const origin = resolved.id.split("?", 1)[0] ?? resolved.id;
+          await carry(origin, from[2] ?? "", depth - 1, seen, into);
+        }
+        if (!own) return;
+        if (folded.css !== "") into.set(dependency, folded.css);
+        for (const [file, sheet] of folded.carried) into.set(file, sheet);
       };
 
       /**
@@ -1612,12 +1666,17 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
        * value it cannot resolve, so the second unresolved name in one object is
        * only reported once the first has an answer. Bounded, and a round that
        * learns nothing new ends it.
+       *
+       * A name of `*` is a namespace import or an `export *`, and is answered
+       * with every row the other module exports. A `from` row says where a
+       * value's rules are and is not a value, so it is never handed over.
        */
       const compileWithImports = async (
         source: string,
         file: string,
         depth: number,
         seen: Set<string>,
+        carried: Map<string, string>,
         extra: { cssExports?: boolean } = {},
       ): Promise<NativeResult> => {
         const base = {
@@ -1685,11 +1744,16 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
             // A watched dependency, so editing the token file retransforms
             // every module that folded against it.
             this.addWatchFile?.(dependency);
-            for (const row of await exportsOf(dependency, depth, new Set(seen))) {
-              if (row[0] !== name) continue;
+            const { rows } = await exportsOf(dependency, depth, new Set(seen));
+            let answered = false;
+            for (const row of rows) {
+              if (row[1] === "from" || (name !== "*" && row[0] !== name)) continue;
               cssImports.push([specifier ?? "", ...row]);
-              learned = true;
+              answered = true;
             }
+            if (!answered) continue;
+            learned = true;
+            await carry(dependency, name ?? "", depth, seen, carried);
           }
           if (!learned) break;
           out = compiler.transform(source, { ...base, cssImports });
@@ -1700,8 +1764,9 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
       // A native transform can fail on a parse diagnostic, and anything the
       // Rust side raises arrives here as a bare message with no file in it.
       let result: NativeResult;
+      const foldedAgainst = new Map<string, string>();
       try {
-        result = await compileWithImports(code, id, 6, new Set([id]));
+        result = await compileWithImports(code, id, 6, new Set([id]), foldedAgainst);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         throw new Error(`[barq-compiler] \`${id}\` could not be compiled: ${message}`, {

@@ -265,7 +265,9 @@ function transformWithImports(
       const dependency = resolveImport(file, specifier);
       if (dependency === undefined) continue;
       for (const row of exportsOf(dependency, project, depth - 1, new Set(seen))) {
-        if (row[0] !== name) continue;
+        // `*` is a namespace import or an `export *`, answered with every row;
+        // a `from` row says where a value's rules are and is not a value.
+        if (row[1] === "from" || (name !== "*" && row[0] !== name)) continue;
         cssImports.push([specifier, ...row]);
         learned = true;
       }

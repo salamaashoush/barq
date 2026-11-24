@@ -716,6 +716,41 @@ export const a = ui({ padding: 4 });
     expect(code).toContain(`import "${join(DIR, "shared.ts")}.barq.css"`);
   });
 
+  test("through a barrel, it folds and carries only the module the rules are in", async () => {
+    writeFileSync(
+      join(DIR, "other.ts"),
+      `import { layer } from "@barqjs/css";
+const ui = layer("app");
+export const other = ui.create({ wide: { width: "100%" } });
+`,
+    );
+    writeFileSync(
+      join(DIR, "palette.ts"),
+      `export const palette = { brand: "var(--brand)", gap: { md: 8 } } as const;\n`,
+    );
+    writeFileSync(
+      join(DIR, "style.ts"),
+      `export * from "./shared.ts";
+export { other } from "./other.ts";
+export { palette as colours } from "./palette.ts";
+`,
+    );
+    const { code } = await transform(
+      barqVitePlugin(),
+      `import { layer } from "@barqjs/css";
+import { colours, shared } from "./style.ts";
+const app = layer("app");
+export const a = app(shared.ring, { color: colours.brand, padding: colours.gap.md });
+`,
+    );
+    expect(code).not.toContain("app(");
+    expect(code).toContain("a-outline-width_");
+    expect(code).toContain("a-padding-top_");
+    expect(code).toContain(`import "${join(DIR, "shared.ts")}.barq.css"`);
+    expect(code).not.toContain(`${join(DIR, "other.ts")}.barq.css`);
+    expect(code).not.toContain(`${join(DIR, "style.ts")}.barq.css`);
+  });
+
   test("its own rules and the folded ones share ONE import of registerCss", async () => {
     // Two `cssRegistration` calls wrote the import twice, which is a
     // REDECLARED binding rather than a duplicate import a bundler dedupes:
