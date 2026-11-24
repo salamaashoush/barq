@@ -9,6 +9,11 @@ import { afterEach, expect, test } from "bun:test";
 import { type ServerFn, clientRpc, createServerFn, live } from "./index.ts";
 import { handleServerFn, mount, unmountAll } from "./server.ts";
 
+interface Tick {
+  n: number;
+  at: Date;
+}
+
 const ORIGIN = "https://example.com";
 const realFetch = globalThis.fetch;
 
@@ -17,7 +22,7 @@ afterEach(() => {
   unmountAll();
 });
 
-const throughHandler = (seen: Response[]): void => {
+function throughHandler(seen: Response[]): void {
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const headers = new Headers(init?.headers);
     headers.set("origin", ORIGIN);
@@ -27,7 +32,7 @@ const throughHandler = (seen: Response[]): void => {
     seen.push(response);
     return response;
   }) as typeof fetch;
-};
+}
 
 test("each value an iterable yields is one event, typed, and the end closes the loop", async () => {
   const readings = createServerFn({ method: "GET" }).handler(async function* () {
@@ -42,8 +47,8 @@ test("each value an iterable yields is one event, typed, and the end closes the 
   )();
   const statuses: string[] = [];
   stream.onstatus = (status) => statuses.push(status);
-  const received: { n: number; at: Date }[] = [];
-  for await (const each of stream) received.push(each as { n: number; at: Date });
+  const received: Tick[] = [];
+  for await (const each of stream) received.push(each as Tick);
 
   expect(received.map((each) => each.n)).toEqual([1, 2, 3]);
   expect(received[2]?.at).toEqual(new Date(3000));

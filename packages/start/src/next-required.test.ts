@@ -24,11 +24,13 @@ afterEach(unmountAll);
 
 const ORIGIN = "https://example.com";
 
-const answering = (answer: unknown) => (id: string, chain: readonly Middleware[]) =>
-  serverRpc<undefined, unknown>(
-    { id },
-    { validator: null, middleware: chain, handler: () => answer },
-  );
+function answering(answer: unknown) {
+  return (id: string, chain: readonly Middleware[]) =>
+    serverRpc<undefined, unknown>(
+      { id },
+      { validator: null, middleware: chain, handler: () => answer },
+    );
+}
 
 const fnWith = answering("salama");
 

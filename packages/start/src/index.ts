@@ -181,6 +181,8 @@ import {
   type Middleware,
   type NoContribution,
   type OpenContext,
+  type ParseSchema,
+  type ServerFnId,
   type StandardInput,
   type StandardOutput,
   type StandardSchemaLike,
@@ -296,8 +298,12 @@ export function json(payload: unknown, init?: ResponseInit): Response {
   return Response.json(payload, init);
 }
 
+export interface ValidatedFn {
+  readonly validator: Validator<unknown> | null;
+}
+
 export async function checkInput(
-  built: { readonly validator: Validator<unknown> | null },
+  built: ValidatedFn,
   raw: unknown,
   /**
    * Whether a MIDDLEWARE in the chain declared a validator.
@@ -336,7 +342,7 @@ export interface HandlerContext<In, Context extends object = Empty> {
   /** The method this function answers. */
   readonly method: ServerFnMethod;
   /** Which function is running, by the id it is mounted at. Empty when it is not mounted. */
-  readonly serverFnMeta: { readonly id: string };
+  readonly serverFnMeta: ServerFnId;
 }
 
 interface Built<Data, Out, Context extends object = Empty> {
@@ -463,7 +469,7 @@ export interface ServerFnBuilder<State extends ServerFnState = ServerFnState> {
     validate: ((input: In) => Out) & InputCheck<State, In>,
   ): ServerFnBuilder<FnWithValidator<State, In, Awaited<Out>>>;
   validator<In, Out>(
-    schema: { readonly parse: (input: In) => Out } & InputCheck<State, In>,
+    schema: ParseSchema<In, Out> & InputCheck<State, In>,
   ): ServerFnBuilder<FnWithValidator<State, In, Awaited<Out>>>;
   validator(unchecked: "unchecked"): ServerFnBuilder<FnWithValidator<State, unknown, unknown>>;
   /** `validator` under the name TanStack's release candidates used. */
@@ -474,7 +480,7 @@ export interface ServerFnBuilder<State extends ServerFnState = ServerFnState> {
     validate: ((input: In) => Out) & InputCheck<State, In>,
   ): ServerFnBuilder<FnWithValidator<State, In, Awaited<Out>>>;
   inputValidator<In, Out>(
-    schema: { readonly parse: (input: In) => Out } & InputCheck<State, In>,
+    schema: ParseSchema<In, Out> & InputCheck<State, In>,
   ): ServerFnBuilder<FnWithValidator<State, In, Awaited<Out>>>;
   inputValidator(unchecked: "unchecked"): ServerFnBuilder<FnWithValidator<State, unknown, unknown>>;
   /**
@@ -563,7 +569,7 @@ function builderAt<State extends ServerFnState>(staged: Staged): ServerFnBuilder
     validate: ((input: In) => Out) & InputCheck<State, In>,
   ): ServerFnBuilder<FnWithValidator<State, In, Awaited<Out>>>;
   function validated<In, Out>(
-    schema: { readonly parse: (input: In) => Out } & InputCheck<State, In>,
+    schema: ParseSchema<In, Out> & InputCheck<State, In>,
   ): ServerFnBuilder<FnWithValidator<State, In, Awaited<Out>>>;
   function validated(
     unchecked: "unchecked",
@@ -608,6 +614,13 @@ function builderAt<State extends ServerFnState>(staged: Staged): ServerFnBuilder
   };
 }
 
+interface ComposedServerChain {
+  readonly from: readonly Middleware[] | undefined;
+  readonly chain: readonly Middleware[];
+  /** Whether a bare argument has somewhere to be validated before the handler. */
+  readonly validates: boolean;
+}
+
 /**
  * The server half. The compiler emits this in a module compiled for the server,
  * with the real handler and the id it assigned.
@@ -629,13 +642,8 @@ export function serverRpc<
   // own, and is read when it is first needed: `src/start.ts` may be evaluated
   // after the module that declares this function. Flattening drops a step the
   // function lists again, so a guard named in both places runs once.
-  let composed: {
-    readonly from: readonly Middleware[] | undefined;
-    readonly chain: readonly Middleware[];
-    /** Whether a bare argument has somewhere to be validated before the handler. */
-    readonly validates: boolean;
-  } | null = null;
-  const composition = (): NonNullable<typeof composed> => {
+  let composed: ComposedServerChain | null = null;
+  function composition(): NonNullable<typeof composed> {
     const global = startOptions().functionMiddleware;
     if (composed !== null && composed.from === global) return composed;
     const chain = flattenMiddleware([...(global ?? []), ...built.middleware]);
@@ -647,9 +655,9 @@ export function serverRpc<
       ),
     };
     return composed;
-  };
+  }
 
-  const call = async (
+  async function call(
     options?: unknown,
     /**
      * What the CLIENT's halves sent, and it is UNTRUSTED.
@@ -665,7 +673,7 @@ export function serverRpc<
      * caller would leave `context.user` to whoever is not signed in.
      */
     clientContext?: Record<string, unknown>,
-  ): Promise<Streamed<Awaited<Out>>> => {
+  ): Promise<Streamed<Awaited<Out>>> {
     const input = dataOf(options);
     const { chain, validates: chainValidates } = composition();
     // What the chain contributed, merged as it unwinds inward. One object the
@@ -712,7 +720,7 @@ export function serverRpc<
     // a component is a frame, which a route renders and a browser asks for.
     if (result instanceof ReadableStream) return valuesOf(result) as Streamed<Awaited<Out>>;
     return asFrame(meta.id, input, result) as Streamed<Awaited<Out>>;
-  };
+  }
 
   const fn = Object.assign(call, {
     [SERVER_FN]: true as const,
@@ -728,6 +736,10 @@ export function serverRpc<
   return fn;
 }
 
+interface BuiltCarrier {
+  built?: Built<unknown, unknown>;
+}
+
 /**
  * The middleware chain a server function carries, by REFERENCE.
  *
@@ -741,7 +753,7 @@ export function serverRpc<
  * Empty for a client stub, which carries no chain because it carries no handler.
  */
 export function middlewareOf(fn: AnyServerFn): readonly Middleware[] {
-  const built = (fn as unknown as { built?: Built<unknown, unknown> }).built;
+  const built = (fn as unknown as BuiltCarrier).built;
   return built?.middleware ?? [];
 }
 

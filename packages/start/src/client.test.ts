@@ -5,6 +5,15 @@ import { decodeWire, encodeWire } from "@barqjs/server/codec";
 import { RPC_CONTEXT, clientRpc, createMiddleware, serverRpc } from "./index.ts";
 import { handleServerFn, mount, unmountAll } from "./server.ts";
 
+interface SentInput {
+  input: unknown;
+}
+
+interface WhoAmI {
+  result: string;
+  user: unknown;
+}
+
 const ORIGIN = "https://app.test";
 const realFetch = globalThis.fetch;
 
@@ -14,7 +23,7 @@ afterEach(() => {
 });
 
 /** The browser's fetch, answered by the real request handler in-process. */
-const throughHandler = (): void => {
+function throughHandler(): void {
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const headers = new Headers(init?.headers);
     headers.set("origin", ORIGIN);
@@ -23,7 +32,7 @@ const throughHandler = (): void => {
     );
     return response ?? new Response("not found", { status: 404 });
   }) as typeof fetch;
-};
+}
 
 test("a Response the handler returned reaches the caller as that Response", async () => {
   mount(
@@ -53,7 +62,7 @@ test("overlapping calls each read the context their own response sent back", asy
   // while the second call is the most recent one.
   const pending: Array<() => void> = [];
   globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
-    const { input } = JSON.parse(String(init?.body)) as { input: unknown };
+    const { input } = JSON.parse(String(init?.body)) as SentInput;
     const echo = decodeWire<string>(input);
     await new Promise<void>((resolve) => {
       pending.push(resolve);
@@ -67,7 +76,7 @@ test("overlapping calls each read the context their own response sent back", asy
     const result = await next();
     return { result, user: context.user };
   });
-  const whoami = clientRpc<string, { result: string; user: unknown }>("whoami", [reads]);
+  const whoami = clientRpc<string, WhoAmI>("whoami", [reads]);
 
   const first = whoami({ data: "salama" });
   const second = whoami({ data: "guest" });

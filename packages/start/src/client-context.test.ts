@@ -31,19 +31,20 @@ afterEach(unmountAll);
 const ORIGIN = "https://example.com";
 
 /** A call whose body claims `context`, as a hand-written request can. */
-const claiming = (
+function claiming(
   id: string,
   context: Record<string, unknown>,
   headers: Record<string, string> = {},
-): Request =>
-  new Request(`${ORIGIN}${RPC_PREFIX}${encodeURIComponent(id)}${DATA_SUFFIX}`, {
+): Request {
+  return new Request(`${ORIGIN}${RPC_PREFIX}${encodeURIComponent(id)}${DATA_SUFFIX}`, {
     method: "POST",
     headers: { "content-type": "application/json", origin: ORIGIN, ...headers },
     body: JSON.stringify({ input: encodeWire(undefined), context: encodeWire(context) }),
   });
+}
 
 /** Mounts a function under `chain` and records the `context` its handler was handed. */
-const recording = (id: string, chain: readonly Middleware[]): Record<string, unknown>[] => {
+function recording(id: string, chain: readonly Middleware[]): Record<string, unknown>[] {
   const seen: Record<string, unknown>[] = [];
   mount(
     id,
@@ -60,7 +61,7 @@ const recording = (id: string, chain: readonly Middleware[]): Record<string, unk
     ),
   );
   return seen;
-};
+}
 
 /** Names the user for a signed-in caller and says nothing for anyone else. */
 const optionalUser: Middleware = async (next) =>

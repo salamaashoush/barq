@@ -12,21 +12,26 @@ import {
 } from "./index.ts";
 import { handleServerFn, mount, unmountAll } from "./server.ts";
 
+interface SentContext {
+  context: unknown;
+}
+
 afterEach(unmountAll);
 
 const ORIGIN = "https://app.test";
 
-const post = (id: string, user: string): Request =>
-  new Request(`${ORIGIN}${RPC_PREFIX}${encodeURIComponent(id)}${DATA_SUFFIX}`, {
+function post(id: string, user: string): Request {
+  return new Request(`${ORIGIN}${RPC_PREFIX}${encodeURIComponent(id)}${DATA_SUFFIX}`, {
     method: "POST",
     headers: { "content-type": "application/json", origin: ORIGIN, "x-user": user },
     body: JSON.stringify({ input: encodeWire(undefined) }),
   });
+}
 
-const contextOf = async (response: Response | null): Promise<unknown> => {
+async function contextOf(response: Response | null): Promise<unknown> {
   if (response === null || response.headers.get(RPC_CONTEXT) === null) return undefined;
-  return decodeWire<{ context: unknown }>(await response.json()).context;
-};
+  return decodeWire<SentContext>(await response.json()).context;
+}
 
 test("two requests settling in the same tick each get their own sendContext", async () => {
   let open!: () => void;

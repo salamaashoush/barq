@@ -22,6 +22,68 @@ import {
   createServerFn,
   createStart,
 } from "./index.ts";
+import type { CallData } from "./client.ts";
+
+interface User {
+  id: string;
+  admin: boolean;
+}
+
+interface TenantContext {
+  tenant: string;
+}
+
+interface StringId {
+  readonly id: string;
+}
+
+interface NumericId {
+  id: number;
+}
+
+interface WorkspaceInput {
+  readonly workspace: string;
+}
+
+interface TitleProps {
+  readonly title: string;
+}
+
+interface Renderable {
+  render: (props: object) => unknown;
+}
+
+interface CallbackHolder {
+  b: () => void;
+}
+
+interface NestedCallback {
+  a: CallbackHolder;
+}
+
+interface SymbolList {
+  list: readonly symbol[];
+}
+
+interface LinkResult {
+  link: URL;
+}
+
+interface DatedResult {
+  fine: Date;
+}
+
+interface DoneCallback {
+  readonly onDone: () => void;
+}
+
+interface OutputOff {
+  output: false;
+}
+
+interface InputOff {
+  input: false;
+}
 
 // `createStart` registers the process's one instance, which every server
 // function in every later file would then run behind.
@@ -30,7 +92,9 @@ afterEach(clearStart);
 /** Each assignable to the other: the two types admit the same values. */
 type Equal<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
 
-const holds = <Check extends true>(proof?: Check): Check | undefined => proof;
+function holds<Check extends true>(proof?: Check): Check | undefined {
+  return proof;
+}
 
 /** `true` when `Value` is not a `Type`: what a line that should not compile would be handed. */
 type Refused<Value, Type> = [Value] extends [Type] ? false : true;
@@ -48,11 +112,11 @@ const auth = createMiddleware().server(({ next }) =>
 const role = createMiddleware()
   .middleware([auth])
   .server(({ next, context }) => {
-    holds<Equal<typeof context.user, { id: string; admin: boolean }>>();
+    holds<Equal<typeof context.user, User>>();
     return next({ context: { role: context.user.admin ? ("admin" as const) : ("user" as const) } });
   });
 
-const tenant: Middleware<{ tenant: string }> = async (next) =>
+const tenant: Middleware<TenantContext> = async (next) =>
   next({ context: { tenant: "example.com" } });
 
 test("a server function's context is what its chain passed to `next`", async () => {
@@ -70,10 +134,12 @@ test("a server function's context is what its chain passed to `next`", async () 
 });
 
 test("a bare closure is held to the context it declares", () => {
-  const broken = async (next: MiddlewareNext) => next();
+  async function broken(next: MiddlewareNext) {
+    return next();
+  }
   // It promises a tenant and passes none.
-  holds<Refused<typeof broken, Middleware<{ tenant: string }>>>();
-  holds<Equal<Refused<typeof tenant, Middleware<{ tenant: string }>>, false>>();
+  holds<Refused<typeof broken, Middleware<TenantContext>>>();
+  holds<Equal<Refused<typeof tenant, Middleware<TenantContext>>, false>>();
   expect(typeof broken).toBe("function");
 });
 
@@ -93,9 +159,9 @@ test("a schema's input is what the caller passes, and its output what the handle
       holds<Equal<typeof data, Date>>();
       return data.getUTCFullYear();
     });
-  holds<Equal<Parameters<typeof year>[0], { readonly data: string } & ServerFnCall>>();
+  holds<Equal<Parameters<typeof year>[0], CallData<string> & ServerFnCall>>();
   // The caller passes the schema's input, not its output.
-  holds<Uncallable<typeof year, [{ data: Date }]>>();
+  holds<Uncallable<typeof year, [CallData<Date>]>>();
 
   expect(await year({ data: "2026-10-15T00:00:00Z" })).toBe(2026);
 });
@@ -104,13 +170,13 @@ type ServerFnCall = import("./index.ts").ServerFnCallOptions;
 
 test("a function validator's parameter is the caller's input", async () => {
   const byId = createServerFn()
-    .validator((input: { readonly id: string }) => ({ id: Number(input.id) }))
+    .validator((input: StringId) => ({ id: Number(input.id) }))
     .handler(({ data }) => {
-      holds<Equal<typeof data, { id: number }>>();
+      holds<Equal<typeof data, NumericId>>();
       return data.id + 1;
     });
   // `id` is a string on the way in.
-  holds<Uncallable<typeof byId, [{ data: { id: number } }]>>();
+  holds<Uncallable<typeof byId, [CallData<NumericId>]>>();
 
   expect(await byId({ data: { id: "41" } })).toBe(42);
 });
@@ -118,21 +184,21 @@ test("a function validator's parameter is the caller's input", async () => {
 test("a function with no validator takes no data", async () => {
   const ping = createServerFn().handler(() => "pong");
   // No validator, so no input.
-  holds<Uncallable<typeof ping, [{ data: number }]>>();
+  holds<Uncallable<typeof ping, [CallData<number>]>>();
   expect(await ping()).toBe("pong");
 });
 
 test("a middleware's validator types its own data and the handler's", async () => {
   const workspace = createMiddleware()
-    .validator((input: { readonly workspace: string }) => input)
+    .validator((input: WorkspaceInput) => input)
     .server(({ next, data }) => {
-      holds<Equal<typeof data, { readonly workspace: string }>>();
+      holds<Equal<typeof data, WorkspaceInput>>();
       return next({ context: { slug: data.workspace.toLowerCase() } });
     });
   const open = createServerFn()
     .middleware([workspace])
     .handler(({ data, context }) => {
-      holds<Equal<typeof data, { readonly workspace: string }>>();
+      holds<Equal<typeof data, WorkspaceInput>>();
       return `${data.workspace}:${context.slug}`;
     });
   // The chain validates, so the caller owes it its input.
@@ -228,11 +294,21 @@ describe("what crosses the wire", () => {
   test("a result it cannot carry is a type error where the handler is written", () => {
     // What `.handler(fn)` holds `fn` to, beside its parameter type.
     type Accepted<Result> = ResultCheck<FreshServerFn<"POST">, Result>;
-    const formats = () => ({ format: () => "1.00" });
-    const keyed = () => ({ key: Symbol("salama") });
-    const priced = async () => ({ total: new Money(100) });
-    const linked = () => [new URL("https://example.com")];
-    const patterned = () => new Map([["pattern", /salama/]]);
+    function formats() {
+      return { format: () => "1.00" };
+    }
+    function keyed() {
+      return { key: Symbol("salama") };
+    }
+    async function priced() {
+      return { total: new Money(100) };
+    }
+    function linked() {
+      return [new URL("https://example.com")];
+    }
+    function patterned() {
+      return new Map([["pattern", /salama/]]);
+    }
     async function* yieldsFunctions() {
       yield () => 1;
     }
@@ -245,34 +321,33 @@ describe("what crosses the wire", () => {
     holds<Refused<typeof linked, Accepted<ReturnType<typeof linked>>>>();
     holds<Refused<typeof patterned, Accepted<ReturnType<typeof patterned>>>>();
     holds<Refused<typeof yieldsFunctions, Accepted<ReturnType<typeof yieldsFunctions>>>>();
-    const fine = () => ({ at: new Date(0) });
+    function fine() {
+      return { at: new Date(0) };
+    }
     holds<Equal<Refused<typeof fine, Accepted<ReturnType<typeof fine>>>, false>>();
   });
 
   test("a component result crosses, as a frame", () => {
-    holds<Equal<ResultProblem<(props: { readonly title: string }) => unknown>, never>>();
-    holds<
-      Equal<
-        ResultProblem<{ render: (props: object) => unknown }>,
-        "the result.render is a function"
-      >
-    >();
+    holds<Equal<ResultProblem<(props: TitleProps) => unknown>, never>>();
+    holds<Equal<ResultProblem<Renderable>, "the result.render is a function">>();
   });
 
   test("the error says where the value is", () => {
-    holds<Equal<ResultProblem<{ a: { b: () => void } }>, "the result.a.b is a function">>();
-    holds<
-      Equal<ResultProblem<{ list: readonly symbol[] }>, "the result.list[number] is a symbol">
-    >();
-    holds<Equal<ResultProblem<{ link: URL }>, "the result.link is a URL">>();
-    holds<Equal<ResultProblem<{ fine: Date }>, never>>();
+    holds<Equal<ResultProblem<NestedCallback>, "the result.a.b is a function">>();
+    holds<Equal<ResultProblem<SymbolList>, "the result.list[number] is a symbol">>();
+    holds<Equal<ResultProblem<LinkResult>, "the result.link is a URL">>();
+    holds<Equal<ResultProblem<DatedResult>, never>>();
   });
 
   test("an input the codec cannot carry is a type error at the validator", () => {
     // What `.validator(fn)` holds `fn` to, beside its parameter type.
     type Accepted<Method extends "GET" | "POST", In> = InputCheck<FreshServerFn<Method>, In>;
-    const callback = (input: { readonly onDone: () => void }) => input;
-    const form = (input: FormData) => input;
+    function callback(input: DoneCallback) {
+      return input;
+    }
+    function form(input: FormData) {
+      return input;
+    }
     // A caller cannot send a function.
     holds<Refused<typeof callback, Accepted<"POST", Parameters<typeof callback>[0]>>>();
     // A form is a body, so a POST takes one and a GET does not.
@@ -282,23 +357,27 @@ describe("what crosses the wire", () => {
 
   test("`strict` turns the check off, for both sides or one", () => {
     createServerFn({ strict: false })
-      .validator((input: { readonly onDone: () => void }) => input)
+      .validator((input: DoneCallback) => input)
       .handler(() => ({ format: () => "1.00" }));
     createServerFn({ strict: { output: false } }).handler(() => new Money(100));
-    const callback = (input: { readonly onDone: () => void }) => input;
-    const formats = () => ({ format: () => "1.00" });
+    function callback(input: DoneCallback) {
+      return input;
+    }
+    function formats() {
+      return { format: () => "1.00" };
+    }
     // The input side is still checked when only the output is off.
     holds<
       Refused<
         typeof callback,
-        InputCheck<FreshServerFn<"POST", { output: false }>, Parameters<typeof callback>[0]>
+        InputCheck<FreshServerFn<"POST", OutputOff>, Parameters<typeof callback>[0]>
       >
     >();
     // And the output side when only the input is off.
     holds<
       Refused<
         typeof formats,
-        ResultCheck<FreshServerFn<"POST", { input: false }>, ReturnType<typeof formats>>
+        ResultCheck<FreshServerFn<"POST", InputOff>, ReturnType<typeof formats>>
       >
     >();
     createServerFn({ strict: { input: false } }).validator(callback);

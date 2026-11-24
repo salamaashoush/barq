@@ -30,12 +30,13 @@ const save = createServerFn({ method: "POST" }).handler(() => {
   return "saved";
 });
 
-const call = (id: string, headers: Record<string, string> = {}): Request =>
-  new Request(`${ORIGIN}${RPC_PREFIX}${encodeURIComponent(id)}${DATA_SUFFIX}`, {
+function call(id: string, headers: Record<string, string> = {}): Request {
+  return new Request(`${ORIGIN}${RPC_PREFIX}${encodeURIComponent(id)}${DATA_SUFFIX}`, {
     method: "POST",
     headers: { "sec-fetch-site": "same-origin", "content-type": "application/json", ...headers },
     body: JSON.stringify({ input: encodeWire(undefined) }),
   });
+}
 
 test("an id the deployment does not know is a labelled 404", async () => {
   const answer = (await handleServerFn(call("gone#save")))!;

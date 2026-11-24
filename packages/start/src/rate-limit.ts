@@ -23,7 +23,7 @@
  * the edge's problem and always was.
  */
 
-import { type ForwardedForTrust, assertForwardedForTrust, getRequestIP } from "./context.ts";
+import { type RequestIPOptions, assertForwardedForTrust, getRequestIP } from "./context.ts";
 import type { Middleware } from "./index.ts";
 
 /** One key's usage, as the store hands it back. */
@@ -48,6 +48,10 @@ export interface RateLimitStore {
   hit(key: string, windowMs: number): RateLimitCount | Promise<RateLimitCount>;
 }
 
+export interface RateLimitInfo extends RateLimitCount {
+  readonly limit: number;
+}
+
 export interface RateLimitOptions {
   /** How many requests a key may make per window. */
   readonly limit: number;
@@ -69,7 +73,12 @@ export interface RateLimitOptions {
    * What to answer when the limit is reached. A 429 with `Retry-After` by
    * default, which is what a well-behaved client backs off on.
    */
-  readonly onLimit?: (info: RateLimitCount & { readonly limit: number }) => Response;
+  readonly onLimit?: (info: RateLimitInfo) => Response;
+}
+
+interface RateWindow {
+  count: number;
+  resetAt: number;
 }
 
 /**
@@ -90,7 +99,7 @@ export interface RateLimitOptions {
  * what the last two such windows saw rather than everything since boot.
  */
 export function memoryStore(): RateLimitStore {
-  const windows = new Map<string, { count: number; resetAt: number }>();
+  const windows = new Map<string, RateWindow>();
   let longest = 0;
   let sweepAt = 0;
   return {
@@ -134,14 +143,14 @@ export function memoryStore(): RateLimitStore {
  * caller into one bucket — strict rather than exempt, because the alternative is
  * a bucket an attacker can opt into by arranging to have no address.
  */
-export function byIP(options: { readonly xForwardedFor?: ForwardedForTrust } = {}): () => string {
+export function byIP(options: RequestIPOptions = {}): () => string {
   // Here and not on the first request: `rateLimit` fails OPEN when its key
   // throws, so a bad hop count found per call would switch the limit off.
   assertForwardedForTrust(options.xForwardedFor);
   return () => getRequestIP(options) ?? "unknown";
 }
 
-function tooMany(info: RateLimitCount & { limit: number }): Response {
+function tooMany(info: RateLimitInfo): Response {
   const seconds = Math.max(1, Math.ceil((info.resetAt - Date.now()) / 1000));
   return new Response("too many requests", {
     status: 429,

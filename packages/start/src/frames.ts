@@ -28,15 +28,23 @@
 import type { Child, Incoming, JSXElement } from "@barqjs/core";
 import type { HeadTag } from "@barqjs/web";
 
+export type NoProps = {};
+
+export interface SlotKey {
+  readonly $key?: string | number;
+}
+
+export interface SlotCall extends SlotKey {
+  readonly children?: Child;
+}
+
 /**
  * A slot on a server component's props: a call the browser answers with its
  * own content. What the call is given crosses as data, and its `children` as a
  * region of server markup. `$key` names the occurrence, so its content follows
  * it across updates rather than its position.
  */
-export type Slot<P extends object = {}> = (
-  props: Incoming<P & { readonly $key?: string | number; readonly children?: Child }>,
-) => JSXElement;
+export type Slot<P extends object = NoProps> = (props: Incoming<P & SlotCall>) => JSXElement;
 
 /**
  * A slot the server component reads as data: called once per data context,
@@ -47,11 +55,9 @@ export type Slot<P extends object = {}> = (
  * server never has its values to compute with.
  */
 export type BindingSlot<
-  A extends object = {},
+  A extends object = NoProps,
   B extends object = Record<string, unknown>,
-> = keyof A extends never
-  ? (args?: { readonly $key?: string | number }) => Readonly<B>
-  : (args: A & { readonly $key?: string | number }) => Readonly<B>;
+> = keyof A extends never ? (args?: SlotKey) => Readonly<B> : (args: A & SlotKey) => Readonly<B>;
 
 /** The brand on a frame, on either side, carrying where it lives. */
 export const FRAME: unique symbol = Symbol.for("barq.frame") as never;
@@ -80,13 +86,17 @@ const MAKE = Symbol.for("barq.frames.make");
 
 type MakeFrame = (id: string, data: unknown, component: (props: never) => unknown) => unknown;
 
+interface FrameMakerHolder {
+  [MAKE]?: MakeFrame;
+}
+
 export function installFrames(make: MakeFrame): void {
-  (globalThis as { [MAKE]?: MakeFrame })[MAKE] = make;
+  (globalThis as FrameMakerHolder)[MAKE] = make;
 }
 
 /** The handler's result, a frame when it is a component and the server half is here. */
 export function asFrame(id: string, data: unknown, result: unknown): unknown {
-  const make = (globalThis as { [MAKE]?: MakeFrame })[MAKE];
+  const make = (globalThis as FrameMakerHolder)[MAKE];
   if (make === undefined || typeof result !== "function" || isFrame(result)) return result;
   return make(id, data, result as (props: never) => unknown);
 }

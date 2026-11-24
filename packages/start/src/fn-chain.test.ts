@@ -11,10 +11,16 @@ import { encodeWire } from "@barqjs/server/codec";
 import { clientRpc, createMiddleware, createServerFn, middlewareOf } from "./index.ts";
 import { unmountAll } from "./server.ts";
 
+interface SeenHeader {
+  header: string | null;
+}
+
 afterEach(unmountAll);
 
 type Equal<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
-const holds = <Check extends true>(proof?: Check): Check | undefined => proof;
+function holds<Check extends true>(proof?: Check): Check | undefined {
+  return proof;
+}
 
 test("listing a server function runs its middleware, typed, and not its handler", async () => {
   const ran: string[] = [];
@@ -42,11 +48,12 @@ test("listing a server function runs its middleware, typed, and not its handler"
 
 test("a second `.middleware` call adds to the chain, as TanStack's does", async () => {
   const order: string[] = [];
-  const step = (name: string) =>
-    createMiddleware().server(({ next }) => {
+  function step(name: string) {
+    return createMiddleware().server(({ next }) => {
       order.push(name);
       return next();
     });
+  }
   const first = step("first");
   const second = step("second");
   const fn = createServerFn()
@@ -65,7 +72,7 @@ test("in the browser, the listed function's client halves run around the call", 
     return next({ headers: { "x-trace": "salama" } });
   });
   const base = clientRpc<undefined, null, "GET">("calls.ts#base", [traced], { method: "GET" });
-  const seen: { header: string | null } = { header: null };
+  const seen: SeenHeader = { header: null };
   const send = (async (_url: string, init?: RequestInit) => {
     seen.header = new Headers(init?.headers).get("x-trace");
     return Response.json(encodeWire("ok"));

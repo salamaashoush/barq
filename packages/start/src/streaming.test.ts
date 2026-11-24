@@ -21,14 +21,16 @@ import { besides, printedBy } from "../../server/src/test-console.ts";
 
 const ORIGIN = "https://example.com";
 const realFetch = globalThis.fetch;
-const tick = (ms = 0) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+function tick(ms = 0) {
+  return new Promise<void>((resolve) => setTimeout(resolve, ms));
+}
 
 afterEach(() => {
   globalThis.fetch = realFetch;
   unmountAll();
 });
 
-const throughHandler = (seen?: Response[]): void => {
+function throughHandler(seen?: Response[]): void {
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const headers = new Headers(init?.headers);
     headers.set("origin", ORIGIN);
@@ -38,9 +40,11 @@ const throughHandler = (seen?: Response[]): void => {
     seen?.push(response);
     return response;
   }) as typeof fetch;
-};
+}
 
-const mounted = (id: string, fn: ServerFn<never, unknown>): void => mount(id, fn);
+function mounted(id: string, fn: ServerFn<never, unknown>): void {
+  return mount(id, fn);
+}
 
 interface Tick {
   readonly n: number;

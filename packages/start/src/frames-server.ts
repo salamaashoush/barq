@@ -44,16 +44,22 @@ import {
 /** A server component: what a frame-answering handler returns. */
 type ServerComponent = (props: Record<string, unknown>) => unknown;
 
+export interface FrameMarkupOptions {
+  readonly session?: symbol;
+}
+
+export interface ServerFrameRef extends FrameRef {
+  readonly args: unknown;
+  readonly component: ServerComponent;
+  readonly markup: (options: FrameMarkupOptions) => Promise<string>;
+  /** Called through `live`: the page keeps it current over a connection. */
+  live?: boolean;
+}
+
 /** What a server function returns in place of its handler's component. */
 export interface ServerFrame {
   (props: Record<string, unknown>): unknown;
-  readonly [FRAME]: FrameRef & {
-    readonly args: unknown;
-    readonly component: ServerComponent;
-    readonly markup: (options: { readonly session?: symbol }) => Promise<string>;
-    /** Called through `live`: the page keeps it current over a connection. */
-    live?: boolean;
-  };
+  readonly [FRAME]: ServerFrameRef;
 }
 
 /**
@@ -91,8 +97,9 @@ export function serverFrame(id: string, data: unknown, component: ServerComponen
     component,
     markup: (options) => renderMarkup(state, options),
   };
-  const render = (props: Record<string, unknown>): unknown =>
-    documentFrame(address, args, component, props, state.live === true);
+  function render(props: Record<string, unknown>): unknown {
+    return documentFrame(address, args, component, props, state.live === true);
+  }
   return Object.assign(render, { [FRAME]: state });
 }
 
@@ -371,16 +378,13 @@ export async function frameResponse(frame: ServerFrame): Promise<Response> {
  * call from another copy, whose renderer is not the one the component was
  * compiled against.
  */
-export function frameMarkup(
-  frame: ServerFrame,
-  options: { readonly session?: symbol } = {},
-): Promise<string> {
+export function frameMarkup(frame: ServerFrame, options: FrameMarkupOptions = {}): Promise<string> {
   return frame[FRAME].markup(options);
 }
 
 async function renderMarkup(
   frame: ServerFrame[typeof FRAME],
-  options: { readonly session?: symbol },
+  options: FrameMarkupOptions,
 ): Promise<string> {
   const { address, args, component } = frame;
   const slots = new Slots(null);
@@ -402,6 +406,11 @@ async function renderMarkup(
     head,
   };
   return frameOpen(address, payload) + rendered.html + FRAME_CLOSE;
+}
+
+interface UnverifiedFrame {
+  id?: unknown;
+  args?: unknown;
 }
 
 /** A frame the page says it has mounted, from the request's `x-barq-frames`. */
@@ -427,7 +436,7 @@ export function mountedFrames(header: string | null): MountedFrame[] {
   const out: MountedFrame[] = [];
   for (const entry of parsed.slice(0, FRAMES_BUDGET)) {
     if (typeof entry !== "object" || entry === null) continue;
-    const { id, args } = entry as { id?: unknown; args?: unknown };
+    const { id, args } = entry as UnverifiedFrame;
     if (typeof id === "string") out.push({ id, args });
   }
   return out;

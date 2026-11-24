@@ -19,6 +19,15 @@ import { type AnySerializationAdapter, registerSerializationAdapters } from "@ba
 
 import type { ChainContribution, Empty, Middleware } from "./middleware.ts";
 
+export interface ServerFnsOptions {
+  /**
+   * The `fetch` every call goes out through, in place of the global one. A
+   * client middleware's `next({ fetch })` and the call's own `fetch` win
+   * over it.
+   */
+  readonly fetch?: typeof fetch;
+}
+
 export interface StartOptions {
   /** Runs for every request the server answers: a page, a route handler, a server function. */
   readonly requestMiddleware?: readonly Middleware[];
@@ -37,14 +46,7 @@ export interface StartOptions {
    * `defaultSsr`, as TanStack's does.
    */
   readonly defaultSsr?: boolean | "data-only";
-  readonly serverFns?: {
-    /**
-     * The `fetch` every call goes out through, in place of the global one. A
-     * client middleware's `next({ fetch })` and the call's own `fetch` win
-     * over it.
-     */
-    readonly fetch?: typeof fetch;
-  };
+  readonly serverFns?: ServerFnsOptions;
 }
 
 export interface StartInstance<Options extends StartOptions = StartOptions> {
@@ -73,9 +75,12 @@ export interface Register {
   readonly [UNREGISTERED]?: never;
 }
 
-type RegisteredInstance = Register extends { readonly start: infer Instance }
-  ? Instance
-  : StartInstance;
+interface StartRegistration<Instance> {
+  readonly start: Instance;
+}
+
+type RegisteredInstance =
+  Register extends StartRegistration<infer Instance> ? Instance : StartInstance;
 
 /** What an instance's request middleware adds, for the whole request. */
 export type RequestContextOf<Instance> =
@@ -96,6 +101,10 @@ export type GlobalRequestContext = RequestContextOf<RegisteredInstance>;
 /** What every server function's `context` starts from. */
 export type GlobalFunctionContext = FunctionContextOf<RegisteredInstance>;
 
+interface InstanceSlot {
+  instance: StartInstance | null;
+}
+
 /**
  * One instance for the process, whichever copy of this module asks.
  *
@@ -107,7 +116,7 @@ export type GlobalFunctionContext = FunctionContextOf<RegisteredInstance>;
  */
 const REGISTERED = ((globalThis as Record<symbol, unknown>)[Symbol.for("barq.start.instance")] ??= {
   instance: null,
-}) as { instance: StartInstance | null };
+}) as InstanceSlot;
 
 const NONE: StartOptions = Object.freeze({});
 

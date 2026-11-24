@@ -111,6 +111,10 @@ const REPRESENTATION = new Set([
   "last-modified",
 ]);
 
+interface ParsedPath {
+  readonly pathname: string;
+}
+
 /**
  * Just enough of `URL` to find the path.
  *
@@ -120,7 +124,7 @@ const REPRESENTATION = new Set([
  * the miss path cheap, since the lookups either side of it are a `Set.has` and
  * a property read.
  */
-type PathOnly = new (url: string) => { readonly pathname: string };
+type PathOnly = new (url: string) => ParsedPath;
 
 /**
  * Serve `dist/client` for the paths the build says are there.
@@ -140,11 +144,11 @@ export function assetMiddleware(options: StaticOptions = {}): ServerMiddleware {
   // `loaded` is a PARAMETER rather than the captured `ready`, because a closure
   // variable cannot be narrowed across the two call sites and the alternative is
   // a non-null assertion on every line of the hot path.
-  const answer = (
+  function answer(
     loaded: Ready | null,
     request: ServerRequest,
     next: () => Response | Promise<Response>,
-  ): Response | Promise<Response> => {
+  ): Response | Promise<Response> {
     if (loaded === null) return next();
     // A file is a file to GET and HEAD alone. A prerendered path may also be a
     // route with a `POST` handler: the page is its GET, and every other method
@@ -172,7 +176,7 @@ export function assetMiddleware(options: StaticOptions = {}): ServerMiddleware {
     if (!loaded.files.has(pathname)) return next();
 
     return loaded.serveFile(pathname, request, next);
-  };
+  }
 
   return (request, next) => {
     if (ready !== undefined) return answer(ready, request, next);
@@ -252,13 +256,15 @@ async function load(options: StaticOptions): Promise<Ready | null> {
   const prefix = manifest.base ?? "";
 
   /** The page's bytes with nothing negotiated, for what `srvx/static` will not answer. */
-  const whole = async (page: PrerenderedAsset): Promise<Response> => {
+  async function whole(page: PrerenderedAsset): Promise<Response> {
     const body = await readFile(path.join(dir, page.file));
     const headers = new Headers(page.headers);
     if (!headers.has("content-type")) headers.set("content-type", "text/html; charset=utf-8");
     return new Response(body, { status: page.status, headers });
-  };
-  const declined = (): Response => new Response(null, { status: 404 });
+  }
+  function declined(): Response {
+    return new Response(null, { status: 404 });
+  }
 
   return {
     manifest,

@@ -12,11 +12,17 @@ import { decodeWire, encodeWire } from "@barqjs/server/codec";
 import { LIVE_SUFFIX, PAYLOAD_PARAM, RPC_CALLER, RPC_PREFIX, createServerFn } from "./index.ts";
 import { handleServerFn, mount, unmountAll } from "./server.ts";
 
+interface Quote {
+  symbol: string;
+}
+
 const ORIGIN = "https://example.com";
 
 afterEach(() => unmountAll());
 
-const tick = (ms = 0) => new Promise((done) => setTimeout(done, ms));
+function tick(ms = 0) {
+  return new Promise((done) => setTimeout(done, ms));
+}
 
 /** A connection to the live address, read event by event. */
 async function connect(id: string, input: unknown) {
@@ -66,27 +72,29 @@ async function connect(id: string, input: unknown) {
 /** A source the test moves by hand, counting how many times it was started and stopped. */
 function ticker() {
   const state = { started: 0, stopped: 0, push: (_value: number) => {} };
-  const source = (): AsyncIterable<number> => ({
-    [Symbol.asyncIterator]() {
-      state.started++;
-      const queue: number[] = [];
-      let wake: (() => void) | null = null;
-      state.push = (value) => {
-        queue.push(value);
-        wake?.();
-      };
-      return {
-        next: async () => {
-          while (queue.length === 0) await new Promise<void>((done) => (wake = done));
-          return { done: false, value: queue.shift()! };
-        },
-        return: async () => {
-          state.stopped++;
-          return { done: true, value: undefined };
-        },
-      };
-    },
-  });
+  function source(): AsyncIterable<number> {
+    return {
+      [Symbol.asyncIterator]() {
+        state.started++;
+        const queue: number[] = [];
+        let wake: (() => void) | null = null;
+        state.push = (value) => {
+          queue.push(value);
+          wake?.();
+        };
+        return {
+          next: async () => {
+            while (queue.length === 0) await new Promise<void>((done) => (wake = done));
+            return { done: false, value: queue.shift()! };
+          },
+          return: async () => {
+            state.stopped++;
+            return { done: true, value: undefined };
+          },
+        };
+      },
+    };
+  }
   return { state, source };
 }
 
@@ -94,7 +102,7 @@ test("callers with the same arguments share one source, and each passes the gate
   const { state, source } = ticker();
   let gated = 0;
   const quotes = createServerFn({ method: "GET", broadcast: true })
-    .validator((input: { symbol: string }) => input)
+    .validator((input: Quote) => input)
     .handler(() => {
       gated++;
       return source();
@@ -122,7 +130,7 @@ test("callers with the same arguments share one source, and each passes the gate
 test("other arguments are another source, and the last connection to go stops it", async () => {
   const sources = new Map<string, ReturnType<typeof ticker>>();
   const quotes = createServerFn({ method: "GET", broadcast: true })
-    .validator((input: { symbol: string }) => input)
+    .validator((input: Quote) => input)
     .handler(({ data }) => {
       const made = sources.get(data.symbol) ?? ticker();
       sources.set(data.symbol, made);

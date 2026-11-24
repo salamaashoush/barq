@@ -17,13 +17,14 @@ afterEach(unmountAll);
 
 const ORIGIN = "https://example.com";
 
-const call = (id: string, signal: AbortSignal): Request =>
-  new Request(`${ORIGIN}${RPC_PREFIX}${encodeURIComponent(id)}${DATA_SUFFIX}`, {
+function call(id: string, signal: AbortSignal): Request {
+  return new Request(`${ORIGIN}${RPC_PREFIX}${encodeURIComponent(id)}${DATA_SUFFIX}`, {
     method: "POST",
     headers: { "content-type": "application/json", origin: ORIGIN },
     body: JSON.stringify({ input: encodeWire(undefined) }),
     signal,
   });
+}
 
 test("a request that is aborted aborts the handler's signal", async () => {
   let seen: AbortSignal | undefined;

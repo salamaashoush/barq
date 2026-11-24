@@ -384,34 +384,36 @@ export async function useSession<T extends SessionData = SessionData>(
   // ONE WRITE AT A TIME. A write reads the record, seals across an `await` and
   // then stores what it sealed, so two that overlapped would both start from the
   // same record and the later cookie would drop the earlier change.
-  const write = (change: (current: Sealed) => Promise<Sealed>): Promise<SessionManager<T>> => {
+  function write(change: (current: Sealed) => Promise<Sealed>): Promise<SessionManager<T>> {
     const written = session.writing.then(async () => {
       session.current = await change(session.current);
       return manage();
     });
     session.writing = written.catch(() => undefined);
     return written;
-  };
+  }
 
-  const manage = (): SessionManager<T> => ({
-    id: session.current.id,
-    createdAt: session.current.createdAt,
-    data: session.current.data as Partial<T>,
-    update: (patch) =>
-      write(async (current) => {
-        const next = typeof patch === "function" ? patch(current.data as Partial<T>) : patch;
-        const merged: Sealed = { ...current, data: { ...current.data, ...next } };
-        replaceCookie(name, await sealSession(config, merged), cookieOptions(config));
-        return merged;
-      }),
-    clear: () =>
-      write(async () => {
-        // EXPIRED, not re-sealed empty: an empty session cookie is still a cookie
-        // the browser sends, and the user asked for it to be gone.
-        replaceCookie(name, "", { ...cookieOptions(config), maxAge: 0, expires: new Date(0) });
-        return { id: crypto.randomUUID(), createdAt: Date.now(), data: {} };
-      }),
-  });
+  function manage(): SessionManager<T> {
+    return {
+      id: session.current.id,
+      createdAt: session.current.createdAt,
+      data: session.current.data as Partial<T>,
+      update: (patch) =>
+        write(async (current) => {
+          const next = typeof patch === "function" ? patch(current.data as Partial<T>) : patch;
+          const merged: Sealed = { ...current, data: { ...current.data, ...next } };
+          replaceCookie(name, await sealSession(config, merged), cookieOptions(config));
+          return merged;
+        }),
+      clear: () =>
+        write(async () => {
+          // EXPIRED, not re-sealed empty: an empty session cookie is still a cookie
+          // the browser sends, and the user asked for it to be gone.
+          replaceCookie(name, "", { ...cookieOptions(config), maxAge: 0, expires: new Date(0) });
+          return { id: crypto.randomUUID(), createdAt: Date.now(), data: {} };
+        }),
+    };
+  }
 
   return manage();
 }

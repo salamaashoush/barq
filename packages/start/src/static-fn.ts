@@ -38,13 +38,17 @@ export interface StaticAnswer {
  */
 export type StaticWriter = (key: string, identity: string, answer: string) => Promise<void>;
 
+interface WriterSlot {
+  writer: StaticWriter | null;
+}
+
 /**
  * One writer per process, whichever copy of this module asks: the prerenderer
  * imports the server bundle, which carries a copy of its own, and installs the
  * writer from outside it.
  */
 const SHARED = ((globalThis as Record<symbol, unknown>)[Symbol.for("barq.start.static-writer")] ??=
-  { writer: null }) as { writer: StaticWriter | null };
+  { writer: null }) as WriterSlot;
 
 /** Install the prerenderer's writer, or remove it with `null`. Not for application use. */
 export function installStaticWriter(writer: StaticWriter | null): void {
@@ -138,6 +142,8 @@ async function readStatic(id: string, input: unknown): Promise<unknown> {
   return decodeWire<StaticAnswer>(await response.json()).result;
 }
 
+type NonNullish = {};
+
 /**
  * Make a server function static: answered at prerender time, read from a file
  * afterwards.
@@ -151,7 +157,7 @@ async function readStatic(id: string, input: unknown): Promise<unknown> {
  * `sendContext` is not, and a `Response` or a stream is never written.
  */
 export const staticFunctionMiddleware: BuiltMiddleware<
-  WithServer<WithClient<FreshMiddleware, Promise<{} | null>>, Promise<unknown>>
+  WithServer<WithClient<FreshMiddleware, Promise<NonNullish | null>>, Promise<unknown>>
 > = /* @__PURE__ */ createMiddleware({ type: "function" })
   .client(async ({ next, data, serverFnMeta }) => {
     if (serverFnMeta === undefined || serverFnMeta.id === "" || data instanceof FormData) {

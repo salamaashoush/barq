@@ -20,6 +20,20 @@ import {
 import { withRequest } from "./context.ts";
 import { handleServerFn, mount, unmountAll } from "./server.ts";
 
+interface GreetInput {
+  readonly name: string;
+}
+
+interface Greeting {
+  greeting: string;
+  at: Date;
+}
+
+interface Recorded {
+  sent: Request[];
+  fetch: typeof fetch;
+}
+
 const ORIGIN = "https://example.com";
 const realFetch = globalThis.fetch;
 
@@ -29,7 +43,7 @@ afterEach(() => {
 });
 
 const greet = createServerFn({ method: "GET" })
-  .validator((input: { readonly name: string }) => input)
+  .validator((input: GreetInput) => input)
   .handler(({ data }) => {
     setResponseHeader("cache-control", "private, max-age=60");
     return { greeting: `hello ${data.name}`, at: new Date(0) };
@@ -38,16 +52,17 @@ const greet = createServerFn({ method: "GET" })
 const save = createServerFn({ method: "POST" }).handler(() => "saved");
 
 /** A GET the way the stub sends it, with whatever headers the test adds. */
-const get = (id: string, input: unknown, headers: Record<string, string> = {}): Request =>
-  new Request(
+function get(id: string, input: unknown, headers: Record<string, string> = {}): Request {
+  return new Request(
     `${ORIGIN}${RPC_PREFIX}${id}${DATA_SUFFIX}?${PAYLOAD_PARAM}=${encodeURIComponent(
       JSON.stringify({ input: encodeWire(input) }),
     )}`,
     { headers: { "sec-fetch-site": "same-origin", [RPC_CALLER]: "1", ...headers } },
   );
+}
 
 /** A fetch answered by the real request handler, recording what it was sent. */
-const throughHandler = (): { sent: Request[]; fetch: typeof fetch } => {
+function throughHandler(): Recorded {
   const sent: Request[] = [];
   const answer = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const headers = new Headers(init?.headers);
@@ -57,7 +72,7 @@ const throughHandler = (): { sent: Request[]; fetch: typeof fetch } => {
     return (await handleServerFn(request)) ?? new Response("not found", { status: 404 });
   }) as typeof fetch;
   return { sent, fetch: answer };
-};
+}
 
 describe("a GET server function", () => {
   test("is called from the browser with a GET, its payload in the query", async () => {
@@ -65,11 +80,7 @@ describe("a GET server function", () => {
     const wire = throughHandler();
     globalThis.fetch = wire.fetch;
 
-    const call = clientRpc<{ readonly name: string }, { greeting: string; at: Date }, "GET">(
-      "greet",
-      [],
-      { method: "GET" },
-    );
+    const call = clientRpc<GreetInput, Greeting, "GET">("greet", [], { method: "GET" });
     const answer = await call({ data: { name: "salama" } });
 
     expect(answer.greeting).toBe("hello salama");
@@ -87,7 +98,9 @@ describe("a GET server function", () => {
     const response = await handleServerFn(get("greet", { name: "salama" }));
     expect(response?.status).toBe(200);
     expect(response?.headers.get("cache-control")).toBe("private, max-age=60");
-    expect(decodeWire<{ greeting: string }>(await response?.json()).greeting).toBe("hello salama");
+    expect(decodeWire<Pick<Greeting, "greeting">>(await response?.json()).greeting).toBe(
+      "hello salama",
+    );
   });
 
   test("is cached only when the handler says so, as TanStack's are", async () => {
@@ -105,7 +118,7 @@ describe("a GET server function", () => {
     mount("greet", greet);
     const wire = throughHandler();
     globalThis.fetch = wire.fetch;
-    const call = clientRpc<{ readonly name: string }, unknown, "GET">("greet", [], {
+    const call = clientRpc<GreetInput, unknown, "GET">("greet", [], {
       method: "GET",
     });
     await call({ data: { name: "salama" } });

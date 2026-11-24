@@ -22,6 +22,10 @@ import { FRAME } from "./frames.ts";
 
 export type { LiveIterable, LiveStatus } from "./frames-client.ts";
 
+interface LiveFlag {
+  live?: boolean;
+}
+
 /** Whether a server function is the server half, which runs in this process. */
 function inProcess(fn: unknown): boolean {
   return typeof fn === "function" && "built" in fn;
@@ -40,7 +44,7 @@ export function live<In, Out>(
       (fn as unknown as (...given: unknown[]) => Promise<unknown>)(...args).then((answer) => {
         const frame =
           typeof answer === "function"
-            ? (answer as unknown as Record<symbol, { live?: boolean }>)[FRAME]
+            ? (answer as unknown as Record<symbol, LiveFlag>)[FRAME]
             : undefined;
         if (frame !== undefined) frame.live = true;
         return answer;

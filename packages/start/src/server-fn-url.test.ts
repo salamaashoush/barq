@@ -22,7 +22,7 @@ test("an id that is not valid percent-encoding is refused, not thrown", async ()
   expect(outcome).toBeOneOf([400, 404]);
 });
 
-const submitFrom = (referer: string): Promise<Response | null> => {
+function submitFrom(referer: string): Promise<Response | null> {
   mount(
     "save",
     serverRpc<FormData, null>(
@@ -41,7 +41,7 @@ const submitFrom = (referer: string): Promise<Response | null> => {
       body: "a=1",
     }),
   );
-};
+}
 
 // Same origin as far as `new URL(referer).origin` can tell, and a path a
 // browser reads as another host once it is written into `Location` alone.

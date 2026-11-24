@@ -3,8 +3,9 @@ import type { Server } from "srvx";
 import { serveBarq } from "./serve.ts";
 import { resolveWebSocket, upgradeWebSocket } from "./websocket.ts";
 
-const upgrade = (url: string): Request =>
-  new Request(url, { headers: { upgrade: "websocket", connection: "Upgrade" } });
+function upgrade(url: string): Request {
+  return new Request(url, { headers: { upgrade: "websocket", connection: "Upgrade" } });
+}
 
 describe("upgradeWebSocket", () => {
   test("answers a request that is not an upgrade with 426", () => {
@@ -14,7 +15,9 @@ describe("upgradeWebSocket", () => {
   });
 
   test("hands its hooks to the resolver once, through a response the app may rebuild", async () => {
-    const open = (): void => undefined;
+    function open(): void {
+      return undefined;
+    }
     const resolve = resolveWebSocket((request) => {
       const answered = upgradeWebSocket(request, { open });
       return new Response(answered.body, answered);

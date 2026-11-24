@@ -8,31 +8,52 @@ import { afterEach, expect, test } from "bun:test";
 import { decodeWire, encodeWire } from "@barqjs/server/codec";
 
 import { RPC_PREFIX, type ServerFn, createMiddleware, createServerFn } from "./index.ts";
+import type { StandardResult } from "./middleware.ts";
 import { handleServerFn, mount, unmountAll } from "./server.ts";
+
+interface IssuesBody {
+  issues: unknown;
+}
+
+interface NamedInput {
+  name: string;
+}
+
+interface MaybeNamed {
+  name?: unknown;
+}
+
+interface TitledForm {
+  title: string;
+}
 
 const ORIGIN = "https://example.com";
 
 afterEach(unmountAll);
 
-const send = (id: string, input: unknown): Promise<Response | null> =>
-  handleServerFn(
+function send(id: string, input: unknown): Promise<Response | null> {
+  return handleServerFn(
     new Request(`${ORIGIN}${RPC_PREFIX}${id}.data`, {
       method: "POST",
       headers: { "content-type": "application/json", origin: ORIGIN },
       body: JSON.stringify({ input: encodeWire(input) }),
     }),
   );
+}
 
-const mounted = (id: string, fn: ServerFn<never, unknown>): void => mount(id, fn);
+function mounted(id: string, fn: ServerFn<never, unknown>): void {
+  return mount(id, fn);
+}
 
 /** What a call answered with, off the wire. */
-const answerOf = async (response: Response | null): Promise<unknown> =>
-  decodeWire(await response?.json());
+async function answerOf(response: Response | null): Promise<unknown> {
+  return decodeWire(await response?.json());
+}
 
-const positive = (input: unknown): number => {
+function positive(input: unknown): number {
   if (typeof input !== "number" || input <= 0) throw new Error("must be a positive number");
   return input;
-};
+}
 
 test("a function validator's return is the handler's data, and its throw is a 400", async () => {
   const double = createServerFn({ method: "POST" })
@@ -47,14 +68,14 @@ test("a function validator's return is the handler's data, and its throw is a 40
   const refused = await send("double", -1);
   expect(refused?.status).toBe(400);
   // The validator's message is about the caller's own input, so it is the issue.
-  const body = (await refused?.json()) as { issues: unknown } | undefined;
+  const body = (await refused?.json()) as IssuesBody | undefined;
   expect(body?.issues).toEqual([{ message: "must be a positive number" }]);
 });
 
 test("an object with parse is accepted, synchronous or not", async () => {
   const schema = {
-    parse: async (input: unknown): Promise<{ name: string }> => {
-      const name = (input as { name?: unknown } | null)?.name;
+    parse: async (input: unknown): Promise<NamedInput> => {
+      const name = (input as MaybeNamed | null)?.name;
       if (typeof name !== "string") throw new TypeError("name is required");
       return { name: name.trim() };
     },
@@ -73,7 +94,7 @@ test("a Standard Schema is used as it stands", async () => {
     "~standard": {
       version: 1 as const,
       vendor: "test",
-      validate: (value: unknown): { value: number } | { issues: readonly unknown[] } =>
+      validate: (value: unknown): StandardResult<number> =>
         typeof value === "string" ? { value: value.length } : { issues: [{ message: "no" }] },
     },
   };
@@ -108,10 +129,10 @@ test("a middleware's inputValidator takes the same three forms", async () => {
 });
 
 test("FormData reaches a validated function as FormData", async () => {
-  const fromForm = (input: unknown): { title: string } => {
+  function fromForm(input: unknown): TitledForm {
     if (!(input instanceof FormData)) throw new TypeError("a form is required");
     return { title: String(input.get("title")) };
-  };
+  }
   const save = createServerFn({ method: "POST" })
     .inputValidator(fromForm)
     .handler(({ data }) => data.title);
@@ -146,7 +167,7 @@ test("a schema that is also callable is read as a schema", async () => {
     "~standard": {
       version: 1 as const,
       vendor: "callable",
-      validate: (value: unknown): { value: number } | { issues: readonly unknown[] } =>
+      validate: (value: unknown): StandardResult<number> =>
         typeof value === "number" ? { value } : { issues: [{ message: "not a number" }] },
     },
   });

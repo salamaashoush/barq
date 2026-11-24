@@ -70,8 +70,9 @@ describe("the per-request CSS bucket", () => {
   installCssSink((fn) => {
     sink.fn = fn;
   });
-  const register = (key: string, rules: string): boolean =>
-    sink.fn === null ? false : sink.fn(key, rules);
+  function register(key: string, rules: string): boolean {
+    return sink.fn === null ? false : sink.fn(key, rules);
+  }
 
   test("a rule registered outside a request is refused, so it lands in the shared sheet", () => {
     expect(register("module-scope", ".a{color:red}")).toBe(false);
@@ -98,12 +99,13 @@ describe("the per-request CSS bucket", () => {
   });
 
   test("two requests in flight at once do not take each other's rules", async () => {
-    const render = (name: string, delay: number): Promise<string> =>
-      withRequest(new Request(`https://example.com/${name}`), async () => {
+    function render(name: string, delay: number): Promise<string> {
+      return withRequest(new Request(`https://example.com/${name}`), async () => {
         register(name, `.${name}{color:red}`);
         await new Promise((resolve) => setTimeout(resolve, delay));
         return collectRequestCss();
       });
+    }
     const [a, b] = await Promise.all([render("first", 20), render("second", 5)]);
     expect(a).toBe(".first{color:red}");
     expect(b).toBe(".second{color:red}");

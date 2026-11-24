@@ -7,24 +7,39 @@ interface CssSink {
   head?(late: () => string): void;
 }
 
+interface CssModule {
+  atoms(...styles: object[]): string;
+  collectCss(): string;
+  setCssSink(sink: CssSink | null): void;
+}
+
+interface CssInternals {
+  resetCss(): void;
+}
+
+interface Gate {
+  opened: Promise<void>;
+  open(): void;
+}
+
 /**
  * `@barqjs/css` itself, which this package deliberately does not depend on.
  *
  * Loaded by a computed path so the declaration build, which follows every
  * static import under `src`, does not follow this one into another package.
  */
-const source = (file: string): string => new URL(`../../css/src/${file}`, import.meta.url).href;
-const { atoms, collectCss, setCssSink } = (await import(source("index.ts"))) as {
-  atoms(...styles: object[]): string;
-  collectCss(): string;
-  setCssSink(sink: CssSink | null): void;
-};
-const { resetCss } = (await import(source("internal.ts"))) as { resetCss(): void };
+function source(file: string): string {
+  return new URL(`../../css/src/${file}`, import.meta.url).href;
+}
+const { atoms, collectCss, setCssSink } = (await import(source("index.ts"))) as CssModule;
+const { resetCss } = (await import(source("internal.ts"))) as CssInternals;
 
-const count = (text: string, needle: string): number => text.split(needle).length - 1;
+function count(text: string, needle: string): number {
+  return text.split(needle).length - 1;
+}
 
-function gate(): { opened: Promise<void>; open(): void } {
-  let open = (): void => {};
+function gate(): Gate {
+  let open: () => void = () => {};
   const opened = new Promise<void>((resolve) => {
     open = resolve;
   });

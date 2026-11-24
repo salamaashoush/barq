@@ -12,51 +12,80 @@
  * Nothing here imports anything of barq's, for that reason.
  */
 
+export interface StandardSuccess<Out> {
+  value: Out;
+}
+
+export interface StandardFailure {
+  issues: ReadonlyArray<unknown>;
+}
+
+export type StandardResult<Out> = StandardSuccess<Out> | StandardFailure;
+
+export interface StandardTypes<In, Out> {
+  readonly input: In;
+  readonly output: Out;
+}
+
+export interface StandardProps<In, Out> {
+  version: 1;
+  vendor: string;
+  validate: (value: unknown) => StandardResult<Out> | Promise<StandardResult<Out>>;
+  /** The spec's type carrier: what the schema takes and what it produces. */
+  readonly types?: StandardTypes<In, Out>;
+}
+
 /**
  * A validator in the Standard Schema shape, which zod, valibot and arktype all
  * implement. Taking the interface rather than a library keeps the dependency
  * out and lets an application bring its own.
  */
 export interface StandardSchema<In = unknown, Out = In> {
-  "~standard": {
-    version: 1;
-    vendor: string;
-    validate: (
-      value: unknown,
-    ) =>
-      | { value: Out }
-      | { issues: ReadonlyArray<unknown> }
-      | Promise<{ value: Out } | { issues: ReadonlyArray<unknown> }>;
-    /** The spec's type carrier: what the schema takes and what it produces. */
-    readonly types?: { readonly input: In; readonly output: Out };
-  };
+  "~standard": StandardProps<In, Out>;
+}
+
+export interface StandardValidate<Result = unknown> {
+  readonly validate: (value: unknown) => Result;
 }
 
 /** Anything with a Standard Schema validator on it, which is all a schema is read for. */
 export interface StandardSchemaLike {
-  readonly "~standard": { readonly validate: (value: unknown) => unknown };
+  readonly "~standard": StandardValidate;
+}
+
+interface StandardCarrier<Spec> {
+  readonly "~standard": Spec;
+}
+
+interface DeclaredInput<In> {
+  readonly input: In;
+}
+
+interface DeclaredOutput<Out> {
+  readonly output: Out;
 }
 
 /** What a caller hands a schema: its declared input, or anything when it declares none. */
-export type StandardInput<Schema> = [SchemaTypes<Schema>] extends [{ readonly input: infer In }]
+export type StandardInput<Schema> = [SchemaTypes<Schema>] extends [DeclaredInput<infer In>]
   ? In
   : unknown;
 
 /** What a schema produces: its declared output, or what its `validate` succeeds with. */
-export type StandardOutput<Schema> = [SchemaTypes<Schema>] extends [{ readonly output: infer Out }]
+export type StandardOutput<Schema> = [SchemaTypes<Schema>] extends [DeclaredOutput<infer Out>]
   ? Out
-  : Schema extends { readonly "~standard": { readonly validate: (value: unknown) => infer Result } }
+  : Schema extends StandardCarrier<StandardValidate<infer Result>>
     ? Succeeded<Awaited<Result>>
     : unknown;
 
 /** The spec's optional `types`, read by key: a schema without it shares no member to match on. */
-type SchemaTypes<Schema> = Schema extends { readonly "~standard": infer Spec }
-  ? "types" extends keyof Spec
-    ? NonNullable<Spec["types" & keyof Spec]>
-    : undefined
-  : undefined;
+type SchemaTypes<Schema> =
+  Schema extends StandardCarrier<infer Spec>
+    ? "types" extends keyof Spec
+      ? NonNullable<Spec["types" & keyof Spec]>
+      : undefined
+    : undefined;
 
-type Succeeded<Result> = Result extends { readonly value: infer Out } ? Out : never;
+type Succeeded<Result> = Result extends StandardSuccess<infer Out> ? Out : never;
 
 /**
  * `'unchecked'` is the only way to open the input channel without a schema, and
@@ -160,6 +189,18 @@ export class UncheckedInputError extends InputError {
 /** The empty contribution: what a step that adds nothing adds. */
 export type Empty = object;
 
+export interface ServerFnId {
+  readonly id: string;
+}
+
+export interface ParseSchema<In, Out> {
+  readonly parse: (input: In) => Out;
+}
+
+export interface FetchSlot {
+  current: typeof fetch | undefined;
+}
+
 /**
  * A context the types know some of. A key no typed step declared still reads,
  * as `unknown`: an untyped closure may have put it there.
@@ -175,8 +216,13 @@ declare const NEXT: unique symbol;
  * what this call contributed, so a middleware's context is read off the
  * `return next({ context })` it ends with rather than declared a second time.
  */
+export interface NextPayload<Context, Sent> {
+  readonly context: Context;
+  readonly sent: Sent;
+}
+
 export interface NextResult<Context extends object = Empty, Sent extends object = Empty> {
-  readonly [NEXT]: { readonly context: Context; readonly sent: Sent };
+  readonly [NEXT]: NextPayload<Context, Sent>;
 }
 
 /** What a middleware may hand `next`. */
@@ -290,7 +336,7 @@ export interface Merged<
 /** What one `next(...)` call contributed, from the result it resolved to. */
 export type FromNext<Result> =
   Result extends NextResult<infer Context, infer Sent>
-    ? { readonly context: Plain<Context>; readonly sent: Plain<Sent> }
+    ? NextPayload<Plain<Context>, Plain<Sent>>
     : never;
 
 /** The same keys as one object, so a hover shows the context rather than how it was built. */
@@ -302,7 +348,7 @@ export type Plain<Value> = { [Key in keyof Value]: Value[Key] };
  * runs on it, so it is left out rather than widening the rest to nothing.
  */
 export type ContributedBy<Result> = [FromNext<Result>] extends [never]
-  ? { readonly context: Empty; readonly sent: Empty }
+  ? NextPayload<Empty, Empty>
   : FromNext<Result>;
 
 declare const CONTRIBUTES: unique symbol;
@@ -474,7 +520,7 @@ export interface MiddlewareContext<Data = unknown, Context extends object = Empt
    * The server function this chain is running around, by its id. Absent for a
    * request middleware, and the id is empty for a function that is not mounted.
    */
-  readonly serverFnMeta?: { readonly id: string };
+  readonly serverFnMeta?: ServerFnId;
   /** The method the server function answers. Absent for a request middleware. */
   readonly method?: "GET" | "POST";
 }
@@ -493,9 +539,13 @@ export interface ClientMiddlewareContext<
 export type MiddlewareFn = (context: MiddlewareContext) => unknown;
 
 /** What a request middleware calls to run the rest of the request. */
-export type RequestMiddlewareNext = <Context extends object = Empty>(options?: {
+export interface RequestNextOptions<Context> {
   readonly context?: Context;
-}) => Promise<(Response & NextResult<NoInfer<Context>>) | undefined>;
+}
+
+export type RequestMiddlewareNext = <Context extends object = Empty>(
+  options?: RequestNextOptions<Context>,
+) => Promise<(Response & NextResult<NoInfer<Context>>) | undefined>;
 
 /**
  * What a request middleware is handed: the request is always there.
@@ -565,9 +615,9 @@ export type BuiltMiddleware<State extends MiddlewareState = MiddlewareState> = M
     validator<In, Out>(
       validate: (input: In) => Out,
     ): BuiltMiddleware<WithValidator<State, In, Awaited<Out>>>;
-    validator<In, Out>(schema: {
-      readonly parse: (input: In) => Out;
-    }): BuiltMiddleware<WithValidator<State, In, Awaited<Out>>>;
+    validator<In, Out>(
+      schema: ParseSchema<In, Out>,
+    ): BuiltMiddleware<WithValidator<State, In, Awaited<Out>>>;
     validator(unchecked: "unchecked"): BuiltMiddleware<WithValidator<State, unknown, unknown>>;
     /** `validator` under the name TanStack's release candidates used. */
     inputValidator<Schema extends StandardSchemaLike>(
@@ -576,9 +626,9 @@ export type BuiltMiddleware<State extends MiddlewareState = MiddlewareState> = M
     inputValidator<In, Out>(
       validate: (input: In) => Out,
     ): BuiltMiddleware<WithValidator<State, In, Awaited<Out>>>;
-    inputValidator<In, Out>(schema: {
-      readonly parse: (input: In) => Out;
-    }): BuiltMiddleware<WithValidator<State, In, Awaited<Out>>>;
+    inputValidator<In, Out>(
+      schema: ParseSchema<In, Out>,
+    ): BuiltMiddleware<WithValidator<State, In, Awaited<Out>>>;
     inputValidator(unchecked: "unchecked"): BuiltMiddleware<WithValidator<State, unknown, unknown>>;
     /** The half that runs on the server, where the handler is. */
     server<Result>(
@@ -672,6 +722,8 @@ export function isBuiltMiddleware(value: Middleware): value is BuiltMiddleware {
   return (value as Partial<BuiltMiddleware>).options !== undefined;
 }
 
+export type RequestMiddlewareOptions = MiddlewareOptions & { readonly type: "request" };
+
 /**
  * Author a middleware that is more than one closure.
  *
@@ -688,7 +740,7 @@ export function isBuiltMiddleware(value: Middleware): value is BuiltMiddleware {
  * base overwrite each other. Neither is a risk worth carrying for an allocation.
  */
 export function createMiddleware(
-  options: MiddlewareOptions & { readonly type: "request" },
+  options: RequestMiddlewareOptions,
 ): RequestMiddleware<FreshMiddleware>;
 export function createMiddleware(options?: MiddlewareOptions): BuiltMiddleware<FreshMiddleware>;
 export function createMiddleware(
@@ -744,9 +796,9 @@ function built<State extends MiddlewareState>(options: MiddlewareOptions): Built
   function validated<In, Out>(
     validate: (input: In) => Out,
   ): BuiltMiddleware<WithValidator<State, In, Awaited<Out>>>;
-  function validated<In, Out>(schema: {
-    readonly parse: (input: In) => Out;
-  }): BuiltMiddleware<WithValidator<State, In, Awaited<Out>>>;
+  function validated<In, Out>(
+    schema: ParseSchema<In, Out>,
+  ): BuiltMiddleware<WithValidator<State, In, Awaited<Out>>>;
   function validated(
     unchecked: "unchecked",
   ): BuiltMiddleware<WithValidator<State, unknown, unknown>>;
@@ -814,7 +866,7 @@ export async function runRequestMiddleware<T>(
   const flattened = flattenMiddleware(chain);
   // By position, for the reason `runMiddleware` gives: a second `next()`
   // re-enters the steps below it instead of skipping them.
-  const dispatch = async (position: number): Promise<unknown> => {
+  async function dispatch(position: number): Promise<unknown> {
     const middleware = flattened[position];
     if (middleware === undefined) return run();
     const answers: unknown[] = [];
@@ -847,7 +899,7 @@ export async function runRequestMiddleware<T>(
         `on ${start.request.method} ${start.pathname}`,
       ),
     );
-  };
+  }
   return (await dispatch(0)) as T;
 }
 
@@ -874,9 +926,9 @@ export function flattenMiddleware(chain: readonly Middleware[], depth = 0): read
     );
   }
   const out: Middleware[] = [];
-  const push = (step: Middleware): void => {
+  function push(step: Middleware): void {
     if (!out.includes(step)) out.push(step);
-  };
+  }
   for (const step of chain) {
     if (isBuiltMiddleware(step) && step.options.middleware !== undefined) {
       for (const nested of flattenMiddleware(step.options.middleware, depth + 1)) push(nested);
@@ -897,6 +949,27 @@ export async function applyValidator(
   return result.value;
 }
 
+export interface ChainStart {
+  readonly data: unknown;
+  readonly signal: AbortSignal;
+  /** What the chain has produced so far; mutated as the chain unwinds inward. */
+  readonly context: Record<string, unknown>;
+  /** What the client halves sent, on the server. Never merged into `context`. */
+  readonly clientContext?: Record<string, unknown>;
+  /** What travels back to the caller. */
+  readonly sendContext: Record<string, unknown>;
+  /** Where a client half's `next({ headers })` collects. Absent on the server. */
+  readonly headers?: Headers;
+  /** Where a client half's `next({ fetch })` lands. Absent on the server. */
+  readonly fetch?: FetchSlot;
+  /** The function the chain is running around. */
+  readonly meta?: ServerFnId;
+  /** The method that function answers. */
+  readonly method?: "GET" | "POST";
+  /** The innermost work: the handler on the server, the fetch on the client. */
+  readonly run: (data: unknown) => Promise<unknown>;
+}
+
 /**
  * Run a flattened chain, then the innermost work.
  *
@@ -913,56 +986,39 @@ export async function applyValidator(
 export async function runMiddleware(
   chain: readonly Middleware[],
   half: "server" | "client",
-  start: {
-    readonly data: unknown;
-    readonly signal: AbortSignal;
-    /** What the chain has produced so far; mutated as the chain unwinds inward. */
-    readonly context: Record<string, unknown>;
-    /** What the client halves sent, on the server. Never merged into `context`. */
-    readonly clientContext?: Record<string, unknown>;
-    /** What travels back to the caller. */
-    readonly sendContext: Record<string, unknown>;
-    /** Where a client half's `next({ headers })` collects. Absent on the server. */
-    readonly headers?: Headers;
-    /** Where a client half's `next({ fetch })` lands. Absent on the server. */
-    readonly fetch?: { current: typeof fetch | undefined };
-    /** The function the chain is running around. */
-    readonly meta?: { readonly id: string };
-    /** The method that function answers. */
-    readonly method?: "GET" | "POST";
-    /** The innermost work: the handler on the server, the fetch on the client. */
-    readonly run: (data: unknown) => Promise<unknown>;
-  },
+  start: ChainStart,
 ): Promise<unknown> {
   // BY POSITION, never by a counter the whole chain shares. A middleware may
   // call `next` twice (a retry, a fallback), and a shared counter has already
   // moved past every step below it by then, so the second call would land on
   // the handler with the guards in between skipped. Each step's `next` names the
   // step after it, so a repeat re-enters the same guards.
-  const dispatch = async (position: number, received: unknown): Promise<unknown> => {
+  async function dispatch(position: number, received: unknown): Promise<unknown> {
     const middleware = chain[position];
     if (middleware === undefined) return start.run(received);
     let data = received;
     const answers: unknown[] = [];
-    const next = nextOf(async (step) => {
-      if (step?.context !== undefined) Object.assign(start.context, step.context);
-      if (step?.sendContext !== undefined) Object.assign(start.sendContext, step.sendContext);
-      if (step?.headers !== undefined && start.headers !== undefined) {
-        for (const [name, value] of new Headers(step.headers)) start.headers.set(name, value);
+    const next = nextOf(async (given) => {
+      if (given?.context !== undefined) Object.assign(start.context, given.context);
+      if (given?.sendContext !== undefined) Object.assign(start.sendContext, given.sendContext);
+      if (given?.headers !== undefined && start.headers !== undefined) {
+        for (const [name, value] of new Headers(given.headers)) start.headers.set(name, value);
       }
-      if (step?.fetch !== undefined && start.fetch !== undefined) start.fetch.current = step.fetch;
+      if (given?.fetch !== undefined && start.fetch !== undefined)
+        start.fetch.current = given.fetch;
       const answer = await dispatch(position + 1, data);
       answers.push(answer);
       return answer;
     });
-    const step = (named: (...args: never[]) => unknown): string =>
-      describeStep(
+    function step(named: (...args: never[]) => unknown): string {
+      return describeStep(
         half,
         [named],
         position,
         chain.length,
         `around the server function ${JSON.stringify(start.meta?.id ?? "")}`,
       );
+    }
     if (!isBuiltMiddleware(middleware)) {
       // A BARE CLOSURE IS A SERVER MIDDLEWARE, always. It takes `next` and runs
       // where the handler is; there is no half to choose and nothing about it
@@ -989,6 +1045,6 @@ export async function runMiddleware(
       method: start.method,
     });
     return answerOf(returned, answers, () => step(body));
-  };
+  }
   return dispatch(0, start.data);
 }

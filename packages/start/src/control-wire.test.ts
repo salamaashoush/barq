@@ -21,6 +21,10 @@ import {
 import { handleServerFn, mount, unmountAll } from "./server.ts";
 import { printedBy } from "../../server/src/test-console.ts";
 
+interface SinceSearch {
+  since?: unknown;
+}
+
 const ORIGIN = "https://example.com";
 const realFetch = globalThis.fetch;
 
@@ -29,7 +33,7 @@ afterEach(() => {
   unmountAll();
 });
 
-const throughHandler = (seen?: Response[]): void => {
+function throughHandler(seen?: Response[]): void {
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const headers = new Headers(init?.headers);
     headers.set("origin", ORIGIN);
@@ -40,9 +44,9 @@ const throughHandler = (seen?: Response[]): void => {
     seen?.push(answered.clone());
     return answered;
   }) as typeof fetch;
-};
+}
 
-const throwing = (id: string, error: unknown): void => {
+function throwing(id: string, error: unknown): void {
   mount(
     id,
     serverRpc<undefined, never>(
@@ -56,16 +60,18 @@ const throwing = (id: string, error: unknown): void => {
       },
     ),
   );
-};
+}
 
-const redirected = (to: string, status: number, more: Record<string, unknown>): Error =>
-  Object.assign(new Error(`redirect to ${to}`), { [REDIRECT]: true, to, status, ...more });
+function redirected(to: string, status: number, more: Record<string, unknown>): Error {
+  return Object.assign(new Error(`redirect to ${to}`), { [REDIRECT]: true, to, status, ...more });
+}
 
-const caught = (id: string): Promise<unknown> =>
-  clientRpc<undefined, never>(id)().then(
+function caught(id: string): Promise<unknown> {
+  return clientRpc<undefined, never>(id)().then(
     () => "returned",
     (error: unknown) => error,
   );
+}
 
 test("a redirect arrives with the navigation it described", async () => {
   const options = {
@@ -86,7 +92,7 @@ test("a redirect arrives with the navigation it described", async () => {
   expect(error.status).toBe(308);
   expect(error.statusCode).toBe(308);
   expect(error.options).toEqual(options);
-  const search = error.options?.search as { since?: unknown } | undefined;
+  const search = error.options?.search as SinceSearch | undefined;
   expect(search?.since).toBeInstanceOf(Date);
 });
 

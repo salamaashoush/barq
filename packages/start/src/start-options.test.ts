@@ -81,11 +81,12 @@ test("they are installed when the options are first read, and not before", () =>
 
 test("`serverFns.fetch` carries every call, and a call's own `fetch` wins over it", async () => {
   const through: string[] = [];
-  const recorded = (name: string): typeof fetch =>
-    (async () => {
+  function recorded(name: string): typeof fetch {
+    return (async () => {
       through.push(name);
       return Response.json(encodeWire("salama"));
     }) as unknown as typeof fetch;
+  }
   createStart(() => ({ serverFns: { fetch: recorded("start") } }));
   const greet = clientRpc<undefined, string>("greet.ts#greet");
 

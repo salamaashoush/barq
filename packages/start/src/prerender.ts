@@ -29,6 +29,15 @@ import { STATIC_PREFIX, installStaticWriter } from "./static-fn.ts";
 
 export type { ServerEntryModule };
 
+interface AskedPage {
+  response: Response;
+  html: string;
+}
+
+interface MaybeMessage {
+  message?: string;
+}
+
 export interface PrerenderRun {
   readonly entry: ServerEntryModule;
   readonly outDir: string;
@@ -266,14 +275,14 @@ export async function prerender(run: PrerenderRun): Promise<PrerenderResult> {
   const listed: string[] = [];
   let notFoundFile: string | undefined;
 
-  const enqueue = (path: string): void => {
+  function enqueue(path: string): void {
     const key = normalize(path);
     if (key === null || seen.has(key)) return;
     seen.add(key);
     // After `seen`, so a path linked from every page is asked about once.
     if (run.filter?.(key) === false) return;
     queue.push(key);
-  };
+  }
 
   const named = new Set<string>();
   for (const route of run.routes.length > 0 ? run.routes : ["/"]) {
@@ -282,7 +291,7 @@ export async function prerender(run: PrerenderRun): Promise<PrerenderResult> {
     enqueue(route);
   }
 
-  const ask = async (path: string): Promise<{ response: Response; html: string }> => {
+  async function ask(path: string): Promise<AskedPage> {
     for (let attempt = 0; ; attempt += 1) {
       const last = attempt >= retries;
       try {
@@ -296,9 +305,9 @@ export async function prerender(run: PrerenderRun): Promise<PrerenderResult> {
       }
       if (retryDelay > 0) await new Promise((resolve) => setTimeout(resolve, retryDelay));
     }
-  };
+  }
 
-  const one = async (path: string): Promise<void> => {
+  async function one(path: string): Promise<void> {
     const { response, html } = await ask(path);
     const crawledOnly = !named.has(path);
     // A page the build NAMED and the application answers 404 for is the
@@ -342,15 +351,15 @@ export async function prerender(run: PrerenderRun): Promise<PrerenderResult> {
       listed.push(path);
     }
     if (run.crawl && !notFoundPage) followLinks(html);
-  };
+  }
 
-  const followLinks = (html: string): void => {
+  function followLinks(html: string): void {
     for (const href of linksIn(html)) {
       if (!href.startsWith("/")) continue;
       const inside = run.base === "/" || href.startsWith(run.base);
       if (inside) enqueue(run.base === "/" ? href : href.slice(run.base.length - 1));
     }
-  };
+  }
 
   // A POOL, not batches: a slot is refilled the moment its page finishes, so
   // one slow page costs its own time rather than its whole batch's. The queue
@@ -385,7 +394,7 @@ export async function prerender(run: PrerenderRun): Promise<PrerenderResult> {
     await writeFile(file, answer, "utf8");
   });
   await new Promise<void>((drained) => {
-    const fill = (): void => {
+    function fill(): void {
       while (active < slots) {
         const path = queue[next];
         if (path === undefined) break;
@@ -393,7 +402,7 @@ export async function prerender(run: PrerenderRun): Promise<PrerenderResult> {
         active += 1;
         one(path)
           .catch((reason: unknown) => {
-            const message = (reason as { message?: string } | null)?.message ?? String(reason);
+            const message = (reason as MaybeMessage | null)?.message ?? String(reason);
             failures.push(`${path}: ${message}`);
           })
           .finally(() => {
@@ -402,7 +411,7 @@ export async function prerender(run: PrerenderRun): Promise<PrerenderResult> {
           });
       }
       if (active === 0) drained();
-    };
+    }
     fill();
   }).finally(() => installStaticWriter(null));
 

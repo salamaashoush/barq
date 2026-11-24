@@ -6,6 +6,11 @@ import { join } from "node:path";
 
 import { type ServerEntryModule, prerender, prerenderShell } from "./prerender.ts";
 
+interface AskedFetch {
+  path: string;
+  extra: Record<string, unknown>;
+}
+
 const sandbox = mkdtempSync(join(tmpdir(), "barq-prerender-"));
 const outDir = join(sandbox, "project", "dist", "client");
 
@@ -13,10 +18,11 @@ afterAll(() => {
   rmSync(sandbox, { recursive: true, force: true });
 });
 
-const html = (body: string): Response =>
-  new Response(`<!doctype html><body>${body}</body>`, {
+function html(body: string): Response {
+  return new Response(`<!doctype html><body>${body}</body>`, {
     headers: { "content-type": "text/html; charset=utf-8" },
   });
+}
 
 /** A site whose home page carries one link an author wrote with dot segments. */
 const entry: ServerEntryModule = {
@@ -80,7 +86,7 @@ test("a crawled href with dot segments is never written outside the output direc
  * that runs a batch at a time never gets past the first batch, so it shows up
  * as this test timing out rather than as a count.
  */
-const paced = (quickPages: number) => {
+function paced(quickPages: number) {
   const state = { inFlight: 0, most: 0, startedWhileSlowRan: 0, slowRunning: false };
   const quickDone = Promise.withResolvers<void>();
   let answered = 0;
@@ -102,7 +108,7 @@ const paced = (quickPages: number) => {
     },
   };
   return { site, state };
-};
+}
 
 const quick = Array.from({ length: 6 }, (_, index) => `/quick-${index}`);
 
@@ -241,7 +247,7 @@ test("a not-found page the build names is written with its status, and a crawled
 });
 
 /** A site whose pages fail the first `failing` times they are asked for. */
-const flaky = (failing: number, events: string[] = []) => {
+function flaky(failing: number, events: string[] = []) {
   const asked = new Map<string, number>();
   const site: ServerEntryModule = {
     default: {
@@ -257,7 +263,7 @@ const flaky = (failing: number, events: string[] = []) => {
     },
   };
   return { site, asked };
-};
+}
 
 test("a page that throws or answers 5xx is asked again, and written when it then succeeds", async () => {
   // The retry delay is a timer, so the proof it was honoured is the timer
@@ -265,8 +271,8 @@ test("a page that throws or answers 5xx is asked again, and written when it then
   const events: string[] = [];
   const { site, asked } = flaky(1, events);
   const real = globalThis.setTimeout;
-  const recording = (handler: (...args: unknown[]) => void, ms = 0, ...args: unknown[]) =>
-    real(
+  function recording(handler: (...args: unknown[]) => void, ms = 0, ...args: unknown[]) {
+    return real(
       (...passed: unknown[]) => {
         if (ms === 40) events.push("waited 40");
         handler(...passed);
@@ -274,6 +280,7 @@ test("a page that throws or answers 5xx is asked again, and written when it then
       ms,
       ...args,
     );
+  }
   globalThis.setTimeout = recording as unknown as typeof setTimeout;
   const { pages } = await prerender({
     entry: site,
@@ -385,18 +392,20 @@ test("a crawled link answering 404 is not retried", async () => {
 });
 
 /** A site with a not-found page at `/404` and an ordinary page everywhere else. */
-const withNotFound = (status: number): ServerEntryModule => ({
-  default: {
-    createFetch: () => async (request) => {
-      const { pathname } = new URL(request.url);
-      if (pathname !== "/404") return html(`<h1>${pathname}</h1>`);
-      return new Response("<!doctype html><body><h1>nothing here</h1></body>", {
-        status,
-        headers: { "content-type": "text/html; charset=utf-8" },
-      });
+function withNotFound(status: number): ServerEntryModule {
+  return {
+    default: {
+      createFetch: () => async (request) => {
+        const { pathname } = new URL(request.url);
+        if (pathname !== "/404") return html(`<h1>${pathname}</h1>`);
+        return new Response("<!doctype html><body><h1>nothing here</h1></body>", {
+          status,
+          headers: { "content-type": "text/html; charset=utf-8" },
+        });
+      },
     },
-  },
-});
+  };
+}
 
 test("the sitemap lists every page written with a 2xx, sorted, and not the not-found page", async () => {
   const out = join(sandbox, "sitemap", "dist", "client");
@@ -563,7 +572,7 @@ test("a site with no /404 page gets no 404.html", async () => {
 
 test("the SPA shell is one request for the root, written where it was asked to be", async () => {
   const shellOut = join(sandbox, "shell", "client");
-  const asked: { path: string; extra: Record<string, unknown> }[] = [];
+  const asked: AskedFetch[] = [];
   const shellEntry: ServerEntryModule = {
     default: {
       createFetch: (extra) => async (request) => {

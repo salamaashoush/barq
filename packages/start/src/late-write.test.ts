@@ -19,7 +19,9 @@ import {
 } from "./index.ts";
 import { holdReports } from "../../server/src/test-console.ts";
 
-const request = (): Request => new Request("https://example.com/profile/salama");
+function request(): Request {
+  return new Request("https://example.com/profile/salama");
+}
 
 function loadProfileLate(): void {
   setResponseHeader("cache-control", "no-store");

@@ -20,7 +20,7 @@ afterEach(unmountAll);
 const ORIGIN = "https://example.com";
 
 /** The `Set-Cookie` lines a server function running `body` answers with. */
-const cookiesFrom = async (body: () => void): Promise<string[]> => {
+async function cookiesFrom(body: () => void): Promise<string[]> {
   mount(
     "src/routes/login.ts#login",
     serverRpc<undefined, null>(
@@ -46,7 +46,7 @@ const cookiesFrom = async (body: () => void): Promise<string[]> => {
     ),
   );
   return response?.headers.getSetCookie() ?? [];
-};
+}
 
 describe("setting", () => {
   test("a cookie given no path is sent to every page, not to `/_barq/fn` alone", async () => {

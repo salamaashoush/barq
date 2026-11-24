@@ -15,22 +15,33 @@ import { limitRequestBody } from "srvx/body-limit";
 import { DATA_SUFFIX, RPC_PREFIX, serverRpc } from "./index.ts";
 import { type HandlerOptions, handleServerFn, mount, unmountAll } from "./server.ts";
 
+interface RunCount {
+  runs: number;
+}
+
+interface EndlessBody {
+  body: ReadableStream<Uint8Array>;
+  pulled: number;
+}
+
 afterEach(unmountAll);
 
 const ORIGIN = "https://example.com";
 const MIB = 1024 * 1024;
 
-const urlOf = (id: string, channel = DATA_SUFFIX): string =>
-  `${ORIGIN}${RPC_PREFIX}${encodeURIComponent(id)}${channel}`;
+function urlOf(id: string, channel = DATA_SUFFIX): string {
+  return `${ORIGIN}${RPC_PREFIX}${encodeURIComponent(id)}${channel}`;
+}
 
-const json = (id: string, input: unknown): Request =>
-  new Request(urlOf(id), {
+function json(id: string, input: unknown): Request {
+  return new Request(urlOf(id), {
     method: "POST",
     headers: { "content-type": "application/json", origin: ORIGIN },
     body: JSON.stringify({ input: encodeWire(input) }),
   });
+}
 
-const upload = (id: string, bytes: number, channel = DATA_SUFFIX): Request => {
+function upload(id: string, bytes: number, channel = DATA_SUFFIX): Request {
   const form = new FormData();
   form.set("owner", "salama");
   form.set("file", new File([new Uint8Array(bytes)], "report.bin"));
@@ -39,10 +50,10 @@ const upload = (id: string, bytes: number, channel = DATA_SUFFIX): Request => {
     headers: { origin: ORIGIN },
     body: form,
   });
-};
+}
 
 /** Mounts a function that reports how much it was handed, and counts its runs. */
-const measuring = (id: string): { runs: number } => {
+function measuring(id: string): RunCount {
   const seen = { runs: 0 };
   mount(
     id,
@@ -60,10 +71,10 @@ const measuring = (id: string): { runs: number } => {
     ),
   );
   return seen;
-};
+}
 
 /** A body that keeps producing until `total`, and says how much was taken from it. */
-const endless = (total: number): { body: ReadableStream<Uint8Array>; pulled: number } => {
+function endless(total: number): EndlessBody {
   const source = {
     pulled: 0,
     body: new ReadableStream<Uint8Array>(
@@ -82,24 +93,25 @@ const endless = (total: number): { body: ReadableStream<Uint8Array>; pulled: num
     ),
   };
   return source;
-};
+}
 
-const streamed = (
+function streamed(
   id: string,
   body: ReadableStream<Uint8Array>,
   headers: Record<string, string> = {},
-): Request =>
-  new Request(urlOf(id), {
+): Request {
+  return new Request(urlOf(id), {
     method: "POST",
     headers: { "content-type": "application/json", origin: ORIGIN, ...headers },
     body,
   });
+}
 
-const answer = async (request: Request, options?: HandlerOptions): Promise<Response> => {
+async function answer(request: Request, options?: HandlerOptions): Promise<Response> {
   const response = await handleServerFn(request, options);
   if (response === null) throw new Error("not a server-function URL");
   return response;
-};
+}
 
 describe("the value channel", () => {
   test("a body over 1 MiB is a 413, and the handler never runs", async () => {
@@ -137,7 +149,9 @@ describe("the value channel", () => {
 
   test("`maxBodySize` moves the cap in both directions", async () => {
     measuring("echo");
-    const large = (): Request => json("echo", "x".repeat(2 * MIB));
+    function large(): Request {
+      return json("echo", "x".repeat(2 * MIB));
+    }
     expect((await answer(large(), { maxBodySize: 4 * MIB })).status).toBe(200);
     expect((await answer(json("echo", "salama"), { maxBodySize: 16 })).status).toBe(413);
   });

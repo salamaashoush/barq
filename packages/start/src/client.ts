@@ -32,6 +32,7 @@ import { applyFlight, applyFrameResponse, mountedFramesHeader } from "./frames-c
 import { LIVE_CALL, type LiveRequest, registerStub } from "./stubs.ts";
 import { FRAMES_HEADER, RPC_FLIGHT, RPC_FRAME } from "./frames.ts";
 import {
+  type FetchSlot,
   type Middleware,
   NOT_FOUND,
   REDIRECT,
@@ -309,6 +310,14 @@ export interface ServerFnCallOptions {
   readonly fetch?: typeof fetch;
 }
 
+export interface OptionalCallData<In> {
+  readonly data?: In;
+}
+
+export interface CallData<In> {
+  readonly data: In;
+}
+
 export type ServerFnArgs<In, Method extends ServerFnMethod = "POST"> = [undefined] extends [In]
   ? // The argument is OPTIONAL exactly when `undefined` is an acceptable input,
     // which covers both cases that want it: no validator at all (`In` is
@@ -320,8 +329,8 @@ export type ServerFnArgs<In, Method extends ServerFnMethod = "POST"> = [undefine
     // An optional ELEMENT, not a `void` one: a rest tuple with a `void` member
     // does not make the parameter optional, and `fn()` stayed "Expected 1
     // arguments, but got 0" until it was written this way.
-    [options?: ({ readonly data?: In } & ServerFnCallOptions) | FormFor<Method>]
-  : [options: ({ readonly data: In } & ServerFnCallOptions) | FormFor<Method>];
+    [options?: (OptionalCallData<In> & ServerFnCallOptions) | FormFor<Method>]
+  : [options: (CallData<In> & ServerFnCallOptions) | FormFor<Method>];
 
 /** A form is a body, so only a `POST` function takes one. */
 type FormFor<Method extends ServerFnMethod> = Method extends "POST" ? FormData : never;
@@ -370,13 +379,22 @@ export function urlOf(id: string): string {
 export function dataOf(options: unknown): unknown {
   if (options instanceof FormData) return options;
   if (options === undefined || options === null) return undefined;
-  return (options as { data?: unknown }).data;
+  return (options as OptionalCallData<unknown>).data;
 }
 
 /** What a call asked for beside its `data`. A bare `FormData` asks for nothing. */
 export function callOptionsOf(options: unknown): ServerFnCallOptions | undefined {
   if (options instanceof FormData || options === undefined || options === null) return undefined;
   return options;
+}
+
+export interface DeclaredMethod<Method> {
+  readonly method?: Method;
+}
+
+interface ComposedChain {
+  from: readonly Middleware[] | undefined;
+  chain: readonly Middleware[];
 }
 
 /**
@@ -393,21 +411,20 @@ export function callOptionsOf(options: unknown): ServerFnCallOptions | undefined
 export function clientRpc<In, Out, Method extends ServerFnMethod = "POST">(
   id: string,
   declaredChain: readonly ChainStep[] = [],
-  declared?: { readonly method?: Method },
+  declared?: DeclaredMethod<Method>,
 ): ServerFn<In, Out, Method> {
   const method: ServerFnMethod = declared?.method ?? "POST";
   const chain = inlineServerFns(declaredChain);
   // With the application's global function middleware ahead of the function's
   // own, read when first needed for the reason `serverRpc` gives.
-  let composed: { from: readonly Middleware[] | undefined; chain: readonly Middleware[] } | null =
-    null;
-  const composition = (): readonly Middleware[] => {
+  let composed: ComposedChain | null = null;
+  function composition(): readonly Middleware[] {
     const global = startOptions().functionMiddleware;
     if (composed === null || composed.from !== global) {
       composed = { from: global, chain: flattenMiddleware([...(global ?? []), ...chain]) };
     }
     return composed.chain;
-  };
+  }
 
   /**
    * The fetch, as the INNERMOST step of the chain.
@@ -417,7 +434,7 @@ export function clientRpc<In, Out, Method extends ServerFnMethod = "POST">(
    * and see the result on the way back. TanStack reaches the same arrangement
    * by appending the server function itself to the chain as a middleware.
    */
-  const send = async (
+  async function send(
     input: unknown,
     sendContext: Record<string, unknown>,
     /**
@@ -432,7 +449,7 @@ export function clientRpc<In, Out, Method extends ServerFnMethod = "POST">(
     chainFetch?: typeof fetch,
     /** A call at the live address, whose answer is handed back whole for `live`'s loop to read. */
     live?: LiveRequest,
-  ): Promise<Out> => {
+  ): Promise<Out> {
     // FormData goes as FormData. Routing it through the value codec would hand
     // the handler a plain OBJECT here and a real `FormData` on the no-JS path —
     // the same function seeing two input types depending on whether JS ran,
@@ -547,9 +564,9 @@ export function clientRpc<In, Out, Method extends ServerFnMethod = "POST">(
     // through the `context` it was handed, which is that object.
     if (context !== undefined) Object.assign(context, envelope.context);
     return envelope.result as Out;
-  };
+  }
 
-  const call = async (options?: unknown, live?: LiveRequest): Promise<Out> => {
+  async function call(options?: unknown, live?: LiveRequest): Promise<Out> {
     const input = dataOf(options);
     // NO CHAIN, NO RUNNER. Every application without a client middleware takes
     // this line, and it is the line the compiler emitted before any of this
@@ -562,7 +579,7 @@ export function clientRpc<In, Out, Method extends ServerFnMethod = "POST">(
     const context: Record<string, unknown> = {};
     const sendContext: Record<string, unknown> = {};
     const headers = new Headers();
-    const chosen: { current: typeof fetch | undefined } = { current: undefined };
+    const chosen: FetchSlot = { current: undefined };
     return (await runMiddleware(flattened, "client", {
       data: input,
       meta: { id },
@@ -574,7 +591,7 @@ export function clientRpc<In, Out, Method extends ServerFnMethod = "POST">(
       fetch: chosen,
       run: (data) => send(data, sendContext, context, asked, headers, chosen.current, live),
     })) as Out;
-  };
+  }
 
   const meta: ServerFnMeta = method === "GET" ? { id, method } : { id };
   const stub = Object.assign((options?: unknown) => call(options), {
@@ -638,6 +655,10 @@ const CALLER = { [RPC_CALLER]: "1" };
 /** Shared, because the no-middleware path never writes to it. */
 const EMPTY_CONTEXT: Record<string, unknown> = {};
 
+interface KindedControl {
+  kind: string;
+}
+
 /**
  * Rebuild the throwable a control answer describes.
  *
@@ -663,7 +684,7 @@ function fromControl(control: RpcControl): Error {
   }
   return new Error(
     `[barq] server function answered with an unrecognised ${RPC_CONTROL} kind ` +
-      `${JSON.stringify((control as { kind: string }).kind)}; the server is newer than this client bundle.`,
+      `${JSON.stringify((control as KindedControl).kind)}; the server is newer than this client bundle.`,
   );
 }
 

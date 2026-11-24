@@ -9,12 +9,13 @@ afterEach(unmountAll);
 
 const ORIGIN = "https://app.test";
 
-const post = (id: string): Request =>
-  new Request(`${ORIGIN}${RPC_PREFIX}${encodeURIComponent(id)}${DATA_SUFFIX}`, {
+function post(id: string): Request {
+  return new Request(`${ORIGIN}${RPC_PREFIX}${encodeURIComponent(id)}${DATA_SUFFIX}`, {
     method: "POST",
     headers: { "content-type": "application/json", origin: ORIGIN },
     body: JSON.stringify({ input: encodeWire(undefined) }),
   });
+}
 
 /** Calls the rest of the chain again when the first attempt fails. */
 const retryOnce: Middleware = async (next) => {

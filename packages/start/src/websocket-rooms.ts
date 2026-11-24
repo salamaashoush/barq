@@ -69,26 +69,44 @@ export interface WebSocketRooms {
   fileBytes(roomId: string): number;
 }
 
+interface RoomSnapshot {
+  revision: number;
+  data: Uint8Array;
+}
+
+interface DecodedFrame {
+  header: ClientFrame;
+  body: Uint8Array;
+}
+
+interface Unrefable {
+  unref?: () => void;
+}
+
+interface FrameOfType<Type extends ClientFrame["type"]> {
+  type: Type;
+}
+
 interface Room {
   peers: Map<string, Peer>;
   /** Followed peer id to the ids following it. */
   followers: Map<string, Set<string>>;
   files: Map<string, Uint8Array>;
   fileBytes: number;
-  snapshot: { revision: number; data: Uint8Array } | null;
+  snapshot: RoomSnapshot | null;
   expiry: ReturnType<typeof setTimeout> | null;
 }
 
-const encodeFrame = (header: ServerFrame, body?: Uint8Array): Uint8Array => {
+function encodeFrame(header: ServerFrame, body?: Uint8Array): Uint8Array {
   const json = new TextEncoder().encode(JSON.stringify(header));
   const frame = new Uint8Array(HEADER_LENGTH_BYTES + json.byteLength + (body?.byteLength ?? 0));
   new DataView(frame.buffer).setUint32(0, json.byteLength);
   frame.set(json, HEADER_LENGTH_BYTES);
   if (body) frame.set(body, HEADER_LENGTH_BYTES + json.byteLength);
   return frame;
-};
+}
 
-const decodeFrame = (bytes: Uint8Array): { header: ClientFrame; body: Uint8Array } | null => {
+function decodeFrame(bytes: Uint8Array): DecodedFrame | null {
   if (bytes.byteLength < HEADER_LENGTH_BYTES) return null;
   const length = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint32(0);
   if (HEADER_LENGTH_BYTES + length > bytes.byteLength) return null;
@@ -101,7 +119,7 @@ const decodeFrame = (bytes: Uint8Array): { header: ClientFrame; body: Uint8Array
   } catch {
     return null;
   }
-};
+}
 
 /**
  * Rooms for peers that encrypt end to end: the relay, the presence and the
@@ -127,28 +145,28 @@ export function createWebSocketRooms(options: WebSocketRoomsOptions = {}): WebSo
   /** Peer id to the room it joined. */
   const joined = new Map<string, string>();
 
-  const send = (peer: Peer, header: ServerFrame, body?: Uint8Array): void => {
+  function send(peer: Peer, header: ServerFrame, body?: Uint8Array): void {
     peer.send(encodeFrame(header, body));
-  };
+  }
 
-  const roomOf = (peer: Peer): Room | undefined => {
+  function roomOf(peer: Peer): Room | undefined {
     const id = joined.get(peer.id);
     return id === undefined ? undefined : rooms.get(id);
-  };
+  }
 
-  const announcePeers = (room: Room): void => {
+  function announcePeers(room: Room): void {
     const peers = [...room.peers.keys()];
     for (const peer of room.peers.values()) send(peer, { type: "room-user-change", peers });
-  };
+  }
 
-  const announceFollowers = (room: Room, followed: string): void => {
+  function announceFollowers(room: Room, followed: string): void {
     const peer = room.peers.get(followed);
     if (peer) {
       send(peer, { type: "followers", peers: [...(room.followers.get(followed) ?? [])] });
     }
-  };
+  }
 
-  const join = (peer: Peer, roomId: string): void => {
+  function join(peer: Peer, roomId: string): void {
     if (joined.has(peer.id)) {
       send(peer, { type: "error", message: "already in a room" });
       return;
@@ -179,9 +197,9 @@ export function createWebSocketRooms(options: WebSocketRoomsOptions = {}): WebSo
       }
     }
     announcePeers(room);
-  };
+  }
 
-  const leave = (peer: Peer): void => {
+  function leave(peer: Peer): void {
     const roomId = joined.get(peer.id);
     joined.delete(peer.id);
     const room = roomId === undefined ? undefined : rooms.get(roomId);
@@ -197,17 +215,17 @@ export function createWebSocketRooms(options: WebSocketRoomsOptions = {}): WebSo
     }
     const expiry = setTimeout(() => {
       if (rooms.get(roomId) === room && room.peers.size === 0) rooms.delete(roomId);
-    }, emptyRoomTtlMs) as ReturnType<typeof setTimeout> & { unref?: () => void };
+    }, emptyRoomTtlMs) as ReturnType<typeof setTimeout> & Unrefable;
     expiry.unref?.();
     room.expiry = expiry;
-  };
+  }
 
-  const relay = (
+  function relay(
     peer: Peer,
     room: Room,
-    frame: Extract<ClientFrame, { type: "broadcast" }>,
+    frame: Extract<ClientFrame, FrameOfType<"broadcast">>,
     body: Uint8Array,
-  ) => {
+  ) {
     const targets =
       frame.to === "followers"
         ? [...(room.followers.get(peer.id) ?? [])].flatMap((id) => {
@@ -220,9 +238,9 @@ export function createWebSocketRooms(options: WebSocketRoomsOptions = {}): WebSo
       if (frame.volatile && target.bufferedAmount > volatileBufferLimit) continue;
       target.send(message);
     }
-  };
+  }
 
-  const follow = (peer: Peer, room: Room, frame: Extract<ClientFrame, { type: "follow" }>) => {
+  function follow(peer: Peer, room: Room, frame: Extract<ClientFrame, FrameOfType<"follow">>) {
     if (frame.peer === peer.id || !room.peers.has(frame.peer)) return;
     let followers = room.followers.get(frame.peer);
     if (frame.action === "FOLLOW") {
@@ -236,14 +254,14 @@ export function createWebSocketRooms(options: WebSocketRoomsOptions = {}): WebSo
       if (followers?.size === 0) room.followers.delete(frame.peer);
     }
     announceFollowers(room, frame.peer);
-  };
+  }
 
-  const putFile = (
+  function putFile(
     peer: Peer,
     room: Room,
-    frame: Extract<ClientFrame, { type: "file-put" }>,
+    frame: Extract<ClientFrame, FrameOfType<"file-put">>,
     body: Uint8Array,
-  ) => {
+  ) {
     const reply = { id: frame.id, request: frame.request };
     if (body.byteLength > maxFileBytes) {
       send(peer, { type: "file-error", ...reply, message: "the file is too large" });
@@ -257,21 +275,21 @@ export function createWebSocketRooms(options: WebSocketRoomsOptions = {}): WebSo
     room.files.set(frame.id, body);
     room.fileBytes += body.byteLength - replaced;
     send(peer, { type: "file-saved", ...reply });
-  };
+  }
 
-  const getFile = (peer: Peer, room: Room, frame: Extract<ClientFrame, { type: "file-get" }>) => {
+  function getFile(peer: Peer, room: Room, frame: Extract<ClientFrame, FrameOfType<"file-get">>) {
     const file = room.files.get(frame.id);
     const reply = { id: frame.id, request: frame.request };
     if (file) send(peer, { type: "file", ...reply }, file);
     else send(peer, { type: "file-missing", ...reply });
-  };
+  }
 
-  const putSnapshot = (
+  function putSnapshot(
     peer: Peer,
     room: Room,
-    frame: Extract<ClientFrame, { type: "snapshot-put" }>,
+    frame: Extract<ClientFrame, FrameOfType<"snapshot-put">>,
     body: Uint8Array,
-  ) => {
+  ) {
     const current = room.snapshot;
     if (body.byteLength > maxSnapshotBytes) {
       send(peer, {
@@ -292,7 +310,7 @@ export function createWebSocketRooms(options: WebSocketRoomsOptions = {}): WebSo
     const revision = (current?.revision ?? 0) + 1;
     room.snapshot = { revision, data: body };
     send(peer, { type: "snapshot-saved", revision, request: frame.request });
-  };
+  }
 
   const hooks: WebSocketHooks = {
     open(peer) {

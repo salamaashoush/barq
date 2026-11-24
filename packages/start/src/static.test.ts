@@ -17,6 +17,11 @@ import { pathToFileURL } from "node:url";
 
 import { ASSET_MANIFEST_FILE, type AssetManifest, assetMiddleware } from "./static.ts";
 
+interface Asked {
+  response: Response;
+  fellThrough: boolean;
+}
+
 const dir = mkdtempSync(join(tmpdir(), "barq-static-"));
 mkdirSync(join(dir, "assets"), { recursive: true });
 mkdirSync(join(dir, "gone"), { recursive: true });
@@ -47,10 +52,7 @@ const manifest: AssetManifest = {
   files: ["/assets/app-abc123.js", "/release notes.txt"],
 };
 
-const ask = async (
-  path: string,
-  method = "GET",
-): Promise<{ response: Response; fellThrough: boolean }> => {
+async function ask(path: string, method = "GET"): Promise<Asked> {
   const middleware = assetMiddleware({ dir, manifest });
   let fellThrough = false;
   const response = await middleware(new Request(`http://localhost${path}`, { method }), () => {
@@ -58,7 +60,7 @@ const ask = async (
     return new Response("page handler", { status: 200 });
   });
   return { response, fellThrough };
-};
+}
 
 describe("the manifest decides, and the filesystem is not asked first", () => {
   test("a path the build never wrote falls through, and reads nothing", async () => {
@@ -228,17 +230,18 @@ describe("a prerendered page is served as a file is", () => {
     files: manifest.files,
   };
   const middleware = assetMiddleware({ dir, manifest: withBig, maxAge: 31_536_000 });
-  const get = (path: string, headers: Record<string, string> = {}, method = "GET") =>
-    middleware(
+  function get(path: string, headers: Record<string, string> = {}, method = "GET") {
+    return middleware(
       new Request(`http://localhost${path}`, { method, headers }),
       () => new Response("page handler"),
     );
+  }
   /** The headers alone, with the body read so the file behind it is closed. */
-  const headersOf = async (path: string): Promise<Headers> => {
+  async function headersOf(path: string): Promise<Headers> {
     const response = await get(path);
     await response.arrayBuffer();
     return response.headers;
-  };
+  }
 
   test("it carries a validator", async () => {
     const response = await get("/big");
@@ -300,7 +303,7 @@ describe("a long cache lifetime is for names that change with their bytes", () =
     files: ["/assets/app-abc123.js", "/release notes.txt"],
     hashed: ["/assets/app-abc123.js"],
   };
-  const cacheOf = async (options: Parameters<typeof assetMiddleware>[0], path: string) => {
+  async function cacheOf(options: Parameters<typeof assetMiddleware>[0], path: string) {
     const response = await assetMiddleware({ dir, ...options })(
       new Request(`http://localhost${path}`),
       () => new Response("page handler"),
@@ -308,7 +311,7 @@ describe("a long cache lifetime is for names that change with their bytes", () =
     // Read to the end: the body holds the file open until it is.
     await response.arrayBuffer();
     return response.headers.get("cache-control");
-  };
+  }
 
   test("a hashed asset is immutable for a year with nothing configured", async () => {
     expect(await cacheOf({ manifest: hashed }, "/assets/app-abc123.js")).toBe(
@@ -339,11 +342,12 @@ describe("a site built under a base", () => {
     hashed: ["/shop/assets/app-abc123.js"],
     base: "/shop",
   };
-  const get = (path: string) =>
-    assetMiddleware({ dir, manifest: based })(
+  function get(path: string) {
+    return assetMiddleware({ dir, manifest: based })(
       new Request(`http://localhost${path}`),
       () => new Response("page handler", { status: 404 }),
     );
+  }
 
   test("a file is found where the build put it, not under the base", async () => {
     const response = await get("/shop/assets/app-abc123.js");

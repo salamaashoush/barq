@@ -118,14 +118,16 @@ export type InputProblem<Input, Method> = 0 extends 1 & Input
       : "the input is a form, and a GET has no body to carry one"
     : WireProblem<Input, "the input">;
 
+export interface WireRefusal<Problem> {
+  readonly "cannot cross the wire": Problem;
+}
+
 /**
  * What a checked type must also be: anything, when there is no problem, and a
  * type naming the problem, which nothing is, when there is one. The name is
  * what the type error shows.
  */
-export type Crossable<Problem> = [Problem] extends [never]
-  ? unknown
-  : { readonly "cannot cross the wire": Problem };
+export type Crossable<Problem> = [Problem] extends [never] ? unknown : WireRefusal<Problem>;
 
 /** `strict`, as `createServerFn` takes it. */
 export type Strictness = boolean | { readonly input?: boolean; readonly output?: boolean };

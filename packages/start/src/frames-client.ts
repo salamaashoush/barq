@@ -119,7 +119,15 @@ interface FrameState {
   readonly setHead: (head: readonly HeadTag[]) => void;
   readonly component: FrameComponent;
   /** The live connection the page opened for a frame it was served, while one is open. */
-  connection: { readonly stop: () => void } | null;
+  connection: LiveConnection | null;
+}
+
+interface LiveConnection {
+  readonly stop: () => void;
+}
+
+interface WritableComponent {
+  component: FrameComponent;
 }
 
 const FRAMES = new Map<string, FrameState>();
@@ -168,8 +176,10 @@ function stateFor(ref: FrameRef): FrameState {
     component: null as never,
     connection: null,
   };
-  const component = (props: Record<string, unknown>): Node => mount(state, props);
-  (state as { component: FrameComponent }).component = Object.assign(component, { [FRAME]: ref });
+  function component(props: Record<string, unknown>): Node {
+    return mount(state, props);
+  }
+  (state as WritableComponent).component = Object.assign(component, { [FRAME]: ref });
   FRAMES.set(ref.address, state);
   return state;
 }
@@ -291,7 +301,7 @@ function fill(site: Mount, start: Comment, record: SlotRecord): Occurrence | nul
     { ownedWrite: true },
   );
   const given = site.props[record.name];
-  const content = (): unknown => {
+  function content(): unknown {
     if (record.name === "children") return given;
     // A fill that takes nothing reaches the props as the Cell it is, so reading
     // the prop is calling it.
@@ -304,7 +314,7 @@ function fill(site: Mount, start: Comment, record: SlotRecord): Occurrence | nul
       props.children = block(() => placed);
     }
     return untrack(() => (fn as (props: Record<string, unknown>) => unknown)(props));
-  };
+  }
   const range: Range = { open: start, close: end, parent, nodes: served };
   const dispose = claiming
     ? runWithOwner(site.owner, () =>
@@ -601,7 +611,9 @@ let scratch: HTMLElement | null = null;
  */
 function bindPosition(found: Found, values: Record<string, unknown>, claiming: boolean): void {
   const { node, position, entry } = found;
-  const read = (): unknown => values[entry.key];
+  function read(): unknown {
+    return values[entry.key];
+  }
   if (position === "") {
     const start = node as Comment;
     let text: Text;
@@ -701,15 +713,17 @@ function sameNode(current: Node, next: Node): boolean {
   return a.localName === b.localName && a.getAttribute("id") === b.getAttribute("id");
 }
 
+interface OwnedPositions {
+  whole: Set<string>;
+  classes: Set<string>;
+  styles: Set<string>;
+}
+
 /**
  * The positions of an element a binding slot fills, by its markers: whole
  * attributes, and the class names and style properties it fills in object form.
  */
-function ownedBy(element: Element): {
-  whole: Set<string>;
-  classes: Set<string>;
-  styles: Set<string>;
-} {
+function ownedBy(element: Element): OwnedPositions {
   const owned = { whole: new Set<string>(), classes: new Set<string>(), styles: new Set<string>() };
   for (const name of element.getAttributeNames()) {
     if (!name.startsWith(BIND_ATTRIBUTE)) continue;
@@ -1006,13 +1020,18 @@ async function applyFrameMarkup(host: Element | null): Promise<FrameComponent> {
   return state.component;
 }
 
+interface MountedFrameCall {
+  id: string;
+  args: unknown;
+}
+
 /**
  * What a mutation sends so its answer can carry the regions it changed: every
  * mounted frame's function and arguments, up to the budget, or `null` with
  * none mounted.
  */
 export function mountedFramesHeader(): string | null {
-  const out: { id: string; args: unknown }[] = [];
+  const out: MountedFrameCall[] = [];
   for (const state of FRAMES.values()) {
     if (state.mounts.size === 0 || state.payload === null) continue;
     out.push({ id: state.ref.id, args: state.payload.args });

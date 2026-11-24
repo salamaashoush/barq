@@ -3,9 +3,11 @@
  * the frames client finds a stub by id without importing the stub's module.
  */
 
+import type { ServerFnId } from "./middleware.ts";
+
 /** What the registry holds: a callable stub that knows its id. */
 export type Stub = ((options?: unknown) => Promise<unknown>) & {
-  readonly meta: { readonly id: string };
+  readonly meta: ServerFnId;
 };
 
 /** A call at the live address: where the last connection left off, and how to end this one. */

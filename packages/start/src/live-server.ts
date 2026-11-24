@@ -61,19 +61,19 @@ type Emit = (data: string, kind: "frame" | "message") => void;
 function produce(result: unknown, emit: Emit, finish: (complete: boolean) => void): () => void {
   let ended = false;
   const stops: (() => void)[] = [];
-  const end = (complete: boolean): void => {
+  function end(complete: boolean): void {
     if (ended) return;
     ended = true;
     for (const stop of stops) stop();
     finish(complete);
-  };
+  }
 
-  const frames = async (frame: ServerFrame): Promise<void> => {
+  async function frames(frame: ServerFrame): Promise<void> {
     const shared = new SharedSources();
     stops.push(() => shared.close());
     let rendering = false;
     let again = false;
-    const render = async (): Promise<void> => {
+    async function render(): Promise<void> {
       if (rendering) {
         again = true;
         return;
@@ -107,12 +107,12 @@ function produce(result: unknown, emit: Emit, finish: (complete: boolean) => voi
         rendering = false;
       }
       if (shared.settled) end(true);
-    };
+    }
     shared.onChange(() => void render());
     await render();
-  };
+  }
 
-  const values = async (source: AsyncIterable<unknown>): Promise<void> => {
+  async function values(source: AsyncIterable<unknown>): Promise<void> {
     const iterator = source[Symbol.asyncIterator]();
     stops.push(() => void iterator.return?.());
     try {
@@ -130,7 +130,7 @@ function produce(result: unknown, emit: Emit, finish: (complete: boolean) => voi
       );
       end(false);
     }
-  };
+  }
 
   if (isFrame(result)) void frames(result as ServerFrame);
   else if (isIterable(result)) void values(result);
@@ -159,7 +159,7 @@ function connection(request: Request, attach: (connection: Connection) => () => 
   let controller: ReadableStreamDefaultController<Uint8Array> | null = null;
   let ended = false;
   const stops: (() => void)[] = [];
-  const end = (complete: boolean): void => {
+  function end(complete: boolean): void {
     if (ended) return;
     ended = true;
     for (const stop of stops) stop();
@@ -170,15 +170,15 @@ function connection(request: Request, attach: (connection: Connection) => () => 
     } catch {
       // The reader has gone.
     }
-  };
-  const send = (text: string): void => {
+  }
+  function send(text: string): void {
     if (ended || controller === null) return;
     try {
       controller.enqueue(encoder.encode(text));
     } catch {
       end(false);
     }
-  };
+  }
   let sentId = request.headers.get("last-event-id");
   const emit: Emit = (data, kind) => {
     const id = digest(data);
@@ -191,9 +191,11 @@ function connection(request: Request, attach: (connection: Connection) => () => 
     start(given) {
       controller = given;
       const heartbeat = setInterval(() => send(": still here\n\n"), HEARTBEAT_MS);
-      (heartbeat as { unref?: () => void }).unref?.();
+      (heartbeat as Unrefable).unref?.();
       stops.push(() => clearInterval(heartbeat));
-      const abort = (): void => end(false);
+      function abort(): void {
+        return end(false);
+      }
       request.signal.addEventListener("abort", abort, { once: true });
       stops.push(() => request.signal.removeEventListener("abort", abort));
       stops.push(attach({ emit, end }));
@@ -215,9 +217,22 @@ export function liveResponse(result: unknown, request: Request): Response {
   return connection(request, (to) => produce(result, to.emit, to.end));
 }
 
+interface LatestAnswer {
+  readonly data: string;
+  readonly kind: "frame" | "message";
+}
+
+interface Unrefable {
+  unref?: () => void;
+}
+
+interface Closable {
+  return?: () => unknown;
+}
+
 interface Broadcast {
   readonly connections: Set<Connection>;
-  latest: { readonly data: string; readonly kind: "frame" | "message" } | null;
+  latest: LatestAnswer | null;
   ended: boolean;
   stop: () => void;
 }
@@ -231,7 +246,7 @@ const BROADCASTS = new Map<string, Broadcast>();
  * has asked for an iterator has started nothing, and asking would start it.
  */
 function closeUnread(result: unknown): void {
-  const iterator = result as { return?: () => unknown } | null;
+  const iterator = result as Closable | null;
   if (typeof iterator?.return !== "function") return;
   try {
     const closing = iterator.return();

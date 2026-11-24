@@ -47,7 +47,9 @@ export interface CookieOptions {
 }
 
 /** A control character, or DEL. The RFC defines every set below by code point. */
-const isControl = (code: number): boolean => code <= 0x1f || code === 0x7f;
+function isControl(code: number): boolean {
+  return code <= 0x1f || code === 0x7f;
+}
 
 /** Whether any character of `text` is one `refused` names. */
 function holdsAny(text: string, refused: (code: number) => boolean): boolean {
@@ -57,8 +59,9 @@ function holdsAny(text: string, refused: (code: number) => boolean): boolean {
   return false;
 }
 
-const codes = (characters: string): ReadonlySet<number> =>
-  new Set(Array.from(characters, (character) => character.charCodeAt(0)));
+function codes(characters: string): ReadonlySet<number> {
+  return new Set(Array.from(characters, (character) => character.charCodeAt(0)));
+}
 
 const NAME_SEPARATORS = codes(' ()<>@,;:\\"/[]?={}');
 const VALUE_SEPARATORS = codes(' ",;\\');
@@ -68,13 +71,19 @@ const SEMICOLON = 0x3b;
  * A separator or a control character, neither of which a cookie NAME may hold
  * (RFC 6265 §4.1.1: a name is a `token`).
  */
-const illegalInName = (code: number): boolean => isControl(code) || NAME_SEPARATORS.has(code);
+function illegalInName(code: number): boolean {
+  return isControl(code) || NAME_SEPARATORS.has(code);
+}
 
 /** What a cookie VALUE may not hold (RFC 6265 §4.1.1: `cookie-octet`). */
-const illegalInValue = (code: number): boolean => isControl(code) || VALUE_SEPARATORS.has(code);
+function illegalInValue(code: number): boolean {
+  return isControl(code) || VALUE_SEPARATORS.has(code);
+}
 
 /** What an attribute value may not hold, since `;` ends it. */
-const illegalInAttribute = (code: number): boolean => isControl(code) || code === SEMICOLON;
+function illegalInAttribute(code: number): boolean {
+  return isControl(code) || code === SEMICOLON;
+}
 
 /**
  * Every cookie on a request, by name.

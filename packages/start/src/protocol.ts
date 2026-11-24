@@ -49,18 +49,20 @@ export const PRERENDER_HEADER = "x-barq-prerender";
  * thing to deploy.
  */
 export interface ServerEntryModule {
-  readonly default?: {
-    readonly fetch?: (request: Request) => Promise<Response>;
-    readonly createFetch?: (
-      extra: Record<string, unknown>,
-    ) => (request: Request) => Promise<Response>;
-    readonly verifyChains?: (
-      reachability: ReadonlyMap<string, ReadonlySet<string>>,
-    ) => string | Promise<string>;
-    /** Wraps every request, server functions included; see `AroundRequest` in `./serve`. */
-    readonly around?: (
-      request: Request,
-      next: (request: Request) => Promise<Response>,
-    ) => Response | Promise<Response>;
-  };
+  readonly default?: ServerEntry;
+}
+
+export interface ServerEntry {
+  readonly fetch?: (request: Request) => Promise<Response>;
+  readonly createFetch?: (
+    extra: Record<string, unknown>,
+  ) => (request: Request) => Promise<Response>;
+  readonly verifyChains?: (
+    reachability: ReadonlyMap<string, ReadonlySet<string>>,
+  ) => string | Promise<string>;
+  /** Wraps every request, server functions included; see `AroundRequest` in `./serve`. */
+  readonly around?: (
+    request: Request,
+    next: (request: Request) => Promise<Response>,
+  ) => Response | Promise<Response>;
 }

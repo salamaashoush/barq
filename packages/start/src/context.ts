@@ -37,11 +37,15 @@ import { diagnosticsEnabled, emitDiagnostic } from "@barqjs/core/internal";
 import { provideRequestEvent } from "@barqjs/server/storage";
 
 import { type CookieOptions, deleteCookieLine, parseCookies, serializeCookie } from "./cookies.ts";
-import type { OpenContext } from "./middleware.ts";
+import type { OpenContext, ServerFnId } from "./middleware.ts";
 import type { OpenSession } from "./session.ts";
 import type { GlobalRequestContext } from "./start-instance.ts";
 
 const REQUEST_EVENT = Symbol.for("barq.request-event");
+
+interface RequestStorageHolder {
+  [REQUEST_EVENT]?: AsyncLocalStorage<RequestContext>;
+}
 
 /**
  * Headers and a status a handler asked for, merged into whatever is returned:
@@ -141,7 +145,7 @@ export interface RequestContext {
  */
 const SHARED = {
   get storage(): AsyncLocalStorage<RequestContext> | undefined {
-    return (globalThis as { [REQUEST_EVENT]?: AsyncLocalStorage<RequestContext> })[REQUEST_EVENT];
+    return (globalThis as RequestStorageHolder)[REQUEST_EVENT];
   },
 };
 
@@ -163,6 +167,10 @@ export function collectRequestCss(): string {
 
 const DEV_STYLESHEETS = Symbol.for("barq.dev.stylesheets");
 
+interface DevStylesheetsHolder {
+  [DEV_STYLESHEETS]?: (routes: readonly string[]) => Promise<DevStylesheets>;
+}
+
 /**
  * The compiled module stylesheets a page made of `routes` reaches, in the order
  * the page's modules run, when a dev server answered that, and `undefined`
@@ -176,11 +184,7 @@ const DEV_STYLESHEETS = Symbol.for("barq.dev.stylesheets");
 export function devStylesheets(
   routes: readonly string[],
 ): Promise<DevStylesheets | undefined> | undefined {
-  const answer = (
-    globalThis as {
-      [DEV_STYLESHEETS]?: (routes: readonly string[]) => Promise<DevStylesheets>;
-    }
-  )[DEV_STYLESHEETS];
+  const answer = (globalThis as DevStylesheetsHolder)[DEV_STYLESHEETS];
   return answer?.(routes);
 }
 
@@ -219,6 +223,11 @@ export function installCssSink(setSink: (sink: CssSink) => void): void {
   setSink(sink);
 }
 
+export interface WithRequestOptions {
+  readonly refuse?: string;
+  readonly response?: ResponseDraft;
+}
+
 /**
  * Run `body` with `request` as the ambient one, under the event
  * `createRequestEvent` builds for it and `provideRequestEvent` enters.
@@ -229,7 +238,7 @@ export function installCssSink(setSink: (sink: CssSink) => void): void {
 export function withRequest<T>(
   request: Request,
   body: () => T,
-  options: { readonly refuse?: string; readonly response?: ResponseDraft } | string = {},
+  options: WithRequestOptions | string = {},
 ): T {
   // The third argument was a bare `refuse` string before the draft existed.
   // Both spellings work, because the string form reads better at the one call
@@ -302,15 +311,17 @@ export function offerSendContext(sendContext: Record<string, unknown>): void {
   if (found !== undefined) found.sendContext = sendContext;
 }
 
+export interface FrameSource {
+  readonly meta: ServerFnId;
+}
+
 /**
  * Say that this mutation changed what these server functions' frames show, so
  * its answer carries those regions, rendered again, beside its value: single
  * flight, one round trip. A frame the page has not mounted is not rendered.
  * Outside a request it does nothing, as there is no answer to carry them.
  */
-export function invalidateFrames(
-  ...fns: readonly { readonly meta: { readonly id: string } }[]
-): void {
+export function invalidateFrames(...fns: readonly FrameSource[]): void {
   const found = SHARED.storage?.getStore();
   if (found === undefined) return;
   found.invalidatedFrames ??= new Set();
@@ -403,6 +414,14 @@ export function assertForwardedForTrust(trust: ForwardedForTrust | undefined): v
   }
 }
 
+export interface RequestIPOptions {
+  readonly xForwardedFor?: ForwardedForTrust;
+}
+
+export interface AddressedRequest {
+  ip?: string;
+}
+
 /**
  * The client's address, or `undefined`.
  *
@@ -417,9 +436,7 @@ export function assertForwardedForTrust(trust: ForwardedForTrust | undefined): v
  * client; every entry to its right was appended by a hop. {@link
  * ForwardedForTrust} says when that is forgeable and what to pass instead.
  */
-export function getRequestIP(
-  options: { readonly xForwardedFor?: ForwardedForTrust } = {},
-): string | undefined {
+export function getRequestIP(options: RequestIPOptions = {}): string | undefined {
   const request = getRequest();
   const trust = options.xForwardedFor;
   if (trust !== undefined && trust !== false) {
@@ -430,8 +447,12 @@ export function getRequestIP(
     if (address !== undefined && address !== "") return address;
   }
   // What a runtime attaches when it knows. `srvx` and Bun both use this name.
-  const direct = (request as { ip?: string }).ip;
+  const direct = (request as AddressedRequest).ip;
   return direct === "" ? undefined : direct;
+}
+
+export interface RequestHostOptions {
+  readonly xForwardedHost?: boolean;
 }
 
 /**
@@ -441,7 +462,7 @@ export function getRequestIP(
  * from an untrusted header and used to build an absolute URL is a host-header
  * injection, which turns a password-reset link into a link to the attacker.
  */
-export function getRequestHost(options: { readonly xForwardedHost?: boolean } = {}): string {
+export function getRequestHost(options: RequestHostOptions = {}): string {
   const request = getRequest();
   if (options.xForwardedHost === true) {
     const forwarded = request.headers.get("x-forwarded-host");
@@ -450,8 +471,12 @@ export function getRequestHost(options: { readonly xForwardedHost?: boolean } = 
   return new URL(request.url).host;
 }
 
+export interface RequestProtocolOptions {
+  readonly xForwardedProto?: boolean;
+}
+
 /** `http` or `https`. `X-Forwarded-Proto` only when asked, for the reason above. */
-export function getRequestProtocol(options: { readonly xForwardedProto?: boolean } = {}): string {
+export function getRequestProtocol(options: RequestProtocolOptions = {}): string {
   const request = getRequest();
   if (options.xForwardedProto === true) {
     const forwarded = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
@@ -683,6 +708,11 @@ export const applyResponseDraft: (
   draft: ResponseDraft | undefined,
 ) => Response = foldResponseStub;
 
+export interface DraftedStatus {
+  status: number;
+  statusText?: string;
+}
+
 /**
  * The status and text a framework-built response should carry.
  *
@@ -691,9 +721,6 @@ export const applyResponseDraft: (
  * is deciding the status itself, and that one is "what does a returned response
  * already say", where the handler has decided.
  */
-export function draftedStatus(
-  draft: ResponseDraft | undefined,
-  fallback: number,
-): { status: number; statusText?: string } {
+export function draftedStatus(draft: ResponseDraft | undefined, fallback: number): DraftedStatus {
   return { status: draft?.status ?? fallback, statusText: draft?.statusText };
 }

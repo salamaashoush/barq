@@ -324,6 +324,15 @@ function unknownFunction(): Response {
   return new Response("not found", { status: 404, headers: { [UNKNOWN_HEADER]: "true" } });
 }
 
+interface RpcBody {
+  input?: unknown;
+  context?: unknown;
+}
+
+interface MaybeHeaders {
+  headers?: unknown;
+}
+
 /**
  * Handle one server-function request, or return null if the URL is not one.
  *
@@ -407,7 +416,7 @@ export async function handleServerFn(
    * innermost step of the request middleware chain, so a global middleware
    * that refuses does so before a byte of the payload has been parsed.
    */
-  const respond = async (): Promise<Response> => {
+  async function respond(): Promise<Response> {
     let input: unknown;
     let clientContext: Record<string, unknown> | undefined;
     // The arguments as they arrived: a broadcast's share key. Encoded rather
@@ -418,10 +427,9 @@ export async function handleServerFn(
       try {
         if (method === "POST") encoded = await capped(request, bodyLimit).text();
         else encoded = url.searchParams.get(PAYLOAD_PARAM) ?? "";
-        const body = (method === "GET" ? queryPayload(url, bodyLimit) : JSON.parse(encoded)) as {
-          input?: unknown;
-          context?: unknown;
-        };
+        const body = (
+          method === "GET" ? queryPayload(url, bodyLimit) : JSON.parse(encoded)
+        ) as RpcBody;
         input = body?.input === undefined ? undefined : decodeWire(body.input);
         // WHAT THE CLIENT HALVES SENT, and it is UNTRUSTED — a caller writes this
         // body by hand as readily as the stub does. It reaches a server half as
@@ -563,7 +571,7 @@ export async function handleServerFn(
       const control = controlOf(error);
       if (control !== null) {
         return applyResponseDraft(
-          controlResponse(control, isData, (error as { headers?: unknown }).headers),
+          controlResponse(control, isData, (error as MaybeHeaders).headers),
           draft,
         );
       }
@@ -582,7 +590,7 @@ export async function handleServerFn(
       }
       return applyResponseDraft(failed(id, error, isData, options, "threw"), draft);
     }
-  };
+  }
 
   // AFTER the method, the origin and the id have been checked, never before: a
   // forged or mistyped call is refused above without a middleware having run
@@ -614,17 +622,26 @@ export async function handleServerFn(
   }
 }
 
+interface MaybeIssues {
+  issues?: ReadonlyArray<unknown>;
+}
+
+interface UnknownIssue {
+  message?: unknown;
+  path?: unknown;
+}
+
 /**
  * The 400 a refused input answers with: the refusal and each issue with the
  * path to the field it is about.
  */
 function inputAnswer(error: InputError): ServerFnInputAnswer {
-  const issues = (error as { issues?: ReadonlyArray<unknown> }).issues ?? [];
+  const issues = (error as MaybeIssues).issues ?? [];
   return {
     error: "invalid input",
     message: error.message,
     issues: issues.map((issue): ServerFnIssue => {
-      const { message, path } = (issue ?? {}) as { message?: unknown; path?: unknown };
+      const { message, path } = (issue ?? {}) as UnknownIssue;
       const keys = Array.isArray(path)
         ? path.map((segment: unknown) => {
             const key =
@@ -716,6 +733,18 @@ function thrownAnswer(error: Response, isData: boolean, draft: ResponseDraft): R
   return applyResponseDraft(error, draft);
 }
 
+type BrandedControl = Record<symbol, unknown> & {
+  to?: unknown;
+  status?: unknown;
+  options?: unknown;
+  data?: unknown;
+  routeId?: unknown;
+};
+
+interface UnknownMessage {
+  message?: unknown;
+}
+
 /**
  * Read a thrown value as a control answer, by BRAND rather than by class.
  *
@@ -726,13 +755,7 @@ function thrownAnswer(error: Response, isData: boolean, draft: ResponseDraft): R
  */
 function controlOf(error: unknown): RpcControl | null {
   if (typeof error !== "object" || error === null) return null;
-  const branded = error as Record<symbol, unknown> & {
-    to?: unknown;
-    status?: unknown;
-    options?: unknown;
-    data?: unknown;
-    routeId?: unknown;
-  };
+  const branded = error as BrandedControl;
   if (branded[REDIRECT] === true) {
     // The shape is checked rather than trusted: the brand says what this claims
     // to be, and a `to` that is not a string would put `undefined` in a
@@ -748,7 +771,7 @@ function controlOf(error: unknown): RpcControl | null {
     };
   }
   if (branded[NOT_FOUND] === true) {
-    const message = (error as { message?: unknown }).message;
+    const message = (error as UnknownMessage).message;
     return {
       kind: "not-found",
       message: typeof message === "string" ? message : "not found",
@@ -872,15 +895,14 @@ function streamed(
   reveal: (error: unknown) => ServerFnThrown | undefined,
 ): Response {
   const encoder = new TextEncoder();
-  const line = (payload: RpcStreamLine): Uint8Array =>
-    encoder.encode(`${JSON.stringify(payload)}\n`);
+  function line(payload: RpcStreamLine): Uint8Array {
+    return encoder.encode(`${JSON.stringify(payload)}\n`);
+  }
   const source = values[Symbol.asyncIterator]();
   let wanted: (() => void) | null = null;
   let cancelled = false;
 
-  const produce = async (
-    controller: ReadableStreamDefaultController<Uint8Array>,
-  ): Promise<void> => {
+  async function produce(controller: ReadableStreamDefaultController<Uint8Array>): Promise<void> {
     try {
       if (Object.keys(sendContext).length > 0) {
         controller.enqueue(line({ c: encodeWire(sendContext) }));
@@ -909,7 +931,7 @@ function streamed(
       controller.enqueue(line(thrown === undefined ? { e: 1 } : { e: 1, t: thrown }));
       controller.close();
     }
-  };
+  }
 
   const body = new ReadableStream<Uint8Array>({
     start(controller) {
@@ -972,6 +994,10 @@ function queryPayload(url: URL, limit: number): unknown {
   return JSON.parse(payload);
 }
 
+interface UnknownCode {
+  code?: unknown;
+}
+
 /**
  * What a body that could not be read is answered with.
  *
@@ -980,7 +1006,7 @@ function queryPayload(url: URL, limit: number): unknown {
  * owed the same 413.
  */
 function unreadable(error: unknown): Response {
-  return (error as { code?: unknown } | null)?.code === "ERR_BODY_TOO_LARGE"
+  return (error as UnknownCode | null)?.code === "ERR_BODY_TOO_LARGE"
     ? new Response("payload too large", { status: 413 })
     : new Response("bad request", { status: 400 });
 }

@@ -22,6 +22,12 @@ import {
 } from "./index.ts";
 import { handleServerFn, mount, unmountAll } from "./server.ts";
 
+interface SeenRequest {
+  path?: string;
+  kind?: string;
+  agent?: string | null;
+}
+
 const ORIGIN = "https://example.com";
 const realFetch = globalThis.fetch;
 
@@ -31,8 +37,8 @@ afterEach(() => {
   clearStart();
 });
 
-const call = (id: string, init?: RequestInit): Promise<Response | null> =>
-  handleServerFn(
+function call(id: string, init?: RequestInit): Promise<Response | null> {
+  return handleServerFn(
     new Request(`${ORIGIN}${RPC_PREFIX}${id}.data`, {
       method: "POST",
       headers: { "content-type": "application/json", origin: ORIGIN },
@@ -40,20 +46,25 @@ const call = (id: string, init?: RequestInit): Promise<Response | null> =>
       ...init,
     }),
   );
+}
 
-const mounted = (id: string, fn: ServerFn<never, unknown>): void => mount(id, fn);
+function mounted(id: string, fn: ServerFn<never, unknown>): void {
+  return mount(id, fn);
+}
 
 /** What a call answered with, off the wire. */
-const answerOf = async (response: Response | null): Promise<unknown> =>
-  decodeWire(await response?.json());
+async function answerOf(response: Response | null): Promise<unknown> {
+  return decodeWire(await response?.json());
+}
 
 test("global request, then global function, then the function's own", async () => {
   const order: string[] = [];
-  const step = (name: string) =>
-    createMiddleware({ type: "function" }).server(({ next }) => {
+  function step(name: string) {
+    return createMiddleware({ type: "function" }).server(({ next }) => {
       order.push(name);
       return next();
     });
+  }
   const own = step("own");
   createStart(() => ({
     requestMiddleware: [
@@ -80,7 +91,7 @@ test("global request, then global function, then the function's own", async () =
 });
 
 test("a request middleware is handed the request, and what it contributes reaches the handler", async () => {
-  let seen: { path?: string; kind?: string; agent?: string | null } = {};
+  let seen: SeenRequest = {};
   let handled: Record<string, unknown> = {};
   let ambient: Record<string, unknown> = {};
   createStart(() => ({

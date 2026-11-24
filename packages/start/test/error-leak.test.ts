@@ -33,12 +33,13 @@ afterAll(async () => {
   await child.exited;
 });
 
-const call = (path: string): Promise<Response> =>
-  fetch(`${origin}${RPC_PREFIX}${path}${DATA_SUFFIX}`, {
+function call(path: string): Promise<Response> {
+  return fetch(`${origin}${RPC_PREFIX}${path}${DATA_SUFFIX}`, {
     method: "POST",
     headers: { origin, "content-type": "application/json" },
     body: "{}",
   });
+}
 
 describe("a failure inside the server-function endpoint, as a caller sees it", () => {
   test("a handler's error message does not reach the response", async () => {

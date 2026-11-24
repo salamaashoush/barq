@@ -4,32 +4,42 @@ import { serveBarq } from "./serve.ts";
 import { type WebSocketRooms, createWebSocketRooms } from "./websocket-rooms.ts";
 import { upgradeWebSocket } from "./websocket.ts";
 
-type Frame = { header: Record<string, unknown> & { type: string }; body: Uint8Array };
+type FrameHeader = Record<string, unknown> & { type: string };
 
-const encode = (header: object, body?: Uint8Array): Uint8Array<ArrayBuffer> => {
+interface Frame {
+  header: FrameHeader;
+  body: Uint8Array;
+}
+
+interface Waiter {
+  type: string;
+  resolve: (frame: Frame) => void;
+}
+
+function encode(header: object, body?: Uint8Array): Uint8Array<ArrayBuffer> {
   const json = new TextEncoder().encode(JSON.stringify(header));
   const frame = new Uint8Array(4 + json.byteLength + (body?.byteLength ?? 0));
   new DataView(frame.buffer).setUint32(0, json.byteLength);
   frame.set(json, 4);
   if (body) frame.set(body, 4 + json.byteLength);
   return frame;
-};
+}
 
-const decode = (data: ArrayBuffer): Frame => {
+function decode(data: ArrayBuffer): Frame {
   const bytes = new Uint8Array(data);
   const length = new DataView(data).getUint32(0);
   return {
     header: JSON.parse(new TextDecoder().decode(bytes.subarray(4, 4 + length))),
     body: bytes.slice(4 + length),
   };
-};
+}
 
 /** A peer on the room server: what it heard, and a wait for the next frame of a type. */
 class Client {
   readonly frames: Frame[] = [];
   id = "";
   private readonly socket: WebSocket;
-  private readonly waiters: Array<{ type: string; resolve: (frame: Frame) => void }> = [];
+  private readonly waiters: Array<Waiter> = [];
   private readonly consumed = new Set<Frame>();
 
   private constructor(url: string) {
@@ -88,18 +98,20 @@ class Client {
   }
 }
 
-const settle = () => new Promise((resolve) => setTimeout(resolve, 50));
+function settle() {
+  return new Promise((resolve) => setTimeout(resolve, 50));
+}
 
 let server: Server;
 let base: string;
 let rooms: WebSocketRooms;
 const clients: Client[] = [];
 
-const open = async (room?: string): Promise<Client> => {
+async function open(room?: string): Promise<Client> {
   const client = await Client.open(`${base}/rooms`, room);
   clients.push(client);
   return client;
-};
+}
 
 beforeAll(async () => {
   rooms = createWebSocketRooms({

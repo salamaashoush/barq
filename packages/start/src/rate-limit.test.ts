@@ -13,11 +13,16 @@ import { withRequest } from "./context.ts";
 import { runMiddleware } from "./middleware.ts";
 import { printedBy } from "../../server/src/test-console.ts";
 
+interface RunOutcome {
+  ran: boolean;
+  refused: Response | null;
+}
+
 /** Run a middleware the way `serverRpc` does, reporting what the handler saw. */
 async function run(
   middleware: ReturnType<typeof rateLimit>,
   request = new Request("http://x/"),
-): Promise<{ ran: boolean; refused: Response | null }> {
+): Promise<RunOutcome> {
   let ran = false;
   try {
     await withRequest(request, async () =>
@@ -38,14 +43,15 @@ async function run(
   }
 }
 
-const limiter = (over: Partial<Parameters<typeof rateLimit>[0]> = {}) =>
-  rateLimit({
+function limiter(over: Partial<Parameters<typeof rateLimit>[0]> = {}) {
+  return rateLimit({
     limit: 2,
     windowMs: 1000,
     key: () => "one-caller",
     store: memoryStore(),
     ...over,
   });
+}
 
 describe("counting", () => {
   test("the limit is inclusive, and the one after it is refused", async () => {
@@ -176,12 +182,12 @@ describe("keying by address", () => {
 });
 
 describe("keying by address behind proxies that append", () => {
-  const from = (forwarded: string, ip?: string): Request => {
+  function from(forwarded: string, ip?: string): Request {
     const request = new Request("https://example.com/", {
       headers: { "x-forwarded-for": forwarded },
     });
     return ip === undefined ? request : Object.assign(request, { ip });
-  };
+  }
 
   test("one trusted proxy: the rightmost entry is what it saw", async () => {
     const key = byIP({ xForwardedFor: { trustedProxies: 1 } });

@@ -18,8 +18,9 @@ afterAll(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-const navigate = (handler: (request: Request) => Promise<Response>): Promise<Response> =>
-  handler(new Request("https://example.com/orders/7", { headers: { accept: "text/html" } }));
+function navigate(handler: (request: Request) => Promise<Response>): Promise<Response> {
+  return handler(new Request("https://example.com/orders/7", { headers: { accept: "text/html" } }));
+}
 
 test("two handlers in one process each answer with their own document", async () => {
   const shop = createFetchHandler({ spa: join(dir, "shop.html") });

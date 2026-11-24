@@ -2,6 +2,12 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { gzipSync } from "node:zlib";
 import { proxyRequest } from "./proxy.ts";
 
+interface EchoedRequest {
+  method: string;
+  body: string;
+  headers: Record<string, string>;
+}
+
 let upstream: ReturnType<typeof Bun.serve>;
 let base = "";
 
@@ -56,11 +62,7 @@ describe("proxyRequest", () => {
     const response = await proxyRequest(request, `${base}/echo`, {
       headers: { authorization: "Bearer API_TOKEN" },
     });
-    const seen = (await response.json()) as {
-      method: string;
-      body: string;
-      headers: Record<string, string>;
-    };
+    const seen = (await response.json()) as EchoedRequest;
     expect(seen.method).toBe("POST");
     expect(seen.body).toBe("salama");
     expect(seen.headers.cookie).toBe("sid=1");

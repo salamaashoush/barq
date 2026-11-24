@@ -17,6 +17,14 @@ const HOOKS_HEADER = "x-barq-websocket";
 
 const REGISTRY = Symbol.for("barq.websocket.pending");
 
+interface HooksRegistryHolder {
+  [REGISTRY]?: Map<string, WebSocketHooks>;
+}
+
+interface Unrefable {
+  unref?: () => void;
+}
+
 /**
  * Hooks waiting for the server to take their connection, by id.
  *
@@ -25,7 +33,7 @@ const REGISTRY = Symbol.for("barq.websocket.pending");
  * instances, one process.
  */
 function pending(): Map<string, WebSocketHooks> {
-  const holder = globalThis as { [REGISTRY]?: Map<string, WebSocketHooks> };
+  const holder = globalThis as HooksRegistryHolder;
   return (holder[REGISTRY] ??= new Map());
 }
 
@@ -70,9 +78,7 @@ export function upgradeWebSocket(request: Request, hooks: WebSocketHooks): Respo
   const id = crypto.randomUUID();
   const waiting = pending();
   waiting.set(id, hooks);
-  const timer = setTimeout(() => waiting.delete(id), UNCLAIMED_MS) as {
-    unref?: () => void;
-  };
+  const timer = setTimeout(() => waiting.delete(id), UNCLAIMED_MS) as Unrefable;
   timer.unref?.();
   return new Response(null, { status: 200, headers: { [HOOKS_HEADER]: id } });
 }

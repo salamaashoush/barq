@@ -14,6 +14,14 @@ import { FRAME, frameAddress, isFrame } from "./frames.ts";
 import { DATA_SUFFIX, RPC_PREFIX, createServerFn } from "./index.ts";
 import { handleServerFn, mount, unmountAll } from "./server.ts";
 
+interface ItemQuery {
+  readonly id: string;
+}
+
+interface Addressed {
+  address: string;
+}
+
 const ORIGIN = "https://example.com";
 
 // A frame registers the adapter that names it in a seed, and the registry is
@@ -43,7 +51,7 @@ function storyComponent(id: string) {
 }
 
 const getStory = createServerFn({ method: "POST" })
-  .validator((input: { readonly id: string }) => input)
+  .validator((input: ItemQuery) => input)
   .handler(({ data }) => storyComponent(data.id));
 
 function call(path: string, origin = ORIGIN): Request {
@@ -62,12 +70,10 @@ describe("a server function that returns a component", () => {
     const eight = await getStory({ data: { id: "8" } });
 
     expect(isFrame(seven)).toBe(true);
-    const address = (seven as unknown as Record<symbol, { address: string }>)[FRAME].address;
+    const address = (seven as unknown as Record<symbol, Addressed>)[FRAME].address;
     expect(address).toBe(frameAddress("stories#getStory", encodeWire({ id: "7" })));
-    expect((again as unknown as Record<symbol, { address: string }>)[FRAME].address).toBe(address);
-    expect((eight as unknown as Record<symbol, { address: string }>)[FRAME].address).not.toBe(
-      address,
-    );
+    expect((again as unknown as Record<symbol, Addressed>)[FRAME].address).toBe(address);
+    expect((eight as unknown as Record<symbol, Addressed>)[FRAME].address).not.toBe(address);
     expect(JSON.stringify(encodeWire(seven))).toContain("barq.frame");
   });
 

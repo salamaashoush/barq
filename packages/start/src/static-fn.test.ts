@@ -24,6 +24,32 @@ import {
   staticUrl,
 } from "./static-fn.ts";
 
+interface LoudGreeting {
+  readonly name: string;
+  readonly loud?: boolean;
+}
+
+interface WrittenAnswer {
+  identity: string;
+  answer: StaticAnswer;
+}
+
+interface WriterSlot {
+  writer: unknown;
+}
+
+interface Asked {
+  asked: string[];
+}
+
+interface GreetInput {
+  readonly name: string;
+}
+
+interface Greeting {
+  greeting: string;
+}
+
 const realFetch = globalThis.fetch;
 const sandbox = mkdtempSync(join(tmpdir(), "barq-static-fn-"));
 
@@ -37,7 +63,7 @@ afterAll(() => rmSync(sandbox, { recursive: true, force: true }));
 
 const greet = createServerFn({ method: "GET" })
   .middleware([staticFunctionMiddleware])
-  .validator((input: { readonly name: string; readonly loud?: boolean }) => input)
+  .validator((input: LoudGreeting) => input)
   .handler(({ data }) => {
     return {
       greeting: data.loud === true ? `HELLO ${data.name}` : `hello ${data.name}`,
@@ -46,13 +72,13 @@ const greet = createServerFn({ method: "GET" })
   });
 
 /** What a writer was handed, by file name. */
-const recording = (): Map<string, { identity: string; answer: StaticAnswer }> => {
-  const written = new Map<string, { identity: string; answer: StaticAnswer }>();
+function recording(): Map<string, WrittenAnswer> {
+  const written = new Map<string, WrittenAnswer>();
   installStaticWriter(async (key, identity, answer) => {
     written.set(key, { identity, answer: decodeWire<StaticAnswer>(JSON.parse(answer)) });
   });
   return written;
-};
+}
 
 describe("at prerender time", () => {
   test("each call is written under a name derived from its function and its input", async () => {
@@ -144,7 +170,7 @@ describe("at prerender time", () => {
         createFetch: () => async () => {
           // What a collision looks like from the writer's side: one name, two
           // different calls.
-          const writer = (globalThis as Record<symbol, { writer: unknown }>)[
+          const writer = (globalThis as Record<symbol, WriterSlot>)[
             Symbol.for("barq.start.static-writer")
           ]?.writer as (key: string, identity: string, answer: string) => Promise<void>;
           await writer("same", "greet\n1", "{}");
@@ -173,7 +199,7 @@ describe("at prerender time", () => {
 
 describe("in the browser", () => {
   /** A host with the file for one input, and a server for everything else. */
-  const host = (): { asked: string[] } => {
+  function host(): Asked {
     const asked: string[] = [];
     globalThis.fetch = (async (input: RequestInfo | URL) => {
       const url = String(input);
@@ -185,14 +211,13 @@ describe("in the browser", () => {
       return Response.json(encodeWire({ greeting: "from the server" }));
     }) as typeof fetch;
     return { asked };
-  };
+  }
 
-  const stub = () =>
-    clientRpc<{ readonly name: string }, { greeting: string }, "GET">(
-      "greet",
-      [staticFunctionMiddleware],
-      { method: "GET" },
-    );
+  function stub() {
+    return clientRpc<GreetInput, Greeting, "GET">("greet", [staticFunctionMiddleware], {
+      method: "GET",
+    });
+  }
 
   test("an input the build answered is read from its file, and the server is not asked", async () => {
     const { asked } = host();

@@ -1,3 +1,5 @@
+import type { AddressedRequest } from "./context.ts";
+
 export interface ProxyOptions {
   /** Set on the forwarded request, replacing what the client sent under the same names. */
   headers?: HeadersInit;
@@ -87,7 +89,7 @@ export async function proxyRequest(
     if (name.trim() !== "") headers.delete(name.trim());
   }
   if (options.forwarded !== false) {
-    const address = (request as { ip?: string }).ip;
+    const address = (request as AddressedRequest).ip;
     if (address !== undefined) {
       const before = request.headers.get("x-forwarded-for");
       headers.set("x-forwarded-for", before === null ? address : `${before}, ${address}`);

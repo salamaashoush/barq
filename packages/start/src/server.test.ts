@@ -28,6 +28,7 @@ import {
 } from "./index.ts";
 import { decodeWire, encodeWire } from "@barqjs/server/codec";
 
+import type { ServerFnId } from "./middleware.ts";
 import { createFetchHandler } from "./serve.ts";
 import { printedBy } from "../../server/src/test-console.ts";
 import {
@@ -40,23 +41,69 @@ import {
   unmountAll,
 } from "./server.ts";
 
-const refusal = (to: string): string =>
-  `[barq] A server function threw \`redirect(${JSON.stringify(to)})\`, which is not a path or an \`http(s)\` URL, so the redirect was refused and the call answered 500. ` +
-  "Validate the value passed to `redirect()` before using it, especially when it comes from the request.";
+interface Identified {
+  meta: ServerFnId;
+}
+
+interface DataContext<In> {
+  data: In;
+}
+
+interface ChainContext<In> extends DataContext<In> {
+  context: Record<string, unknown>;
+}
+
+interface RichInput {
+  at: Date;
+  tags: Set<string>;
+}
+
+interface SeenForm {
+  isFormData: boolean;
+  title: unknown;
+  tags: unknown;
+}
+
+interface ChainOptions {
+  middleware: Middleware[];
+}
+
+interface IssuesBody {
+  issues: unknown;
+}
+
+interface OkAnswer {
+  ok: boolean;
+}
+
+interface ResultWithContext {
+  result: unknown;
+  context: unknown;
+}
+
+function refusal(to: string): string {
+  return (
+    `[barq] A server function threw \`redirect(${JSON.stringify(to)})\`, which is not a path or an \`http(s)\` URL, so the redirect was refused and the call answered 500. ` +
+    "Validate the value passed to `redirect()` before using it, especially when it comes from the request."
+  );
+}
 
 /** Mounts under the id the function already carries, which is what the tests mean. */
-const mountOf = (fn: { meta: { id: string } }): void => mount(fn.meta.id, fn as never);
+function mountOf(fn: Identified): void {
+  return mount(fn.meta.id, fn as never);
+}
 
 afterEach(unmountAll);
 
 const ORIGIN = "https://app.test";
 
-const post = (id: string, input: unknown, headers: Record<string, string> = {}): Request =>
-  new Request(`${ORIGIN}${RPC_PREFIX}${encodeURIComponent(id)}${DATA_SUFFIX}`, {
+function post(id: string, input: unknown, headers: Record<string, string> = {}): Request {
+  return new Request(`${ORIGIN}${RPC_PREFIX}${encodeURIComponent(id)}${DATA_SUFFIX}`, {
     method: "POST",
     headers: { "content-type": "application/json", origin: ORIGIN, ...headers },
     body: JSON.stringify({ input: encodeWire(input) }),
   });
+}
 
 /** A Standard Schema without pulling a validation library in to test one. */
 const positiveInt: StandardSchema<unknown, number> = {
@@ -70,12 +117,12 @@ const positiveInt: StandardSchema<unknown, number> = {
   },
 };
 
-const define = <In, Out>(
+function define<In, Out>(
   id: string,
-  fn: (context: { data: In }) => Out,
+  fn: (context: DataContext<In>) => Out,
   schema?: StandardSchema<unknown, In>,
-) =>
-  serverRpc<In, Out>(
+) {
+  return serverRpc<In, Out>(
     { id },
     {
       validator: schema ?? null,
@@ -83,6 +130,7 @@ const define = <In, Out>(
       handler: fn,
     },
   );
+}
 
 describe("input is fail-closed", () => {
   /**
@@ -106,7 +154,7 @@ describe("input is fail-closed", () => {
   });
 
   test("a schema rejects bad input with 400 and says what was wrong with it", async () => {
-    mountOf(define("checked", ({ data }: { data: number }) => data * 2, positiveInt));
+    mountOf(define("checked", ({ data }: DataContext<number>) => data * 2, positiveInt));
 
     const bad = await handleServerFn(post("checked", -1));
     expect(bad?.status).toBe(400);
@@ -152,7 +200,7 @@ describe("the wire", () => {
    */
   test("carries Date, Map, Set, BigInt and cycles in both directions", async () => {
     mountOf(
-      serverRpc<{ at: Date; tags: Set<string> }, unknown>(
+      serverRpc<RichInput, unknown>(
         { id: "rich" },
         {
           validator: "unchecked",
@@ -227,11 +275,12 @@ describe("the request is checked before the handler runs", () => {
    * warns and proceeds.
    */
   test("with no Origin, Sec-Fetch-Site decides, and its absence is a refusal", () => {
-    const withSite = (site?: string) =>
-      new Request(`${ORIGIN}${RPC_PREFIX}m`, {
+    function withSite(site?: string) {
+      return new Request(`${ORIGIN}${RPC_PREFIX}m`, {
         method: "POST",
         headers: site === undefined ? {} : { "sec-fetch-site": site },
       });
+    }
     expect(originAllowed(withSite("same-origin"))).toBe(true);
     expect(originAllowed(withSite("none"))).toBe(true);
     expect(originAllowed(withSite("cross-site"))).toBe(false);
@@ -246,11 +295,13 @@ describe("the request is checked before the handler runs", () => {
 });
 
 describe("middleware and request context", () => {
-  const withChain = <In, Out>(
+  function withChain<In, Out>(
     id: string,
     chain: Middleware[],
-    fn: (context: { data: In }) => Out,
-  ) => serverRpc<In, Out>({ id }, { validator: "unchecked", middleware: chain, handler: fn });
+    fn: (context: DataContext<In>) => Out,
+  ) {
+    return serverRpc<In, Out>({ id }, { validator: "unchecked", middleware: chain, handler: fn });
+  }
 
   /**
    * The hole every surveyed framework documents instead of closing. Next.js:
@@ -277,14 +328,14 @@ describe("middleware and request context", () => {
 
   test("the chain runs outermost first and wraps the handler", async () => {
     const order: string[] = [];
-    const tag =
-      (name: string): Middleware =>
-      async (next) => {
+    function tag(name: string): Middleware {
+      return async (next) => {
         order.push(`>${name}`);
         const out = await next();
         order.push(`<${name}`);
         return out;
       };
+    }
     mountOf(
       withChain("ordered", [tag("a"), tag("b")], () => {
         order.push("handler");
@@ -370,11 +421,11 @@ describe("middleware and request context", () => {
  * exists before the page renders, so no router is involved.
  */
 describe("progressive enhancement", () => {
-  const submit = (
+  function submit(
     id: string,
     fields: Record<string, string>,
     headers: Record<string, string> = {},
-  ) => {
+  ) {
     const body = new FormData();
     for (const [k, v] of Object.entries(fields)) body.append(k, v);
     return new Request(`${ORIGIN}${RPC_PREFIX}${encodeURIComponent(id)}`, {
@@ -382,7 +433,7 @@ describe("progressive enhancement", () => {
       headers: { origin: ORIGIN, referer: `${ORIGIN}/todos?page=2`, ...headers },
       body,
     });
-  };
+  }
 
   test("a form POST reaches the handler as FormData and redirects back", async () => {
     let saw: unknown = null;
@@ -445,7 +496,7 @@ describe("progressive enhancement", () => {
    * divergence rather than a hypothetical one.
    */
   test("both paths hand the handler the same FormData", async () => {
-    const seen: Array<{ isFormData: boolean; title: unknown; tags: unknown }> = [];
+    const seen: Array<SeenForm> = [];
     mountOf(
       serverRpc<FormData, void>(
         { id: "same-shape" },
@@ -633,7 +684,9 @@ describe("the call convention", () => {
     const response = await handleServerFn(post("greet", "salama"));
     expect(decodeWire<string>(await response?.json())).toBe("hello salama");
 
-    const plain = async (): Promise<string> => "not a server function";
+    async function plain(): Promise<string> {
+      return "not a server function";
+    }
     // Neither has an endpoint to mount nor a chain to read, so the types refuse
     // it; JavaScript can still pass one.
     const refused: [typeof plain] extends [AnyServerFn] ? false : true = true;
@@ -710,14 +763,15 @@ describe("the call convention", () => {
  * differently depending on whether JS had run.
  */
 describe("the ambient response", () => {
-  const call = (id: string, data = true) =>
-    handleServerFn(
+  function call(id: string, data = true) {
+    return handleServerFn(
       new Request(`http://x/_barq/fn/${id}${data ? ".data" : ""}`, {
         method: "POST",
         headers: { origin: "http://x", "content-type": "application/json" },
         body: JSON.stringify({}),
       }),
     );
+  }
 
   test("`setCookie` reaches the response on the DATA channel", async () => {
     mountOf(
@@ -895,8 +949,9 @@ describe("the ambient response", () => {
  * browser always says.
  */
 describe("the CSRF rule for route handlers", () => {
-  const request = (method: string, headers: Record<string, string> = {}) =>
-    new Request("http://localhost/api/x", { method, headers });
+  function request(method: string, headers: Record<string, string> = {}) {
+    return new Request("http://localhost/api/x", { method, headers });
+  }
 
   test("a safe method is never refused, because it changes nothing", () => {
     for (const method of ["GET", "HEAD", "OPTIONS"]) {
@@ -987,8 +1042,8 @@ describe("a server function's control-flow throws", () => {
   // and a function that declared no validator refuses ANY argument with a 400
   // before the handler runs — which is the fail-closed default working, not a
   // thing to work around.
-  const throwing = (id: string, error: unknown) =>
-    mountOf(
+  function throwing(id: string, error: unknown) {
+    return mountOf(
       serverRpc<undefined, never>(
         { id },
         {
@@ -1000,6 +1055,7 @@ describe("a server function's control-flow throws", () => {
         },
       ),
     );
+  }
 
   test("the data channel describes a redirect rather than answering 3xx", async () => {
     throwing("gated", new Redirected("/login"));
@@ -1131,12 +1187,14 @@ describe("a server function's control-flow throws", () => {
  * nowhere to put: a chain of its own, an input validator, and a client half.
  */
 describe("createMiddleware", () => {
-  const withChain = <In, Out>(
+  function withChain<In, Out>(
     id: string,
     chain: Middleware[],
-    fn: (context: { data: In; context: Record<string, unknown> }) => Out,
+    fn: (context: ChainContext<In>) => Out,
     validator: "unchecked" | null = "unchecked",
-  ) => serverRpc<In, Out>({ id }, { validator, middleware: chain, handler: fn });
+  ) {
+    return serverRpc<In, Out>({ id }, { validator, middleware: chain, handler: fn });
+  }
 
   test("a built middleware is still a callable Middleware", async () => {
     const seen: string[] = [];
@@ -1169,11 +1227,12 @@ describe("createMiddleware", () => {
   describe("nesting", () => {
     test("a nested chain runs before the middleware that declared it", async () => {
       const order: string[] = [];
-      const tag = (name: string) =>
-        createMiddleware().server(async ({ next }) => {
+      function tag(name: string) {
+        return createMiddleware().server(async ({ next }) => {
           order.push(name);
           return next();
         });
+      }
       const inner = tag("inner");
       const outer = createMiddleware()
         .middleware([inner])
@@ -1205,7 +1264,7 @@ describe("createMiddleware", () => {
     });
 
     test("a chain that contains itself is refused rather than recursed", () => {
-      const options: { middleware: Middleware[] } = { middleware: [] };
+      const options: ChainOptions = { middleware: [] };
       const loop = createMiddleware(options);
       options.middleware.push(loop);
       expect(() => flattenMiddleware([loop])).toThrow(/nests more than 100 levels deep/);
@@ -1262,7 +1321,7 @@ describe("createMiddleware", () => {
       const response = await handleServerFn(post("refusing", "x"));
       expect(response?.status).toBe(400);
       // The issues describe the caller's own input, so the caller is told them.
-      expect(((await response!.json()) as { issues: unknown }).issues).toEqual([{ message: "no" }]);
+      expect(((await response!.json()) as IssuesBody).issues).toEqual([{ message: "no" }]);
     });
   });
 
@@ -1271,7 +1330,7 @@ describe("createMiddleware", () => {
       mountOf(withChain("bare", [], () => ({ ok: true })));
       const response = await handleServerFn(post("bare", undefined));
       expect(response?.headers.get(RPC_CONTEXT)).toBeNull();
-      expect(decodeWire<{ ok: boolean }>(await response!.json())).toEqual({ ok: true });
+      expect(decodeWire<OkAnswer>(await response!.json())).toEqual({ ok: true });
     });
 
     test("sendContext rides back beside the result, under a header", async () => {
@@ -1281,7 +1340,7 @@ describe("createMiddleware", () => {
       mountOf(withChain("telling", [tell], () => ({ ok: true })));
       const response = await handleServerFn(post("telling", undefined));
       expect(response?.headers.get(RPC_CONTEXT)).toBe("1");
-      expect(decodeWire<{ result: unknown; context: unknown }>(await response!.json())).toEqual({
+      expect(decodeWire<ResultWithContext>(await response!.json())).toEqual({
         result: { ok: true },
         context: { user: "ada" },
       });

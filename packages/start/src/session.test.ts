@@ -25,14 +25,34 @@ import {
 } from "./context.ts";
 import { parseCookies } from "./cookies.ts";
 
+interface RequestOutcome<T> {
+  value: T;
+  setCookie: string[];
+}
+
+interface LegacySession {
+  id: string;
+  createdAt: number;
+  data: Record<string, unknown>;
+}
+
+type UserSession = { userId: number };
+
+type EmailSession = { email: string };
+
+type PairSession = { a: number; b: number };
+
+type CounterSession = { a: number };
+
+type BlobSession = { userId: number; blob: string };
+
+type SeenSession = { userId: number; seenAt: number };
+
 const PASSWORD = "0123456789abcdef0123456789abcdef";
 const CONFIG: SessionConfig = { password: PASSWORD, cookie: { secure: false } };
 
 /** One request, with whatever cookies it carried, returning what it set. */
-async function inRequest<T>(
-  body: () => Promise<T>,
-  cookie?: string,
-): Promise<{ value: T; setCookie: string[] }> {
+async function inRequest<T>(body: () => Promise<T>, cookie?: string): Promise<RequestOutcome<T>> {
   const draft = createResponseDraft();
   const headers = new Headers();
   if (cookie !== undefined) headers.set("cookie", cookie);
@@ -44,7 +64,9 @@ async function inRequest<T>(
 }
 
 /** The `name=value` a `Set-Cookie` line carries, for feeding back in. */
-const asRequestCookie = (line: string): string => line.split(";")[0] ?? "";
+function asRequestCookie(line: string): string {
+  return line.split(";")[0] ?? "";
+}
 
 describe("a session round-trips through the cookie", () => {
   test("a visitor with no cookie gets an empty session, not null", async () => {
@@ -63,7 +85,7 @@ describe("a session round-trips through the cookie", () => {
 
   test("`update` seals it, and the next request opens it", async () => {
     const first = await inRequest(async () => {
-      await (await useSession<{ userId: number }>(CONFIG)).update({ userId: 7 });
+      await (await useSession<UserSession>(CONFIG)).update({ userId: 7 });
     });
     expect(first.setCookie).toHaveLength(1);
     const line = first.setCookie[0] ?? "";
@@ -72,7 +94,7 @@ describe("a session round-trips through the cookie", () => {
     expect(line).toContain("Path=/");
 
     const second = await inRequest(
-      async () => (await useSession<{ userId: number }>(CONFIG)).data,
+      async () => (await useSession<UserSession>(CONFIG)).data,
       asRequestCookie(line),
     );
     expect(second.value).toEqual({ userId: 7 });
@@ -80,7 +102,7 @@ describe("a session round-trips through the cookie", () => {
 
   test("the sealed value is opaque — the client cannot read it", async () => {
     const { setCookie } = await inRequest(async () => {
-      await (await useSession<{ email: string }>(CONFIG)).update({ email: "ada@example.com" });
+      await (await useSession<EmailSession>(CONFIG)).update({ email: "ada@example.com" });
     });
     const value = parseCookies(asRequestCookie(setCookie[0] ?? ""))["barq-session"] ?? "";
     expect(value).not.toContain("ada@example.com");
@@ -91,11 +113,11 @@ describe("a session round-trips through the cookie", () => {
 
   test("`update` MERGES, and the functional form sees the current data", async () => {
     const first = await inRequest(async () => {
-      await (await useSession<{ a: number; b: number }>(CONFIG)).update({ a: 1 });
+      await (await useSession<PairSession>(CONFIG)).update({ a: 1 });
     });
     const second = await inRequest(
       async () => {
-        const session = await useSession<{ a: number; b: number }>(CONFIG);
+        const session = await useSession<PairSession>(CONFIG);
         const next = await session.update((current) => ({ b: (current.a ?? 0) + 1 }));
         return next.data;
       },
@@ -107,7 +129,7 @@ describe("a session round-trips through the cookie", () => {
   test("`clear` expires the cookie rather than sealing an empty one", async () => {
     // An empty session cookie is still a cookie the browser sends back.
     const first = await inRequest(async () => {
-      await (await useSession<{ a: number }>(CONFIG)).update({ a: 1 });
+      await (await useSession<CounterSession>(CONFIG)).update({ a: 1 });
     });
     const cleared = await inRequest(
       async () => clearSession(CONFIG),
@@ -127,11 +149,11 @@ describe("a session round-trips through the cookie", () => {
     setSystemTime(new Date(sealedAt));
     try {
       const first = await inRequest(async () => {
-        await (await useSession<{ a: number }>(CONFIG)).update({ a: 1 });
+        await (await useSession<CounterSession>(CONFIG)).update({ a: 1 });
       });
       setSystemTime(new Date(sealedAt + 20_000));
       const second = await inRequest(
-        async () => (await getSession<{ a: number }>(CONFIG)).createdAt,
+        async () => (await getSession<CounterSession>(CONFIG)).createdAt,
         asRequestCookie(first.setCookie[0] ?? ""),
       );
       expect(second.value).toBe(sealedAt);
@@ -142,7 +164,7 @@ describe("a session round-trips through the cookie", () => {
 
   test("the id survives an update and changes on a clear", async () => {
     const first = await inRequest(async () => {
-      const session = await useSession<{ a: number }>(CONFIG);
+      const session = await useSession<CounterSession>(CONFIG);
       const next = await session.update({ a: 1 });
       return { before: session.id, after: next.id };
     });
@@ -150,7 +172,7 @@ describe("a session round-trips through the cookie", () => {
 
     const cleared = await inRequest(
       async () => {
-        const session = await useSession<{ a: number }>(CONFIG);
+        const session = await useSession<CounterSession>(CONFIG);
         return { before: session.id, after: (await session.clear()).id };
       },
       asRequestCookie(first.setCookie[0] ?? ""),
@@ -166,14 +188,14 @@ describe("a session round-trips through the cookie", () => {
  */
 describe("one request, more than one reader", () => {
   /** What a browser holds after the response: the last line for a name wins. */
-  const stored = (lines: string[]): string | undefined => {
+  function stored(lines: string[]): string | undefined {
     let value: string | undefined;
     for (const line of lines) {
       const found = parseCookies(asRequestCookie(line))["barq-session"];
       if (found !== undefined) value = found;
     }
     return value;
-  };
+  }
 
   type Visit = { userId: number; seenAt: number };
 
@@ -222,8 +244,8 @@ describe("one request, more than one reader", () => {
 
   test("an update that cannot be sealed leaves the session as it was", async () => {
     const { value } = await inRequest(async () => {
-      await updateSession<{ userId: number; blob: string }>(CONFIG, { userId: 7 });
-      const refused = await updateSession<{ userId: number; blob: string }>(CONFIG, {
+      await updateSession<BlobSession>(CONFIG, { userId: 7 });
+      const refused = await updateSession<BlobSession>(CONFIG, {
         blob: "x".repeat(8_000),
       }).then(
         () => false,
@@ -241,8 +263,9 @@ describe("one request, more than one reader", () => {
  * one have to be indistinguishable to the caller, or the difference is an oracle.
  */
 describe("a cookie that will not open is a visitor who is not signed in", () => {
-  const sealedWith = async (config: SessionConfig) =>
-    sealSession(config, { id: "abc", createdAt: Date.now(), data: { userId: 7 } });
+  async function sealedWith(config: SessionConfig) {
+    return sealSession(config, { id: "abc", createdAt: Date.now(), data: { userId: 7 } });
+  }
 
   test("a different password does not open it", async () => {
     const sealed = await sealedWith(CONFIG);
@@ -319,7 +342,7 @@ describe("a cookie that will not open is a visitor who is not signed in", () => 
 
   test("a session that will not open is an EMPTY session, not an error", async () => {
     const { value } = await inRequest(
-      async () => (await useSession<{ userId: number }>(CONFIG)).data,
+      async () => (await useSession<UserSession>(CONFIG)).data,
       "barq-session=b1.forged.forged.forged",
     );
     expect(value).toEqual({});
@@ -350,7 +373,7 @@ describe("the cookie's name is part of the seal", () => {
   test("a request carrying it under another name is a visitor who is not signed in", async () => {
     const sealed = await sealSession({ ...CONFIG, name: "a" }, session);
     const { value } = await inRequest(
-      async () => (await useSession<{ userId: number }>({ ...CONFIG, name: "b" })).data,
+      async () => (await useSession<UserSession>({ ...CONFIG, name: "b" })).data,
       `b=${sealed}`,
     );
     expect(value).toEqual({});
@@ -363,17 +386,14 @@ describe("the cookie's name is part of the seal", () => {
  * time the session is written.
  */
 describe("a b1 cookie", () => {
-  const encode = (bytes: Uint8Array): string =>
-    btoa(String.fromCharCode(...bytes))
+  function encode(bytes: Uint8Array): string {
+    return btoa(String.fromCharCode(...bytes))
       .replaceAll("+", "-")
       .replaceAll("/", "_")
       .replaceAll("=", "");
+  }
 
-  const sealLegacy = async (session: {
-    id: string;
-    createdAt: number;
-    data: Record<string, unknown>;
-  }): Promise<string> => {
+  async function sealLegacy(session: LegacySession): Promise<string> {
     const encoder = new TextEncoder();
     const salt = crypto.getRandomValues(new Uint8Array(16));
     const iv = crypto.getRandomValues(new Uint8Array(12));
@@ -395,10 +415,11 @@ describe("a b1 cookie", () => {
       ),
     );
     return ["b1", encode(salt), encode(iv), encode(sealed)].join(".");
-  };
+  }
 
-  const signedIn = (): Promise<string> =>
-    sealLegacy({ id: "salama", createdAt: Date.now(), data: { userId: 7 } });
+  function signedIn(): Promise<string> {
+    return sealLegacy({ id: "salama", createdAt: Date.now(), data: { userId: 7 } });
+  }
 
   test("still opens", async () => {
     const legacy = await signedIn();
@@ -412,7 +433,7 @@ describe("a b1 cookie", () => {
     const config: SessionConfig = { ...CONFIG, name: "account" };
     const { setCookie } = await inRequest(
       async () => {
-        await (await useSession<{ userId: number; seenAt: number }>(config)).update({ seenAt: 1 });
+        await (await useSession<SeenSession>(config)).update({ seenAt: 1 });
       },
       `account=${await signedIn()}`,
     );
@@ -429,7 +450,7 @@ describe("a b1 cookie", () => {
 
   test("is not re-issued by a request that only reads it", async () => {
     const { value, setCookie } = await inRequest(
-      async () => (await useSession<{ userId: number }>(CONFIG)).data,
+      async () => (await useSession<UserSession>(CONFIG)).data,
       `barq-session=${await signedIn()}`,
     );
     expect(value).toEqual({ userId: 7 });
@@ -512,7 +533,7 @@ describe("a revoked session", () => {
     const config: SessionConfig = { ...CONFIG, isRevoked: (id) => revoked.has(id) };
 
     const first = await inRequest(async () => {
-      const session = await useSession<{ userId: number }>(config);
+      const session = await useSession<UserSession>(config);
       await session.update({ userId: 7 });
       return session.id;
     });
@@ -565,7 +586,7 @@ describe("session fixation", () => {
 
     // The victim arrives with it and signs in.
     const afterLogin = await inRequest(async () => {
-      await (await useSession<{ userId: number }>(CONFIG)).update({ userId: 7 });
+      await (await useSession<UserSession>(CONFIG)).update({ userId: 7 });
     }, `barq-session=${attackerHeld}`);
     const issued = asRequestCookie(afterLogin.setCookie[0] ?? "")
       .split("=")
@@ -604,7 +625,7 @@ describe("the size a browser counts", () => {
  * key is more than half of what opening it costs.
  */
 describe("a key already derived is not derived again", () => {
-  const counting = async (body: () => Promise<void>): Promise<number> => {
+  async function counting(body: () => Promise<void>): Promise<number> {
     const derive = spyOn(crypto.subtle, "deriveKey");
     try {
       await body();
@@ -612,9 +633,14 @@ describe("a key already derived is not derived again", () => {
     } finally {
       derive.mockRestore();
     }
-  };
-  const fresh = (): Promise<string> =>
-    sealSession(CONFIG, { id: crypto.randomUUID(), createdAt: Date.now(), data: { userId: 7 } });
+  }
+  function fresh(): Promise<string> {
+    return sealSession(CONFIG, {
+      id: crypto.randomUUID(),
+      createdAt: Date.now(),
+      data: { userId: 7 },
+    });
+  }
 
   test("the cookie this server just sealed opens without a derivation", async () => {
     const sealed = await fresh();

@@ -14,6 +14,11 @@ import {
 } from "./index.ts";
 import { handleServerFn, mount, unmountAll } from "./server.ts";
 
+interface Recorded {
+  sent: RequestInit[];
+  fetch: typeof fetch;
+}
+
 const ORIGIN = "https://example.com";
 const realFetch = globalThis.fetch;
 
@@ -23,7 +28,7 @@ afterEach(() => {
 });
 
 /** A fetch answered by the real request handler, recording what it was sent. */
-const throughHandler = (): { sent: RequestInit[]; fetch: typeof fetch } => {
+function throughHandler(): Recorded {
   const sent: RequestInit[] = [];
   const answer = (async (input: RequestInfo | URL, init?: RequestInit) => {
     sent.push(init ?? {});
@@ -35,10 +40,10 @@ const throughHandler = (): { sent: RequestInit[]; fetch: typeof fetch } => {
     return response ?? new Response("not found", { status: 404 });
   }) as typeof fetch;
   return { sent, fetch: answer };
-};
+}
 
-const mountEcho = (id: string, header: string): void =>
-  mount(
+function mountEcho(id: string, header: string): void {
+  return mount(
     id,
     serverRpc<unknown, string | null>(
       { id },
@@ -49,6 +54,7 @@ const mountEcho = (id: string, header: string): void =>
       },
     ),
   );
+}
 
 describe("headers", () => {
   test("a call's headers reach the server", async () => {
@@ -207,13 +213,13 @@ describe("fetch", () => {
   test("the call's own fetch wins over a middleware's, and a later middleware's over an earlier", async () => {
     mountEcho("ranked", "x-none");
     const used: string[] = [];
-    const named = (name: string): typeof fetch => {
+    function named(name: string): typeof fetch {
       const wire = throughHandler();
       return (async (input: RequestInfo | URL, init?: RequestInit) => {
         used.push(name);
         return wire.fetch(input, init);
       }) as typeof fetch;
-    };
+    }
     const outer = createMiddleware().client(({ next }) => next({ fetch: named("outer") }));
     const inner = createMiddleware().client(({ next }) => next({ fetch: named("inner") }));
     const ranked = clientRpc<undefined, string | null>("ranked", [outer, inner]);

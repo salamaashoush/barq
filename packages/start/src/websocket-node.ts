@@ -10,12 +10,26 @@ const VITE_PROTOCOLS = new Set(["vite-hmr", "vite-ping"]);
 type Fetch = (request: Request) => Response | Promise<Response>;
 type Listener = (req: IncomingMessage, socket: Duplex, head: Buffer) => void;
 
+export interface UpgradeHandle {
+  listener: Listener;
+  close: () => void;
+}
+
+interface RelayServer {
+  port: number;
+  stop(force: boolean): void;
+}
+
+interface BunGlobal {
+  Bun: typeof Bun;
+}
+
 /**
  * A Node `upgrade` listener that hands each WebSocket upgrade to the route
  * that takes it, for a server barq does not start itself: Vite's dev and
  * preview servers. `serveBarq` installs the same through crossws's plugin.
  */
-export function upgradeListener(fetch: Fetch): { listener: Listener; close: () => void } {
+export function upgradeListener(fetch: Fetch): UpgradeHandle {
   const resolve = resolveWebSocket(fetch);
   const take = "Bun" in globalThis ? throughBun(resolve) : throughNode(resolve);
   return {
@@ -28,15 +42,13 @@ export function upgradeListener(fetch: Fetch): { listener: Listener; close: () =
   };
 }
 
-function throughNode(resolve: ReturnType<typeof resolveWebSocket>): {
-  listener: Listener;
-  close: () => void;
-} {
+function throughNode(resolve: ReturnType<typeof resolveWebSocket>): UpgradeHandle {
   let adapter: Promise<import("crossws/adapters/node").NodeAdapter> | undefined;
-  const ready = () =>
-    (adapter ??= import("crossws/adapters/node").then(({ default: create }) =>
+  function ready() {
+    return (adapter ??= import("crossws/adapters/node").then(({ default: create }) =>
       create({ resolve }),
     ));
+  }
   return {
     listener(req, socket, head) {
       void ready()
@@ -56,15 +68,12 @@ function throughNode(resolve: ReturnType<typeof resolveWebSocket>): {
  * the upgrade is relayed, bytes as they came, to a loopback server running
  * the Bun adapter: the same one a Bun deployment runs, request headers and all.
  */
-function throughBun(resolve: ReturnType<typeof resolveWebSocket>): {
-  listener: Listener;
-  close: () => void;
-} {
-  let server: Promise<{ port: number; stop(force: boolean): void }> | undefined;
-  const ready = () =>
-    (server ??= import("crossws/adapters/bun").then(({ default: create }) => {
+function throughBun(resolve: ReturnType<typeof resolveWebSocket>): UpgradeHandle {
+  let server: Promise<RelayServer> | undefined;
+  function ready() {
+    return (server ??= import("crossws/adapters/bun").then(({ default: create }) => {
       const ws = create({ resolve });
-      const bun = (globalThis as unknown as { Bun: typeof Bun }).Bun;
+      const bun = (globalThis as unknown as BunGlobal).Bun;
       const served = bun.serve({
         hostname: "127.0.0.1",
         port: 0,
@@ -73,6 +82,7 @@ function throughBun(resolve: ReturnType<typeof resolveWebSocket>): {
       });
       return { port: served.port ?? 0, stop: (force: boolean) => void served.stop(force) };
     }));
+  }
   return {
     listener(req, socket, head) {
       void ready()
@@ -86,10 +96,10 @@ function throughBun(resolve: ReturnType<typeof resolveWebSocket>): {
             if (head.length > 0) upstream.write(head);
             socket.pipe(upstream).pipe(socket);
           });
-          const drop = (): void => {
+          function drop(): void {
             upstream.destroy();
             socket.destroy();
-          };
+          }
           upstream.on("error", drop);
           socket.on("error", drop);
         })

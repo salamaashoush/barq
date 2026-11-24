@@ -14,6 +14,14 @@ import { DEV, isDev, markSafeError } from "@barqjs/core";
 import { DATA_SUFFIX, RPC_PREFIX, ServerFnError, clientRpc, serverRpc } from "./index.ts";
 import { type HandlerOptions, handleServerFn, mount, unmountAll } from "./server.ts";
 
+interface Contact {
+  email: string;
+}
+
+interface Signup {
+  contact: Contact;
+}
+
 const ORIGIN = "https://example.com";
 const realFetch = globalThis.fetch;
 const realError = console.error;
@@ -24,8 +32,8 @@ afterEach(() => {
   unmountAll();
 });
 
-const through = (options?: HandlerOptions): typeof fetch =>
-  (async (input: RequestInfo | URL, init?: RequestInit) => {
+function through(options?: HandlerOptions): typeof fetch {
+  return (async (input: RequestInfo | URL, init?: RequestInit) => {
     const headers = new Headers(init?.headers);
     headers.set("origin", ORIGIN);
     const response = await handleServerFn(
@@ -34,9 +42,10 @@ const through = (options?: HandlerOptions): typeof fetch =>
     );
     return response ?? new Response("not found", { status: 404 });
   }) as typeof fetch;
+}
 
-const failing = (id: string): void =>
-  mount(
+function failing(id: string): void {
+  return mount(
     id,
     serverRpc<undefined, null>(
       { id },
@@ -49,9 +58,11 @@ const failing = (id: string): void =>
       },
     ),
   );
+}
 
-const caught = async (call: () => Promise<unknown>): Promise<ServerFnError> =>
-  (await call().catch((error: unknown) => error)) as ServerFnError;
+async function caught(call: () => Promise<unknown>): Promise<ServerFnError> {
+  return (await call().catch((error: unknown) => error)) as ServerFnError;
+}
 
 describe("refused input", () => {
   test("names each issue and the path to its field, in every build", async () => {
@@ -81,7 +92,7 @@ describe("refused input", () => {
     globalThis.fetch = through();
 
     const error = await caught(() =>
-      clientRpc<{ contact: { email: string } }, null>("signup")({
+      clientRpc<Signup, null>("signup")({
         data: { contact: { email: "salama" } },
       }),
     );

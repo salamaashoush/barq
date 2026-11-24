@@ -2,6 +2,10 @@ import { expect, test } from "bun:test";
 
 import { type StandardSchema, UncheckedInputError, createServerFn } from "./index.ts";
 
+interface DataCall {
+  data: unknown;
+}
+
 const text: StandardSchema<unknown, string> = {
   "~standard": {
     version: 1,
@@ -25,7 +29,7 @@ test("a validator added for a later function does not open an earlier one", asyn
   const closed = base.handler(() => "closed");
   base.validator("unchecked").handler(({ data }) => data);
 
-  const call = closed as unknown as (options: { data: unknown }) => Promise<unknown>;
+  const call = closed as unknown as (options: DataCall) => Promise<unknown>;
   await expect(call({ data: { admin: true } })).rejects.toBeInstanceOf(UncheckedInputError);
 });
 
@@ -34,6 +38,6 @@ test("each function validates with the schema it was given", async () => {
   const strict = base.validator(text).handler(({ data }) => data);
   base.validator("unchecked").handler(({ data }) => data);
 
-  const call = strict as unknown as (options: { data: unknown }) => Promise<unknown>;
+  const call = strict as unknown as (options: DataCall) => Promise<unknown>;
   await expect(call({ data: 42 })).rejects.toThrow("failed validation");
 });

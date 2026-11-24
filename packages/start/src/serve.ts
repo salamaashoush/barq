@@ -101,7 +101,7 @@ export function createFetchHandler(
   const document = options.spa;
   // Read once and held, per handler: two in one process have two documents.
   let body: Promise<string> | undefined;
-  const spaDocument = async (path: string | URL, missing: Response): Promise<Response> => {
+  async function spaDocument(path: string | URL, missing: Response): Promise<Response> {
     // `node:fs` is imported here rather than at module scope, for the reason
     // `static.ts` gives: this module resolves on workerd too, where there is none.
     body ??= import("node:fs/promises").then((fs) => fs.readFile(path, "utf8"));
@@ -115,8 +115,8 @@ export function createFetchHandler(
       body = undefined;
       return missing;
     }
-  };
-  const handle = async (request: Request): Promise<Response> => {
+  }
+  async function handle(request: Request): Promise<Response> {
     const answered = await handleServerFn(request, options);
     if (answered !== null) return answered;
     const response = await page(request);
@@ -127,9 +127,13 @@ export function createFetchHandler(
     if (request.method !== "GET" && request.method !== "HEAD") return response;
     if (!(request.headers.get("accept") ?? "").includes("text/html")) return response;
     return spaDocument(document, response);
-  };
+  }
   const around = options.around;
   return around === undefined ? handle : async (request) => around(nativeRequest(request), handle);
+}
+
+interface LazyRequest {
+  _request?: Request;
 }
 
 /**
@@ -140,7 +144,7 @@ export function createFetchHandler(
  * that wraps a request writes. Materialised only where such code runs.
  */
 export function nativeRequest(request: Request): Request {
-  return (request as { _request?: Request })._request ?? request;
+  return (request as LazyRequest)._request ?? request;
 }
 
 /**
@@ -156,6 +160,15 @@ function failed(error: unknown): Response {
   return new Response("internal server error", { status: 500 });
 }
 
+interface WebSocketPluginOptions {
+  resolve: ReturnType<typeof resolveWebSocket>;
+}
+
+interface Runtime {
+  serve: (options: ServerOptions) => Server;
+  websocketPlugin: (options: WebSocketPluginOptions) => ServerPlugin;
+}
+
 /**
  * srvx's server and crossws's WebSocket plugin for the runtime this process
  * is, chosen when it starts.
@@ -166,10 +179,7 @@ function failed(error: unknown): Response {
  * refuses to run there. Imported by name instead, the build carries every
  * adapter and the runtime that starts the file decides.
  */
-async function runtime(): Promise<{
-  serve: (options: ServerOptions) => Server;
-  websocketPlugin: (options: { resolve: ReturnType<typeof resolveWebSocket> }) => ServerPlugin;
-}> {
+async function runtime(): Promise<Runtime> {
   if ("Bun" in globalThis) {
     const [srvx, crossws] = await Promise.all([import("srvx/bun"), import("crossws/server/bun")]);
     return { serve: srvx.serve, websocketPlugin: crossws.plugin };
