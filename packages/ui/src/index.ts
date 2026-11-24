@@ -440,6 +440,7 @@ export {
   type DropdownMenuSubTriggerProps,
   DropdownMenuTrigger,
   type DropdownMenuTriggerProps,
+  dropdownMenuVariants,
   menuPlacement,
   type MenuPositionProps,
 } from "./ui/dropdown-menu.tsx";

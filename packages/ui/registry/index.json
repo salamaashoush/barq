@@ -1259,6 +1259,7 @@
         "DropdownMenuTrigger",
         "DropdownMenuTriggerProps",
         "MenuPositionProps",
+        "dropdownMenuVariants",
         "menuPlacement"
       ]
     },

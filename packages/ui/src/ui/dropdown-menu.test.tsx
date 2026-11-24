@@ -30,6 +30,7 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
   type DropdownMenuSelectEvent,
+  dropdownMenuVariants,
 } from "./dropdown-menu.tsx";
 
 async function settle(): Promise<void> {
@@ -978,5 +979,27 @@ describe("a DropdownMenu three submenus deep", () => {
     const trigger = screen.getByRole("button", { name: "Open" });
     expect(trigger.getAttribute("aria-expanded")).toBe("false");
     expect(document.activeElement).toBe(trigger);
+  });
+});
+
+describe("dropdownMenuVariants", () => {
+  test("are the content's and an item's own classes, for a menu another component draws", async () => {
+    render(() => (
+      <DropdownMenu>
+        <DropdownMenuTrigger>
+          <Button>Open</Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent aria-label="Actions">
+          <DropdownMenuItem>Rename</DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    ));
+    await user.click(screen.getByRole("button", { name: "Open" }));
+    await settle();
+    const { content, item } = dropdownMenuVariants();
+    const menu = document.querySelector('[data-slot="dropdown-menu-content"]') as HTMLElement;
+    for (const one of content.split(" ")) expect(menu.classList.contains(one)).toBe(true);
+    const row = screen.getByRole("menuitem");
+    for (const one of item.split(" ")) expect(row.classList.contains(one)).toBe(true);
   });
 });

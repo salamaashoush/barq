@@ -19,7 +19,7 @@ import {
 } from "@barqjs/aria/menu";
 import { placementFor, type Align, type Placement, type Side } from "@barqjs/aria/overlays";
 import type { Child, Incoming } from "@barqjs/core";
-import { firstThatWorks, layer } from "@barqjs/css";
+import { firstThatWorks, layer, variants } from "@barqjs/css";
 import { Check } from "@barqjs/lucide/icons/check";
 import { ChevronRight } from "@barqjs/lucide/icons/chevron-right";
 import { Circle } from "@barqjs/lucide/icons/circle";
@@ -503,6 +503,13 @@ export function menuPlacement(
   return placementFor(props.side?.() ?? side, props.align?.() ?? "center");
 }
 
+/**
+ * The classes, without the components: for a menu another component draws,
+ * such as the overflow menu of `@barqjs/aria`'s collapsed action group, that
+ * should look like every other menu.
+ */
+export const dropdownMenuVariants = variants({ slots: { content, item } });
+
 export interface DropdownMenuContentProps<T> extends MenuComponentProps<T>, MenuPositionProps {
   /** Upstream's name for `shouldFocusWrap`, which here is on unless turned off. */
   loop?: boolean;
@@ -517,7 +524,7 @@ export function DropdownMenuContent<T>(props: DropdownMenuContentProps<T>) {
       offset={props.offset ?? props.sideOffset}
       crossOffset={props.crossOffset ?? props.alignOffset}
       data-slot={props["data-slot"] ?? "dropdown-menu-content"}
-      class={ui(content, props.class, props.className)}
+      class={ui(dropdownMenuVariants().content, props.class, props.className)}
     />
   );
 }
@@ -545,7 +552,7 @@ export function DropdownMenuItem(props: DropdownMenuItemProps) {
       data-slot={props["data-slot"] ?? "dropdown-menu-item"}
       data-variant={props.variant ?? "default"}
       data-inset={props.inset === true ? "" : undefined}
-      class={ui(item, props.class, props.className)}
+      class={ui(dropdownMenuVariants().item, props.class, props.className)}
     />
   );
 }
