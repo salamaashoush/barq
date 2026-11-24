@@ -27,4 +27,16 @@ export const interaction = arc.create({
   /** A column's edge a pointer or a finger drags to resize it, and no scrolling under the finger. */
   resize: { cursor: "col-resize", touchAction: "none" },
   invalid: { "[data-invalid]": { borderColor: tokens.destructive } },
+  /**
+   * Shown while the part it sits in is under the pointer or holds focus, or
+   * while it is open itself: an item's own actions, a tile's menu.
+   */
+  reveal: {
+    opacity: "0",
+    ":is(:hover, :focus-within) > &, &[data-open]": { opacity: "1" },
+  },
+  /** Faded while it takes no input. */
+  disabled: { "[data-disabled]": { opacity: "0.5" } },
+  /** Faded where it was picked up, while a drag carries it. */
+  dragging: { "[data-dragging]": { opacity: "0.5" } },
 });

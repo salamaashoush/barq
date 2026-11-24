@@ -24,11 +24,17 @@ import { useArcMessages } from "./messages.ts";
 export const listStyles = variants({
   slots: {
     root: arc(layout.column, layout.minZero, focus.outline),
-    row: arc(focus.inset, motion.colours, interaction.hover, interaction.selected, {
-      outlineStyle: "none",
-      "[data-disabled]": { opacity: "0.5" },
-      "[data-selection-mode]:not([data-selection-mode=none])": { cursor: "pointer" },
-    }),
+    row: arc(
+      focus.inset,
+      motion.colours,
+      interaction.hover,
+      interaction.selected,
+      interaction.disabled,
+      {
+        outlineStyle: "none",
+        "[data-selection-mode]:not([data-selection-mode=none])": { cursor: "pointer" },
+      },
+    ),
     item: arc({}),
     media: arc({}),
     content: arc(layout.minZero),

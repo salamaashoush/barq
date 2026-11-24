@@ -25,6 +25,7 @@ import {
   type AllowedLiteral,
   type AllowedPair,
   UI_GROUPS,
+  buildErrors,
   duplicates,
   literalsIn,
   placesIn,
@@ -43,7 +44,12 @@ const TREATMENT_MODULES = ["style/", "theme/", "code/style.ts", "code/editor-the
  * Pairs whose repetition belongs to each component, with the reason. Empty is
  * the goal; an entry has to say why composing a treatment would be wrong.
  */
-const ALLOWED: readonly AllowedPair[] = [];
+const ALLOWED: readonly AllowedPair[] = [
+  {
+    between: ["components/indicator.tsx", "components/rating.tsx"],
+    why: "a badge pinned over its anchor's top corner and a rating's fill laid over its stars from the top meet on two declarations by coincidence; each is that component's own placement",
+  },
+];
 
 /** Literals one component writes for several of its own parts' states, with the reason. */
 const ALLOWED_LITERALS: readonly AllowedLiteral[] = [
@@ -78,6 +84,15 @@ function report(found: Parameters<typeof reported>[0]): string[] {
 function repeatedLiterals(literals: Parameters<typeof repeated>[0]): string[] {
   return repeated(literals, ALLOWED_LITERALS);
 }
+
+describe("a build", () => {
+  // arc's own suite runs the runtime fallback for a style call the compiler
+  // declines, so an object a build refuses under `strictCss` (a spread, a
+  // value it cannot read) only showed up as a 500 from an app's dev server.
+  test("compiles every module with no error under strictCss", () => {
+    expect(modules().flatMap((path) => buildErrors(join(root, path), root, path))).toEqual([]);
+  });
+});
 
 describe("duplication", () => {
   test("no declaration group is written in two places, in arc or against ui's treatments", () => {

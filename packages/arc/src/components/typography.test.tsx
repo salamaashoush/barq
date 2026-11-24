@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { type Child } from "@barqjs/core";
+import { type Child, DEV } from "@barqjs/core";
 import { collectCss } from "@barqjs/css";
 import { provideLocale } from "@barqjs/aria/i18n";
 import { ariaViolations, render, screen, user } from "@barqjs/testing";
@@ -254,6 +254,20 @@ describe("Truncate", () => {
     expect(changes).toEqual([true]);
     expect(wears(slot("truncate-toggle"), target.size)).toBe(true);
     expect(await ariaViolations(document.body)).toEqual([]);
+  });
+
+  test("its measuring effect tracks what it reads, so the engine reports no untracked read", async () => {
+    overflowing();
+    const capture = DEV.diagnostics.capture();
+    render(() => <Truncate lines={2}>Acme renewal notes that run past two lines.</Truncate>);
+    await settle();
+    user.tap(screen.getByRole("button", { name: "Show more" }));
+    await settle();
+    user.tap(screen.getByRole("button", { name: "Show less" }));
+    await settle();
+    const strict = capture.stop().filter((event) => event.code === "STRICT_READ_UNTRACKED");
+    expect(strict).toEqual([]);
+    expect(screen.getByRole("button", { name: "Show more" })).not.toBeNull();
   });
 
   test("without a button the whole text is the title while it is cut", async () => {

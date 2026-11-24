@@ -23,6 +23,8 @@ export const place = {
   padded: arc({ paddingInline: space.x3, paddingBlock: space.x2 }),
   /** The same across a thin strip: a status line, a header above an editor. */
   paddedStrip: arc({ paddingInline: space.x3, paddingBlock: space.x1_5 }),
+  /** The room one line of a list keeps: a message, the line where the unread ones start. */
+  paddedLine: arc({ paddingInline: space.x3, paddingBlock: space.x1 }),
   /** No padding: a part whose content sets its size. */
   unpadded: arc({ padding: "0px" }),
   /** Over its positioned parent and out of the way: the pointer passes through it and it is never selected. */

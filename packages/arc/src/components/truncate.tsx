@@ -95,16 +95,23 @@ export function Truncate(props: TruncateProps) {
     setOwn(next);
     props.onOpenChange?.(next);
   };
-  const measure = (): void => {
-    const element = node();
-    if (element === null || open()) return;
+  const measure = (element: HTMLElement | null, shown: boolean): void => {
+    if (element === null || shown) return;
     setCut(
       element.scrollHeight > element.clientHeight + 1 ||
         element.scrollWidth > element.clientWidth + 1,
     );
   };
-  resizeObserver(() => node(), measure);
-  if (!isServer) createEffect(node, measure);
+  resizeObserver(
+    () => node(),
+    () => measure(node(), open()),
+  );
+  if (!isServer) {
+    createEffect(
+      () => [node(), open()] as const,
+      ([element, shown]) => measure(element, shown),
+    );
+  }
   const cls = (): Slots =>
     parts(truncateStyles({ lines: props.lines ?? 1, open: open() }), props.classes);
   const shows = (): boolean => props.expandable !== false && (cut() || open());

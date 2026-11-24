@@ -27,6 +27,7 @@ interface Native {
     warnings?: string[];
     cssWanted?: string[][];
     cssExports?: string[][];
+    diagnostics?: { code: string; severity: string; message: string; pos: number }[];
   };
 }
 
@@ -87,6 +88,17 @@ function compile(file: string, bareFrom: string, depth: number, exportsAsked = f
     out = native.transform(source, { ...base, cssImports });
   }
   return out;
+}
+
+/** The errors a build reports for one module, compiled as `@barqjs/vite` compiles it, `file:line` first. */
+export function buildErrors(file: string, bareFrom: string, shown = file): string[] {
+  const source = readFileSync(file, "utf8");
+  return (compile(file, bareFrom, 6).diagnostics ?? [])
+    .filter((diagnostic) => diagnostic.severity === "error")
+    .map(
+      (diagnostic) =>
+        `${shown}:${source.slice(0, diagnostic.pos).split("\n").length} ${diagnostic.code}: ${diagnostic.message}`,
+    );
 }
 
 /** Each class a stylesheet defines, as the declarations it holds, written without the class. */

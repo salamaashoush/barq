@@ -66,12 +66,19 @@ const isLoader = (row: Row): row is Loader => "loader" in row;
 export const treeViewStyles = variants({
   slots: {
     root: arc(layout.column, layout.minZero, focus.outline, type.sm, { outlineStyle: "none" }),
-    row: arc(focus.inset, rounded.md, motion.colours, interaction.hover, interaction.selected, {
-      outlineStyle: "none",
-      "[data-disabled]": { opacity: "0.5" },
-      "[data-drop-target]": { boxShadow: `inset 0 0 0 2px ${tokens.ring}` },
-      "[data-dragging]": { opacity: "0.5" },
-    }),
+    row: arc(
+      focus.inset,
+      rounded.md,
+      motion.colours,
+      interaction.hover,
+      interaction.selected,
+      interaction.disabled,
+      interaction.dragging,
+      {
+        outlineStyle: "none",
+        "[data-drop-target]": { boxShadow: `inset 0 0 0 2px ${tokens.ring}` },
+      },
+    ),
     content: arc(layout.row, layout.minZero, gap[1.5], target.size, {
       paddingInlineStart: "calc(var(--spacing) * 5 * (var(--tree-item-level, 1) - 1))",
       paddingInlineEnd: space.x2,

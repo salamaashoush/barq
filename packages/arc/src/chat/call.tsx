@@ -46,7 +46,18 @@ import { tokens } from "@barqjs/ui/theme/tokens";
 
 import { arcLayer as arc } from "../layer.ts";
 import { type Customisable, parts } from "../lib/parts.ts";
-import { bg, gap, glyph, layout, place, rounded, space, surface, type } from "../style/index.ts";
+import {
+  bg,
+  gap,
+  glyph,
+  interaction,
+  layout,
+  place,
+  rounded,
+  space,
+  surface,
+  type,
+} from "../style/index.ts";
 import { AvatarStack, type Person } from "../components/avatar-stack.tsx";
 import { Duration, type Moment } from "../components/format.tsx";
 import { IconButton } from "../components/icon-button.tsx";
@@ -120,14 +131,11 @@ export const callStyles = variants({
     name: arc(layout.clip, layout.nowrap, layout.minZero),
     // Over the tile's top corner on hover or focus, always under a finger,
     // which also opens it with a long press on the tile.
-    menu: arc(rounded.md, surface.onMedia, {
+    menu: arc(rounded.md, surface.onMedia, interaction.reveal, {
       position: "absolute",
       insetBlockStart: space.x1_5,
       insetInlineEnd: space.x1_5,
-      opacity: { default: "0", [on.coarse]: "1" },
-      "[data-slot=participant-tile]:is(:hover, :focus-within) > &, &[data-open]": {
-        opacity: "1",
-      },
+      opacity: { [on.coarse]: "1" },
     }),
     controls: arc(layout.row, layout.centre),
     leave: arc({}),

@@ -293,7 +293,6 @@ export function Code(props: CodeProps) {
 }
 
 /** What `Prose` draws every block of long-form text in: its own corners and rules. */
-const rule = { borderColor: tokens.border, borderStyle: "solid", borderWidth: "0" };
 const well = "var(--sunken, var(--muted))";
 
 export const proseStyles = variants({
@@ -303,10 +302,10 @@ export const proseStyles = variants({
       overflowWrap: "break-word",
       "& > :first-child": { marginBlockStart: "0" },
       "& > :last-child": { marginBlockEnd: "0" },
-      "& :is(p, ul, ol, blockquote, pre, table, figure, hr, dl)": {
+      "& :where(p, ul, ol, blockquote, pre, table, figure, hr, dl)": {
         marginBlock: "0 1.25em",
       },
-      "& :is(h1, h2, h3, h4, h5, h6)": {
+      "& :where(h1, h2, h3, h4, h5, h6)": {
         fontFamily: "var(--font-heading, var(--font-sans))",
         fontWeight: "var(--font-weight-semibold)",
         textWrap: "balance",
@@ -331,13 +330,21 @@ export const proseStyles = variants({
       "& li > :is(ul, ol)": { marginBlock: "0.3em 0" },
       "& li::marker": { color: tokens.mutedForeground },
       "& blockquote": {
-        ...rule,
+        borderColor: tokens.border,
+        borderStyle: "solid",
+        borderWidth: "0",
         borderInlineStartWidth: "3px",
         paddingInlineStart: "1em",
         fontStyle: "italic",
         color: tokens.mutedForeground,
       },
-      "& hr": { ...rule, borderBlockStartWidth: "1px", marginBlock: "2em" },
+      "& hr": {
+        borderColor: tokens.border,
+        borderStyle: "solid",
+        borderWidth: "0",
+        borderBlockStartWidth: "1px",
+        marginBlock: "2em",
+      },
       "& :is(code, kbd, samp)": { fontFamily: "var(--font-mono)", fontSize: "0.875em" },
       "& :not(pre) > code": {
         backgroundColor: well,
@@ -363,7 +370,9 @@ export const proseStyles = variants({
         fontVariantNumeric: "tabular-nums",
       },
       "& :is(th, td)": {
-        ...rule,
+        borderColor: tokens.border,
+        borderStyle: "solid",
+        borderWidth: "0",
         borderBlockEndWidth: "1px",
         paddingBlock: "0.5em",
         paddingInline: "0.75em",
