@@ -56,6 +56,49 @@ export interface ArcMessages {
   logEmpty: string;
   logNoMatches: string;
   logMatches: (count: number) => string;
+  repl: string;
+  replInput: string;
+  replRun: string;
+  replStop: string;
+  replClear: string;
+  replCopy: string;
+  replRunning: string;
+  replStopped: string;
+  replEmpty: string;
+  replResult: string;
+  replStdout: string;
+  replStderr: string;
+  replError: string;
+  replInfo: string;
+  replEcho: string;
+  closeTab: (label: string) => string;
+  closeOtherTabs: string;
+  closeTabsAfter: string;
+  closeAllTabs: string;
+  pinTab: string;
+  unpinTab: string;
+  pinnedTab: string;
+  moveTabEarlier: string;
+  moveTabLater: string;
+  tabActions: string;
+  tabMoved: (label: string, position: number, count: number) => string;
+  files: string;
+  newFile: string;
+  newFolder: string;
+  newFileName: string;
+  newFolderName: string;
+  renameItem: (label: string) => string;
+  rename: string;
+  copyPath: string;
+  collapseFolders: string;
+  fileActions: string;
+  noFiles: string;
+  deleteEntryHeading: (name: string) => string;
+  deleteFolderDescription: (count: number) => string;
+  deleteFileDescription: string;
+  nameTaken: (name: string) => string;
+  nameInvalid: string;
+  moveIntoItself: string;
   original: string;
   modified: string;
   breadcrumb: string;
@@ -1311,6 +1354,54 @@ export const ENGLISH: ArcMessages = {
   logEmpty: "Nothing logged",
   logNoMatches: "No lines match",
   logMatches: (count) => (count === 1 ? "1 line matches" : `${String(count)} lines match`),
+  repl: "Console",
+  replInput: "Code to run",
+  replRun: "Run",
+  replStop: "Stop",
+  replClear: "Clear",
+  replCopy: "Copy output",
+  replRunning: "Running",
+  replStopped: "Stopped",
+  replEmpty: "Type code and press Enter to run it.",
+  replResult: "Result",
+  replStdout: "Output",
+  replStderr: "Error output",
+  replError: "Error",
+  replInfo: "Note",
+  replEcho: "Ran",
+  closeTab: (label) => `Close ${label}`,
+  closeOtherTabs: "Close others",
+  closeTabsAfter: "Close the ones after",
+  closeAllTabs: "Close all",
+  pinTab: "Pin",
+  unpinTab: "Unpin",
+  pinnedTab: "Pinned",
+  moveTabEarlier: "Move earlier",
+  moveTabLater: "Move later",
+  tabActions: "Tab actions",
+  tabMoved: (label, position, count) => `${label} moved to ${String(position)} of ${String(count)}`,
+  files: "Files",
+  newFile: "New file",
+  newFolder: "New folder",
+  newFileName: "File name",
+  newFolderName: "Folder name",
+  renameItem: (label) => `Rename ${label}`,
+  rename: "Rename",
+  copyPath: "Copy path",
+  collapseFolders: "Collapse folders",
+  fileActions: "File actions",
+  noFiles: "No files yet",
+  deleteEntryHeading: (name) => `Delete ${name}?`,
+  deleteFolderDescription: (count) =>
+    count === 0
+      ? "The folder is empty."
+      : count === 1
+        ? "The 1 item in it is deleted with it."
+        : `The ${String(count)} items in it are deleted with it.`,
+  deleteFileDescription: "Its content is deleted with it.",
+  nameTaken: (name) => `${name} is already here. Choose another name.`,
+  nameInvalid: "A name cannot be empty, a dot, or hold a slash.",
+  moveIntoItself: "A folder cannot move into itself.",
   original: "Original",
   modified: "Modified",
   breadcrumb: "Breadcrumb",

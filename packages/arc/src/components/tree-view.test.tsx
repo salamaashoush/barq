@@ -182,6 +182,119 @@ describe("TreeView", () => {
     expect(slot("tree-view").classList.contains("mine")).toBe(true);
   });
 
+  test("F2 renames the focused row in place, Enter saves and focus returns", async () => {
+    const renamed: string[] = [];
+    render(() => (
+      <TreeView
+        aria-label="Files"
+        items={FILES}
+        onRename={(id, label) => {
+          renamed.push(`${id}=${label}`);
+        }}
+        renameSelection={(label) => [0, label.lastIndexOf(".")]}
+      />
+    ));
+    user.tab();
+    await user.keyboard("{ArrowDown}{ArrowDown}");
+    expect(document.activeElement?.textContent).toContain("README.md");
+    await user.keyboard("{F2}");
+    await settle();
+    const field = screen.getByRole<HTMLInputElement>("textbox", { name: "Rename README.md" });
+    expect(document.activeElement).toBe(field);
+    expect([field.selectionStart, field.selectionEnd]).toEqual([0, 6]);
+    expect(await ariaViolations(document.body)).toEqual([]);
+    await user.keyboard("{ArrowLeft}{ArrowDown}");
+    expect(document.activeElement).toBe(field);
+    field.value = "GUIDE.md";
+    await user.keyboard("{Enter}");
+    await settle();
+    expect(renamed).toEqual(["readme=GUIDE.md"]);
+    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(document.activeElement?.getAttribute("role")).toBe("row");
+    expect(document.activeElement?.textContent).toContain("README.md");
+  });
+
+  test("Escape puts the label back; an unchanged label saves nothing", async () => {
+    const renamed: string[] = [];
+    const keys: (string | null)[] = [];
+    render(() => (
+      <TreeView
+        aria-label="Files"
+        items={FILES}
+        onRename={(id, label) => {
+          renamed.push(`${id}=${label}`);
+        }}
+        onRenamingKeyChange={(key) => keys.push(key)}
+      />
+    ));
+    user.tab();
+    await user.keyboard("{F2}");
+    await settle();
+    const field = screen.getByRole<HTMLInputElement>("textbox");
+    field.value = "other";
+    await user.keyboard("{Escape}");
+    await settle();
+    expect(rows()).toContain("src");
+    await user.keyboard("{F2}");
+    await settle();
+    await user.keyboard("{Enter}");
+    await settle();
+    expect(renamed).toEqual([]);
+    expect(keys).toEqual(["src", null, "src", null]);
+  });
+
+  test("a label that fails validation keeps the field open with the reason", async () => {
+    const renamed: string[] = [];
+    render(() => (
+      <TreeView
+        aria-label="Files"
+        items={FILES}
+        defaultRenamingKey="docs"
+        onRename={(id, label) => {
+          renamed.push(`${id}=${label}`);
+        }}
+        validateLabel={(label) => (label === "src" ? "Taken" : undefined)}
+      />
+    ));
+    await settle();
+    const field = screen.getByRole<HTMLInputElement>("textbox", { name: "Rename docs" });
+    field.value = "src";
+    field.focus();
+    await user.keyboard("{Enter}");
+    await settle();
+    expect(screen.getByRole("alert").textContent).toBe("Taken");
+    expect(field.getAttribute("aria-invalid")).toBe("true");
+    expect(renamed).toEqual([]);
+    field.value = "manuals";
+    await user.keyboard("{Enter}");
+    await settle();
+    expect(renamed).toEqual(["docs=manuals"]);
+  });
+
+  test("leaving the field saves it", async () => {
+    const renamed: string[] = [];
+    render(() => (
+      <>
+        <TreeView
+          aria-label="Files"
+          items={FILES}
+          defaultRenamingKey="readme"
+          onRename={(id, label) => {
+            renamed.push(`${id}=${label}`);
+          }}
+        />
+        <button type="button">elsewhere</button>
+      </>
+    ));
+    await settle();
+    const field = screen.getByRole<HTMLInputElement>("textbox");
+    field.value = "NOTES.md";
+    user.click(screen.getByRole("button", { name: "elsewhere" }));
+    field.blur();
+    await settle();
+    expect(renamed).toEqual(["readme=NOTES.md"]);
+  });
+
   test("hydrates what the server wrote", async () => {
     const result = await hydrates(`
       import { TreeView } from "<arc>";
