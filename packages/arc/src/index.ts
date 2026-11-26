@@ -198,6 +198,93 @@ export {
   repeaterFieldStyles,
 } from "./components/repeater-field.tsx";
 export {
+  CopyableField,
+  type CopyableFieldProps,
+  SecretField,
+  type SecretFieldProps,
+  SecretReferenceField,
+  type SecretReferenceFieldProps,
+  type StoredSecret,
+  StoredSecretField,
+  type StoredSecretFieldProps,
+  copyableFieldStyles,
+  referencedSecret,
+  secretFieldStyles,
+  secretReference,
+  secretReferenceFieldStyles,
+  storedSecretFieldStyles,
+} from "./components/secret-fields.tsx";
+export {
+  FileOrPasteField,
+  type FileOrPasteFieldProps,
+  fileOrPasteFieldStyles,
+} from "./components/file-or-paste-field.tsx";
+export {
+  MaskedValue,
+  type MaskedValueProps,
+  OneTimeSecret,
+  type OneTimeSecretProps,
+  RedactedSecret,
+  type RedactedSecretProps,
+  RedactedText,
+  type RedactedTextProps,
+  handOffSecret,
+  maskedValueStyles,
+  oneTimeSecretStyles,
+  type RedactedPiece,
+  redactedPieces,
+  redactedSecretStyles,
+  takeSecret,
+} from "./components/secret-display.tsx";
+export {
+  type PermissionScope,
+  PermissionScopePicker,
+  type PermissionScopePickerProps,
+  type ScopeGroup,
+  permissionScopePickerStyles,
+  scopeSummary,
+} from "./components/scope-picker.tsx";
+export {
+  type CredentialBinding,
+  CredentialBindingList,
+  type CredentialBindingListProps,
+  type CredentialBindings,
+  type CredentialScope,
+  type CredentialSource,
+  type RequiredCredential,
+  credentialBindingListStyles,
+  credentialBindingProblem,
+  credentialBindings,
+  defaultCredentialBinding,
+} from "./components/credential-binding.tsx";
+export {
+  type ActiveSession,
+  ActiveSessionsList,
+  type ActiveSessionsListProps,
+  type ConnectedApp,
+  ConnectedAppsList,
+  type ConnectedAppsListProps,
+  type ConnectionPolicy,
+  type SessionDevice,
+  accessListStyles,
+} from "./components/access-lists.tsx";
+export {
+  type ApiKey,
+  type ApiKeyDraft,
+  ApiKeyManager,
+  type ApiKeyManagerProps,
+  type CreatedApiKey,
+  type RevokeOption,
+  apiKeyManagerStyles,
+} from "./components/api-key-manager.tsx";
+export {
+  ConnectionTestDialog,
+  type ConnectionTestDialogProps,
+  type ConnectionTestProbe,
+  type ConnectionTestResult,
+  connectionTestStyles,
+} from "./components/connection-test.tsx";
+export {
   CollectionField,
   type CollectionFieldProps,
   type CollectionRecordForm,
