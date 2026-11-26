@@ -1,4 +1,13 @@
-import { type Child, Show, createMemo, provide, untrack } from "@barqjs/core";
+import {
+  type Child,
+  For,
+  Show,
+  createEffect,
+  createMemo,
+  createSignal,
+  provide,
+  untrack,
+} from "@barqjs/core";
 import { variants } from "@barqjs/css";
 import { controllable } from "@barqjs/aria/utils";
 import { RouterContext } from "@barqjs/aria/interactions";
@@ -24,6 +33,7 @@ import { ArrowDown } from "@barqjs/lucide/icons/arrow-down";
 import { ArrowUp } from "@barqjs/lucide/icons/arrow-up";
 import { ChevronRight } from "@barqjs/lucide/icons/chevron-right";
 import { ChevronsUpDown } from "@barqjs/lucide/icons/chevrons-up-down";
+import { CircleAlert } from "@barqjs/lucide/icons/circle-alert";
 import { mediaQuery } from "@barqjs/primitives/media";
 import {
   type ColumnDef,
@@ -42,10 +52,13 @@ import {
   sortFns,
   tableFeatures,
 } from "@barqjs/table";
+import { Button } from "@barqjs/ui/button";
 import { Checkbox } from "@barqjs/ui/checkbox";
 import { icon } from "@barqjs/ui/shared-icon";
 import { Skeleton } from "@barqjs/ui/skeleton";
 import { Spinner } from "@barqjs/ui/spinner";
+import { srOnly } from "@barqjs/ui/sr-only";
+import { isServer } from "@barqjs/web";
 
 import { type Breakpoint, breakpointQuery, on } from "@barqjs/ui/conditions";
 
@@ -63,6 +76,7 @@ import {
   layout,
   motion,
   place,
+  plainList,
   rounded,
   space,
   square,
@@ -70,6 +84,8 @@ import {
   type,
 } from "../style/index.ts";
 import { useArcMessages } from "./messages.ts";
+import { type DataTableRowAction, RowActions } from "./data-table-parts.tsx";
+import { DescriptionList } from "./description-list.tsx";
 import { EmptyState } from "./empty-state.tsx";
 import { linkRouter, maybeRouter } from "./link.ts";
 import { Pager } from "./pager.tsx";
@@ -141,6 +157,34 @@ export interface DataTableLabels {
   resize?: string;
 }
 
+/** A failed load, said in place of the rows. */
+export interface DataTableError {
+  /** The server's words, as a sentence. */
+  message: string;
+  /** The request's id, for a support ticket. */
+  requestId?: string;
+}
+
+/** How a row reads as a card on a phone. */
+export interface DataTableCard<T> {
+  title: (row: T) => Child;
+  /** At the start: an avatar, an icon. */
+  leading?: (row: T) => Child;
+  /** A muted line under the title. */
+  fact?: (row: T) => Child;
+  /** At the end: a `Status`. */
+  status?: (row: T) => Child;
+}
+
+/** A summing row under the rows: a label, and a value for each column it sums, by column id. */
+export interface DataTableTotal {
+  id: string;
+  label: string;
+  cells: Readonly<Record<string, Child>>;
+}
+
+export type { DataTableRowAction };
+
 export interface DataTableProps<T extends RowData> extends Customisable<Slots> {
   /** Names the table for a screen reader. */
   label: string;
@@ -154,6 +198,24 @@ export interface DataTableProps<T extends RowData> extends Customisable<Slots> {
   skeletonRows?: number;
   /** What an empty table shows. @default an `EmptyState` saying there is nothing here */
   empty?: Child;
+  /** The load failed: said in place of the rows, with Try again when `onRetry` is given. */
+  error?: DataTableError | null;
+  /** Its promise holds Try again pending. */
+  onRetry?: () => void | Promise<unknown>;
+  /** Under the rows, inside the frame: a `DataTableNote` or a `DataTableCount`. */
+  footer?: Child;
+  /** The row whose detail is open, marked `aria-current` while a sheet steps through the rows. */
+  activeKey?: string | null;
+  /** Its own density, whatever the page's: `compact` for logs read in bulk. */
+  density?: "compact" | "comfortable" | "spacious";
+  /** Rows as cards below the `md` step, a phone's width. */
+  card?: DataTableCard<T>;
+  /** `cards` draws the cards at every width, for a table in a narrow column. @default "responsive" */
+  layout?: "responsive" | "cards";
+  /** Summing rows under the rows. */
+  totals?: readonly DataTableTotal[];
+  /** A row's own actions: at most one `inline` beside it, the rest in a menu named after the row. */
+  rowActions?: (row: T) => readonly DataTableRowAction[];
 
   /** The order, as TanStack writes it. Leave it out and the table keeps its own. */
   sorting?: SortingState;
@@ -218,6 +280,7 @@ export interface DataTableProps<T extends RowData> extends Customisable<Slots> {
 }
 
 const SELECT = "__arc-select";
+const ACTIONS = "__arc-actions";
 const LOADER = "__arc-loader";
 const SKELETON = "__arc-skeleton-";
 
@@ -250,6 +313,21 @@ const cellPad = arc(place.padded);
 /** Numbers sit at the end, in the column and in its header alike. */
 const aligned = arc({ '[data-align="end"]': { justifyContent: "flex-end", textAlign: "end" } });
 
+/** The header's row and a totals row lay their cells on the body's column tracks. */
+const onColumns = arc({
+  '& > [role="row"]': {
+    display: "grid",
+    gridTemplateColumns: "var(--arc-data-table-columns)",
+    alignItems: "center",
+  },
+});
+
+/** The row or card whose detail is open beside the table. */
+const currentRow = arc({ '[aria-current="true"]': { backgroundColor: "var(--accent)" } });
+
+/** A list's last row leaves the frame's own edge to close it. */
+const lastOpen = arc({ ":last-child": { borderBlockEndWidth: "0px" } });
+
 export const dataTableStyles = variants({
   slots: {
     root: arc({}),
@@ -259,15 +337,10 @@ export const dataTableStyles = variants({
       "[data-scrolls]": { overflow: "auto", overscrollBehavior: "contain" },
     }),
     grid: arc(layout.column, type.sm, focus.none, focus.inset, { minWidth: "min-content" }),
-    header: arc(surface.sunken, layout.sticky, {
+    header: arc(surface.sunken, layout.sticky, onColumns, {
       top: "var(--arc-data-table-sticky-top, 0px)",
       boxShadow: "inset 0 -1px 0 var(--border)",
-      '& > [role="row"]': {
-        display: "grid",
-        gridTemplateColumns: "var(--arc-data-table-columns)",
-        alignItems: "center",
-        minHeight: space.x9,
-      },
+      '& > [role="row"]': { minHeight: space.x9 },
     }),
     body: arc(layout.relative),
     row: arc(
@@ -278,13 +351,14 @@ export const dataTableStyles = variants({
       interaction.focusWithin,
       interaction.selected,
       motion.colours,
+      currentRow,
+      lastOpen,
       {
         display: "grid",
         gridTemplateColumns: "var(--arc-data-table-columns)",
         alignItems: "center",
         minHeight: space.x11,
         "[data-href]": { cursor: "pointer" },
-        ":last-child": { borderBlockEndWidth: "0px" },
       },
     ),
     head: arc(
@@ -362,9 +436,47 @@ export const dataTableStyles = variants({
     ),
     expandSpacer: arc(layout.noShrink, square.x5),
     empty: arc({ padding: space.x6 }),
+    error: arc({ padding: space.x6 }),
+    requestId: arc(type.mono, type.xs),
+    actionsHead: arc(srOnly),
+    totals: arc(surface.sunken, type.medium, edge.top, onColumns, {
+      '& > [role="row"]': { minHeight: space.x11 },
+    }),
+    total: arc(layout.row, layout.minZero, cellPad, aligned, type.numeric),
+    cards: arc(plainList, edge.all, rounded.lg, bg.card, layout.column),
+    card: arc(
+      layout.relative,
+      layout.row,
+      gap[3],
+      edge.bottom,
+      interaction.hover,
+      motion.colours,
+      currentRow,
+      lastOpen,
+      place.padded,
+      { minHeight: space.x16 },
+    ),
+    cardBody: arc(layout.column, layout.grow, layout.minZero, gap[0.5]),
+    cardTitle: arc(type.sm, type.medium, {
+      "& a::after": { content: '""', position: "absolute", inset: "0" },
+    }),
+    cardFact: arc(type.meta, fg.muted),
+    cardEnd: arc(layout.relative, layout.row, layout.noShrink, gap[1]),
+    cardTotal: arc(layout.column, gap[1.5], surface.sunken, edge.top, place.padded),
     pagination: arc(layout.row, layout.end, gap[2], edge.top, fg.muted, type.sm, cellPad),
     page: arc(type.numeric),
   },
+  variants: {
+    layout: {
+      table: {},
+      responsive: {
+        frame: arc({ [on.belowMd]: { display: "none" } }),
+        cards: arc({ [on.md]: { display: "none" } }),
+      },
+      cards: { frame: arc({ display: "none" }) },
+    },
+  },
+  defaults: { layout: "table" },
 });
 
 type Slots = ReturnType<typeof dataTableStyles>;
@@ -411,7 +523,12 @@ export function DataTable<T extends RowData>(props: DataTableProps<T>) {
     };
   }
   function cls(): Slots {
-    return parts(dataTableStyles(), props.classes);
+    return parts(
+      dataTableStyles({
+        layout: props.card === undefined ? "table" : (props.layout ?? "responsive"),
+      }),
+      props.classes,
+    );
   }
 
   const [sorting, setSorting] = controllable<SortingState>(
@@ -502,6 +619,17 @@ export function DataTable<T extends RowData>(props: DataTableProps<T>) {
         maxWidth: options.maxWidth ?? null,
       };
     });
+    if (props.rowActions !== undefined) {
+      items.push({
+        id: ACTIONS,
+        header: null,
+        options: { width: "max-content", align: "end" },
+        allowsSorting: false,
+        isRowHeader: false,
+        defaultWidth: 48,
+        minWidth: 48,
+      });
+    }
     if (!selectable()) return items;
     return [
       {
@@ -593,13 +721,34 @@ export function DataTable<T extends RowData>(props: DataTableProps<T>) {
     setSelected(new Set(all.filter((key) => rowsById().has(key))));
   }
 
+  /** The selection, less the rows a filter or a page took off the screen. */
+  const shownSelection = createMemo((): ReadonlySet<string> => {
+    const kept = new Set<string>();
+    for (const key of selected()) if (rowsById().has(key)) kept.add(key);
+    return kept;
+  });
+  // A filter must never hide a row an action would reach, so a selected row
+  // that leaves the screen leaves the selection.
+  if (!isServer) {
+    createEffect(
+      () => (isLoading() ? 0 : selected().size - shownSelection().size),
+      (hidden) => {
+        if (hidden > 0) setSelected(new Set(untrack(shownSelection)));
+      },
+    );
+  }
+
   function selectedRows(): T[] {
     const found: T[] = [];
-    for (const key of selected()) {
+    for (const key of shownSelection()) {
       const record = rowsById().get(key);
       if (record !== undefined) found.push(record);
     }
     return found;
+  }
+
+  function keepRows(rows: readonly T[]): void {
+    setSelected(new Set(rows.map((row) => props.getRowId(row))));
   }
 
   function pageCount(): number {
@@ -608,7 +757,8 @@ export function DataTable<T extends RowData>(props: DataTableProps<T>) {
   function treeColumn(): string | undefined {
     return props.getSubRows === undefined
       ? undefined
-      : (props.treeColumn ?? columns().find((column) => column.id !== SELECT)?.id);
+      : (props.treeColumn ??
+          columns().find((column) => column.id !== SELECT && column.id !== ACTIONS)?.id);
   }
   const router = linkRouter(maybeRouter());
 
@@ -630,7 +780,7 @@ export function DataTable<T extends RowData>(props: DataTableProps<T>) {
               : {},
         }}
         selectionMode={props.selectionMode ?? "none"}
-        selectedKeys={selected()}
+        selectedKeys={shownSelection()}
         disabledKeys={disabled()}
         onSelectionChange={onSelectionChange}
         sortDescriptor={sortDescriptor()}
@@ -656,6 +806,7 @@ export function DataTable<T extends RowData>(props: DataTableProps<T>) {
           {(column: ColumnItem) => (
             <HeaderCell
               column={column}
+              actionsLabel={messages().actions}
               labels={labels()}
               resizable={props.resizable === true}
               classes={cls()}
@@ -688,6 +839,13 @@ export function DataTable<T extends RowData>(props: DataTableProps<T>) {
                 class={cls().row}
                 data-slot="data-table-row"
                 data-skeleton={item.kind === "skeleton" ? "" : undefined}
+                aria-current={
+                  props.activeKey !== undefined &&
+                  props.activeKey !== null &&
+                  item.id === props.activeKey
+                    ? "true"
+                    : undefined
+                }
               >
                 {(column: ColumnItem) => (
                   <BodyCell
@@ -696,6 +854,12 @@ export function DataTable<T extends RowData>(props: DataTableProps<T>) {
                     labels={labels()}
                     classes={cls()}
                     isTreeColumn={column.id === treeColumn()}
+                    rowActions={
+                      props.rowActions === undefined
+                        ? undefined
+                        : (row: RowData) => props.rowActions?.(row as T) ?? []
+                    }
+                    rowName={item.kind === "row" ? rowText(item.row, columns()) : ""}
                   />
                 )}
               </Row>
@@ -742,48 +906,246 @@ export function DataTable<T extends RowData>(props: DataTableProps<T>) {
         );
   }
 
-  return (
-    <div class={arc(cls().root, props.class, props.className)} data-slot="data-table">
-      <div
-        class={cls().frame}
-        data-slot="data-table-frame"
-        data-scrolls={props.height === undefined ? undefined : ""}
-        aria-busy={isLoading() ? "true" : undefined}
-        style={{
-          "--arc-data-table-columns": template(),
-          "max-height": props.height,
-        }}
-      >
-        {content()}
-        <Show when={props.pagination !== undefined && !isLoading() && pageCount() > 1}>
-          <Pager
-            class={cls().pagination}
-            classes={{ current: cls().page }}
-            variant="compact"
-            pageIndex={pageIndex()}
-            onPageIndexChange={setPageIndex}
-            pageCount={pageCount()}
-            labels={{
-              pagination: labels().pagination,
-              previous: labels().previous,
-              next: labels().next,
-              page: labels().page,
-            }}
-          />
-        </Show>
+  function failed() {
+    return (
+      <div class={cls().error} data-slot="data-table-error">
+        <EmptyState
+          icon={<CircleAlert aria-hidden="true" />}
+          heading={messages().couldNotLoad(props.label)}
+          description={
+            <>
+              {props.error?.message}
+              <Show when={props.error?.requestId !== undefined}>
+                {" "}
+                <span class={cls().requestId} data-slot="data-table-request-id">
+                  {messages().requestId(props.error?.requestId ?? "")}
+                </span>
+              </Show>
+            </>
+          }
+          actions={
+            <Show when={props.onRetry !== undefined}>
+              <Button
+                variant="outline"
+                size="sm"
+                isPending={retrying()}
+                data-slot="data-table-retry"
+                onPress={() => void retry()}
+              >
+                {messages().tryAgain}
+              </Button>
+            </Show>
+          }
+        />
       </div>
-      <Show when={props.selectionActions !== undefined && selected().size > 0}>
+    );
+  }
+  const [retrying, setRetrying] = createSignal(false);
+  async function retry(): Promise<void> {
+    setRetrying(true);
+    try {
+      await props.onRetry?.();
+    } finally {
+      setRetrying(false);
+    }
+  }
+
+  function totals() {
+    return (
+      <Show when={(props.totals ?? []).length > 0 && !isLoading()}>
+        <div
+          class={cls().totals}
+          role="table"
+          aria-label={messages().totals}
+          data-slot="data-table-totals"
+        >
+          <For each={() => props.totals ?? []}>
+            {(total: DataTableTotal) => (
+              <div role="row" data-slot="data-table-total-row">
+                <For each={columns}>
+                  {(column: ColumnItem) => (
+                    <div
+                      role={column.isRowHeader ? "rowheader" : "cell"}
+                      class={cls().total}
+                      data-slot="data-table-total"
+                      data-align={column.options.align ?? "start"}
+                    >
+                      {column.isRowHeader ? total.label : total.cells[column.id]}
+                    </div>
+                  )}
+                </For>
+              </div>
+            )}
+          </For>
+        </div>
+      </Show>
+    );
+  }
+
+  function cards() {
+    const card = props.card as DataTableCard<T>;
+    return (
+      <ul class={cls().cards} aria-label={props.label} data-slot="data-table-cards">
+        <For each={() => (isLoading() ? [] : [...rowsById().entries()])}>
+          {(entry: [string, T]) => {
+            const [key, row] = entry;
+            function title() {
+              return props.rowHref === undefined ? (
+                card.title(row)
+              ) : (
+                <a href={props.rowHref(row)} onClick={(event: MouseEvent) => follow(event, row)}>
+                  {card.title(row)}
+                </a>
+              );
+            }
+            return (
+              <li
+                class={cls().card}
+                data-slot="data-table-card"
+                aria-current={props.activeKey === key ? "true" : undefined}
+              >
+                <Show when={selectable()}>
+                  <span class={cls().cardEnd}>
+                    <Checkbox
+                      aria-label={`${labels().selectRow} ${cardName(row)}`.trim()}
+                      isSelected={shownSelection().has(key)}
+                      onChange={(ticked: boolean) => {
+                        const next = new Set(untrack(shownSelection));
+                        if (ticked) next.add(key);
+                        else next.delete(key);
+                        setSelected(next);
+                      }}
+                    />
+                  </span>
+                </Show>
+                {card.leading?.(row)}
+                <div class={cls().cardBody} data-slot="data-table-card-body">
+                  <span class={cls().cardTitle} data-slot="data-table-card-title">
+                    {title()}
+                  </span>
+                  <Show when={card.fact !== undefined}>
+                    <span class={cls().cardFact} data-slot="data-table-card-fact">
+                      {card.fact?.(row)}
+                    </span>
+                  </Show>
+                </div>
+                <Show when={card.status !== undefined || props.rowActions !== undefined}>
+                  <span class={cls().cardEnd} data-slot="data-table-card-end">
+                    {card.status?.(row)}
+                    <Show when={props.rowActions !== undefined}>
+                      <RowActions
+                        actions={props.rowActions?.(row) ?? []}
+                        name={cardName(row)}
+                        menuOnly
+                        size="icon-lg"
+                      />
+                    </Show>
+                  </span>
+                </Show>
+              </li>
+            );
+          }}
+        </For>
+        <For each={() => (isLoading() ? [] : (props.totals ?? []))}>
+          {(total: DataTableTotal) => (
+            <li class={cls().cardTotal} data-slot="data-table-card-total">
+              <span>{total.label}</span>
+              <DescriptionList
+                layout="inline"
+                divided={false}
+                items={columns()
+                  .filter((column) => total.cells[column.id] !== undefined)
+                  .map((column) => ({
+                    id: column.id,
+                    term: headerText(column),
+                    details: total.cells[column.id],
+                  }))}
+              />
+            </li>
+          )}
+        </For>
+      </ul>
+    );
+  }
+  function cardName(row: T): string {
+    const named = columns().find((column) => column.isRowHeader);
+    if (named === undefined) return "";
+    const value = (
+      named.header?.column.accessorFn as ((row: T, index: number) => unknown) | undefined
+    )?.(row, 0);
+    return typeof value === "string" || typeof value === "number" ? String(value) : "";
+  }
+  function follow(event: MouseEvent, row: T): void {
+    if (router === undefined || event.defaultPrevented || event.button !== 0) return;
+    event.preventDefault();
+    router.open(event.currentTarget as Element, event, props.rowHref?.(row) ?? "");
+  }
+
+  return (
+    <div
+      class={arc(cls().root, props.class, props.className)}
+      data-slot="data-table"
+      data-density={props.density}
+    >
+      <Show
+        when={props.error === undefined || props.error === null}
+        fallback={
+          <div class={cls().frame} data-slot="data-table-frame">
+            {failed()}
+          </div>
+        }
+      >
+        <div
+          class={cls().frame}
+          data-slot="data-table-frame"
+          data-scrolls={props.height === undefined ? undefined : ""}
+          aria-busy={isLoading() ? "true" : undefined}
+          style={{
+            "--arc-data-table-columns": template(),
+            "max-height": props.height,
+          }}
+        >
+          {content()}
+          {totals()}
+          <Show when={props.pagination !== undefined && !isLoading() && pageCount() > 1}>
+            <Pager
+              class={cls().pagination}
+              classes={{ current: cls().page }}
+              variant="compact"
+              pageIndex={pageIndex()}
+              onPageIndexChange={setPageIndex}
+              pageCount={pageCount()}
+              labels={{
+                pagination: labels().pagination,
+                previous: labels().previous,
+                next: labels().next,
+                page: labels().page,
+              }}
+            />
+          </Show>
+          {props.footer}
+        </div>
+        <Show when={props.card !== undefined}>{cards()}</Show>
+      </Show>
+      <Show when={props.selectionActions !== undefined && shownSelection().size > 0}>
         <SelectionBar
-          count={selected().size}
+          count={shownSelection().size}
           rows={selectedRows()}
           actions={props.selectionActions ?? []}
           selectedLabel={props.selectedLabel}
           onClear={() => setSelected(new Set())}
+          onKeep={keepRows}
           floating
         />
       </Show>
     </div>
   );
+}
+
+/** A column's header as words, for a total's card on a phone. */
+function headerText(column: ColumnItem): string {
+  const header = column.header?.column.columnDef.header;
+  return column.options.label ?? (typeof header === "string" ? header : column.id);
 }
 
 /** The row's text, for typeahead: its row header's value. */
@@ -796,6 +1158,7 @@ function rowText(tableRow: TableRow<DataTableFeatures, RowData>, columns: Column
 
 interface HeaderCellProps {
   column: ColumnItem;
+  actionsLabel: string;
   labels: Required<DataTableLabels>;
   resizable: boolean;
   classes: Slots;
@@ -807,6 +1170,13 @@ function HeaderCell(props: HeaderCellProps) {
     return (
       <Column class={arc(props.classes.head, props.classes.checkbox)} data-slot="data-table-head">
         <SelectAll label={props.labels.selectAll} />
+      </Column>
+    );
+  }
+  if (column.id === ACTIONS) {
+    return (
+      <Column class={props.classes.head} data-slot="data-table-head" data-align="end">
+        <span class={props.classes.actionsHead}>{props.actionsLabel}</span>
       </Column>
     );
   }
@@ -889,6 +1259,8 @@ interface BodyCellProps {
   labels: Required<DataTableLabels>;
   classes: Slots;
   isTreeColumn: boolean;
+  rowActions: ((row: RowData) => readonly DataTableRowAction[]) | undefined;
+  rowName: string;
 }
 
 function BodyCell(props: BodyCellProps) {
@@ -899,6 +1271,18 @@ function BodyCell(props: BodyCellProps) {
       <Cell class={arc(props.classes.cell, props.classes.checkbox)} data-slot="data-table-cell">
         <Show when={item.kind === "row"}>
           <RowCheckbox label={props.labels.selectRow} />
+        </Show>
+      </Cell>
+    );
+  }
+  if (column.id === ACTIONS) {
+    return (
+      <Cell class={props.classes.cell} data-slot="data-table-cell" data-align="end">
+        <Show when={item.kind === "row"}>
+          <RowActions
+            actions={item.kind === "row" ? (props.rowActions?.(item.row.original) ?? []) : []}
+            name={props.rowName}
+          />
         </Show>
       </Cell>
     );
