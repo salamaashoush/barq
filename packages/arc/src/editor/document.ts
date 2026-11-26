@@ -7,6 +7,7 @@ import {
   registerMarkdownShortcuts,
 } from "@lexical/markdown";
 import {
+  $createParagraphNode,
   $getRoot,
   $getSelection,
   $isParagraphNode,
@@ -19,6 +20,9 @@ import {
   type LexicalEditor,
   PASTE_COMMAND,
   type SerializedEditorState,
+  $parseSerializedNode,
+  $setSelection,
+  configExtension,
   defineExtension,
   mergeRegister,
 } from "lexical";
@@ -33,9 +37,13 @@ import {
 } from "./extension.ts";
 import { $insertHtml } from "./html-import.ts";
 import { documentPreset } from "./presets.ts";
+import { QUIET_REPLACE_TAG } from "./state.ts";
 import { editorTheme } from "./theme.ts";
 
 export { isSafeUrl } from "./core.tsx";
+
+const DEFAULT_HISTORY_LIMIT = 200;
+
 
 export interface DocumentOptions {
   /** The extensions it starts from. @default `documentPreset` */
@@ -46,6 +54,12 @@ export interface DocumentOptions {
   markdownShortcuts?: boolean;
   /** Undo and redo. Off for a shared document, whose own history takes over. @default true */
   history?: boolean;
+  /**
+   * How many steps undo goes back. Each step holds a copy of the document's
+   * nodes, so a long session's history is kept from growing without end.
+   * @default 200
+   */
+  historyLimit?: number;
   theme?: EditorThemeClasses;
 }
 
@@ -150,7 +164,11 @@ export function documentExtensions(options: DocumentOptions = {}): AnyLexicalExt
         ),
     }),
   );
-  if (options.history !== false) extensions.push(HistoryExtension);
+  if (options.history !== false) {
+    extensions.push(
+      configExtension(HistoryExtension, { maxDepth: options.historyLimit ?? DEFAULT_HISTORY_LIMIT }),
+    );
+  }
   if (options.markdownShortcuts !== false) {
     const transformers = markdownTransformers(options);
     extensions.push(
@@ -257,4 +275,36 @@ export function htmlToDocument(html: string, options: DocumentOptions = {}): Ser
   } finally {
     editor.dispose();
   }
+}
+
+export interface ReplaceOptions {
+  /**
+   * Not told back through `onChange` or saved by autosave, for a caller that
+   * already holds the document and keeps its own history.
+   */
+  quiet?: boolean;
+}
+
+/**
+ * Puts `value` in place of what the editor holds, as one edit: one step to
+ * undo, and passed on to everyone in a shared document.
+ */
+export function replaceDocument(
+  editor: LexicalEditor,
+  value: DocumentValue,
+  options: ReplaceOptions = {},
+): void {
+  const state: SerializedEditorState = typeof value === "string" ? JSON.parse(value) : value;
+  editor.update(
+    () => {
+      const root = $getRoot();
+      root.clear();
+      for (const child of state.root.children) root.append($parseSerializedNode(child));
+      if (root.getChildrenSize() === 0) root.append($createParagraphNode());
+      // The caret pointed into the text just thrown away; left unset, the
+      // commit does not move focus into the editor.
+      $setSelection(null);
+    },
+    options.quiet === true ? { tag: QUIET_REPLACE_TAG } : undefined,
+  );
 }

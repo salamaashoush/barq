@@ -4,6 +4,7 @@ import {
   Show,
   createEffect,
   createMemo,
+  createSignal,
   createUniqueId,
   untrack,
 } from "@barqjs/core";
@@ -16,6 +17,7 @@ import {
   type AnyLexicalExtensionArgument,
   type LexicalEditor,
   type SerializedEditorState,
+  mergeRegister,
 } from "lexical";
 import { $convertFromMarkdownString } from "@lexical/markdown";
 
@@ -57,9 +59,20 @@ import {
 import { useRegistration } from "./hooks.ts";
 import { EditorDocument } from "./renderer.tsx";
 import { editableText } from "./theme.ts";
+import {
+  type TextDirection,
+  languageDirection,
+  textDirection,
+  useDocumentDirection,
+} from "./direction.tsx";
 import { FloatingFormatToolbar, LinkEditor } from "./floating.tsx";
 import { provideEditorUploads, settleUpload } from "./media.tsx";
-import { type AutosaveOptions, useCharacterCount, useEditorAutosave } from "./state.ts";
+import {
+  type AutosaveOptions,
+  QUIET_REPLACE_TAG,
+  useCharacterCount,
+  useEditorAutosave,
+} from "./state.ts";
 import { DEFAULT_TOOLS, type EditorTool, EditorToolbar, type InsertAction } from "./toolbar.tsx";
 
 export const richTextEditorStyles = variants({
@@ -90,6 +103,7 @@ export const richTextEditorStyles = variants({
       insetInline: space.x3,
     }),
     footer: arc(layout.row, layout.between, gap[2], type.caption, fg.muted, place.paddedStrip),
+    error: arc(type.caption, fg.danger, place.paddedStrip, layout.flush),
     status: arc({}),
     counter: arc(type.numeric, layout.pushEnd, {
       "&[data-over]": { color: tokens.destructive, fontWeight: "var(--font-weight-medium)" },
@@ -123,7 +137,10 @@ type Slots = ReturnType<typeof richTextEditorStyles>;
 export interface RichTextEditorProps
   extends
     Customisable<Slots>,
-    Pick<DocumentOptions, "preset" | "extensions" | "markdownShortcuts" | "history"> {
+    Pick<
+      DocumentOptions,
+      "preset" | "extensions" | "markdownShortcuts" | "history" | "historyLimit"
+    > {
   /** Names the text box. */
   label?: string;
   "aria-labelledby"?: string;
@@ -132,8 +149,25 @@ export interface RichTextEditorProps
   defaultValue?: DocumentValue;
   /** The document it opens with, as markdown. Read once. */
   defaultMarkdown?: string;
-  /** Told the document after each change, skipping moves of the selection. */
+  /**
+   * Told the document after each change, skipping moves of the selection, a
+   * quiet `replaceDocument` and a change `validate` refuses.
+   */
   onChange?: (value: SerializedEditorState, editor: LexicalEditor) => void;
+  /**
+   * Checks the document after each change: `true` when it may be saved,
+   * `false` or the words that say why not, shown under the editor.
+   */
+  validate?: (value: SerializedEditorState) => boolean | string;
+  /** Told when the document turns valid or invalid by `validate`. */
+  onValidityChange?: (valid: boolean) => void;
+  /** Takes focus once it is built. */
+  autoFocus?: boolean;
+  /**
+   * The language the document is written in, which sets its direction; without
+   * it the direction is its first letter's, and the interface's until it has one.
+   */
+  language?: string;
   /** Shown faint while the document is empty. */
   placeholder?: string;
   /** Shown and kept to, but not edited. Followed as it changes. */
@@ -170,6 +204,30 @@ export interface RichTextEditorProps
   children?: JSX.Element;
 }
 
+interface StoredText {
+  text?: string;
+  children?: StoredText[];
+}
+
+interface StoredRoot {
+  root: StoredText;
+}
+
+/** A stored document's words, as far as its first letter that says which way it reads. */
+function storedText(value: DocumentValue): string {
+  const state = (typeof value === "string" ? JSON.parse(value) : value) as StoredRoot;
+  const words: string[] = [];
+  function walk(node: StoredText): boolean {
+    if (typeof node.text === "string") {
+      words.push(node.text);
+      if (textDirection(node.text) !== null) return true;
+    }
+    return (node.children ?? []).some(walk);
+  }
+  walk(state.root);
+  return words.join(" ");
+}
+
 function heights(
   min: string | number | undefined,
   max: string | number | undefined,
@@ -197,12 +255,20 @@ export interface EditorBridgeProps {
   readOnly?: boolean;
   onChange?: RichTextEditorProps["onChange"];
   onEditor?: (editor: LexicalEditor) => void;
+  validate?: RichTextEditorProps["validate"];
+  onValidityChange?: RichTextEditorProps["onValidityChange"];
+  /** Told what `validate` says is wrong, `null` once nothing is. */
+  onProblem?: (problem: string | null) => void;
+  autoFocus?: boolean;
+  language?: string;
 }
 
-/** What the editor's props reach once it is built: read-only, changes, autosave, the counter. */
+/** What the editor's props reach once it is built: read-only, changes, validity, focus, direction. */
 export function EditorBridge(props: EditorBridgeProps) {
   const editor = useLexicalEditor();
-  provideEditorMessages(editor, useArcMessages());
+  const messages = useArcMessages();
+  provideEditorMessages(editor, messages);
+  useDocumentDirection(() => props.language);
   untrack(() => props.onEditor?.(editor));
   createEffect(
     () => props.readOnly === true,
@@ -210,12 +276,35 @@ export function EditorBridge(props: EditorBridgeProps) {
       editor.setEditable(!readOnly);
     },
   );
+  let problem: string | null = null;
+  function check(value: SerializedEditorState): boolean {
+    const validate = props.validate;
+    if (validate === undefined) return true;
+    const result = validate(value);
+    const next = result === true ? null : result === false ? messages().documentInvalid : result;
+    if (next !== problem) {
+      const wasValid = problem === null;
+      problem = next;
+      props.onProblem?.(next);
+      if (wasValid !== (next === null)) props.onValidityChange?.(next === null);
+    }
+    return next === null;
+  }
   useRegistration(() =>
-    editor.registerUpdateListener(({ editorState, dirtyElements, dirtyLeaves, tags }) => {
-      if (dirtyElements.size === 0 && dirtyLeaves.size === 0) return;
-      if (tags.has("history-merge")) return;
-      props.onChange?.(editorState.toJSON(), editor);
-    }),
+    mergeRegister(
+      editor.registerUpdateListener(({ editorState, dirtyElements, dirtyLeaves, tags }) => {
+        if (dirtyElements.size === 0 && dirtyLeaves.size === 0) return;
+        if (tags.has("history-merge")) return;
+        const value = editorState.toJSON();
+        if (!check(value) || tags.has(QUIET_REPLACE_TAG)) return;
+        props.onChange?.(value, editor);
+      }),
+      editor.registerRootListener((root) => {
+        if (root !== null && untrack(() => props.autoFocus === true)) {
+          queueMicrotask(() => editor.focus(() => editor.getRootElement()?.focus()));
+        }
+      }),
+    ),
   );
   return null;
 }
@@ -353,12 +442,33 @@ export function RichTextEditor(props: RichTextEditorProps) {
         : props.toolbar;
   }
 
+  const errorId = createUniqueId();
+  const [problem, setProblem] = createSignal<string | null>(null, { ownedWrite: true });
+  function invalid(): boolean {
+    return props.invalid === true || problem() !== null;
+  }
+  function describedBy(): string | undefined {
+    const ids = [props["aria-describedby"], problem() === null ? undefined : errorId].filter(
+      (one) => one !== undefined,
+    );
+    return ids.length === 0 ? undefined : ids.join(" ");
+  }
   const options = untrack((): DocumentOptions => ({
     preset: props.preset,
     extensions: props.extensions,
     markdownShortcuts: props.markdownShortcuts,
     history: props.collaborative === true ? false : props.history,
+    historyLimit: props.historyLimit,
   }));
+  // The direction the server writes, from the opening document's words, so
+  // the page is the right way round before the editor takes it over.
+  const opening = untrack((): TextDirection | undefined => {
+    if (props.language !== undefined) return languageDirection(props.language);
+    const text =
+      props.defaultMarkdown ??
+      (props.defaultValue === undefined ? "" : storedText(props.defaultValue));
+    return textDirection(text) ?? undefined;
+  });
   const resolved = documentEditorExtensions(options);
   const extensions = untrack(() => [...documentExtensions(options), ...(props.lexical ?? [])]);
   const editorState = untrack(() => {
@@ -380,15 +490,16 @@ export function RichTextEditor(props: RichTextEditorProps) {
         <Show when={tools()}>
           {(list: () => readonly EditorTool[]) => <EditorTools tools={list()} />}
         </Show>
-        <div class={cls().body} data-slot="rich-text-editor-body">
+        <div class={cls().body} data-slot="rich-text-editor-body" dir={opening}>
           <ContentEditable
             class={arc(proseStyles({ size: props.size, width: "full" }).root, cls().content)}
             data-slot="rich-text-editor-content"
             aria-label={props.label}
             aria-labelledby={props["aria-labelledby"]}
-            aria-describedby={props["aria-describedby"]}
+            aria-describedby={describedBy()}
             aria-multiline={true}
-            aria-invalid={props.invalid === true ? true : undefined}
+            aria-invalid={invalid() ? true : undefined}
+            lang={props.language}
             aria-placeholder={props.placeholder}
             serverContent={
               editorState === null || editorState === undefined ? undefined : (
@@ -427,6 +538,13 @@ export function RichTextEditor(props: RichTextEditorProps) {
             extensions={resolved}
           />
         </Show>
+        <Show when={problem()}>
+          {(words: () => string) => (
+            <p id={errorId} role="alert" class={cls().error} data-slot="rich-text-editor-error">
+              {words()}
+            </p>
+          )}
+        </Show>
         <Show when={props.floatingToolbar !== false}>
           <FloatingFormatToolbar />
         </Show>
@@ -436,6 +554,11 @@ export function RichTextEditor(props: RichTextEditorProps) {
           readOnly={props.readOnly}
           onChange={props.onChange}
           onEditor={props.onEditor}
+          validate={props.validate}
+          onValidityChange={props.onValidityChange}
+          onProblem={setProblem}
+          autoFocus={props.autoFocus}
+          language={props.language}
         />
         {props.children}
       </>
@@ -446,7 +569,7 @@ export function RichTextEditor(props: RichTextEditorProps) {
     <div
       class={arc(cls().root, props.class, props.className)}
       data-slot="rich-text-editor"
-      data-invalid={props.invalid === true ? "" : undefined}
+      data-invalid={invalid() ? "" : undefined}
       data-readonly={props.readOnly === true ? "" : undefined}
       style={heights(props.minHeight, props.maxHeight)}
     >

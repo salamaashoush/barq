@@ -50,7 +50,10 @@ export interface Autosave {
   flush: () => void;
 }
 
-const SKIPPED = new Set(["history-merge", "collaboration"]);
+/** The update tag of a quiet `replaceDocument`, which `onChange` and autosave are not told of. */
+export const QUIET_REPLACE_TAG = "arc-quiet-replace";
+
+const SKIPPED = new Set(["history-merge", "collaboration", QUIET_REPLACE_TAG]);
 
 /**
  * Saves the document once typing pauses, again after each change, at once
