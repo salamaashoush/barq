@@ -1,4 +1,4 @@
-import { type Child, For, Show, createEffect, createSignal } from "@barqjs/core";
+import { type Child, For, Show, createEffect, createSignal, untrack } from "@barqjs/core";
 import { variants } from "@barqjs/css";
 import type { Key } from "@barqjs/aria/collections";
 import { useDirection } from "@barqjs/aria/i18n";
@@ -21,8 +21,10 @@ import { isServer } from "@barqjs/web";
 
 import { arcLayer as arc } from "../layer.ts";
 import { type Customisable, parts } from "../lib/parts.ts";
+import { type SearchParamState, useSearchParam } from "../lib/search-state.ts";
 import { gap, glyph, layout, motion } from "../style/index.ts";
 import { Indicator } from "./indicator.tsx";
+import { maybeRouter } from "./link.ts";
 import { useArcMessages } from "./messages.ts";
 
 export interface TabItem {
@@ -35,6 +37,8 @@ export interface TabItem {
   isDisabled?: boolean;
   /** A tab that is a link: a route of its own. */
   href?: string;
+  /** Left out of the row: a tab that does not apply to this record, rather than one disabled. */
+  hidden?: boolean;
 }
 
 export const responsiveTabsStyles = variants({
@@ -83,7 +87,34 @@ export interface ResponsiveTabsProps extends Customisable<Slots> {
   variant?: TabsListVariant;
   /** `manual` waits for Enter or Space before a focused tab opens. @default "automatic" */
   keyboardActivation?: "automatic" | "manual";
+  /**
+   * Read once: the search parameter that holds the selected tab, so a tab has
+   * a link and a reload or Back returns to it. The first tab is the one the
+   * URL leaves out.
+   */
+  param?: string;
+  /**
+   * Search parameters that belong to the page rather than to a tab, such as a
+   * time window: a tab that is a link carries them to the next tab, while
+   * each tab's own (its filters, its page) are kept for when the reader comes back.
+   */
+  shared?: readonly string[];
+  /** Keep every tab's panel in the document, hidden, so its state survives switching away. */
+  keepMounted?: boolean;
   id?: string;
+}
+
+/**
+ * The last search each tab that is a link was left with, by its path. In
+ * memory only: the server and the first render in the browser both start
+ * without it, so the links hydrate as written, and the URL stays the record
+ * of what is shown.
+ */
+const remembered = new Map<string, URLSearchParams>();
+
+function pathOf(href: string): string {
+  const path = new URL(href, "http://tab.invalid").pathname;
+  return path.length > 1 ? path.replace(/\/+$/, "") : path;
 }
 
 /**
@@ -110,6 +141,12 @@ export interface ResponsiveTabsProps extends Customisable<Slots> {
  * the selected tab scrolls into view. The arrows move between tabs in the
  * reading direction either way. The server draws every tab in the row; the
  * browser measures and folds after hydrating.
+ *
+ * Where the tabs live in the address, `param` keeps the selected one in a
+ * search parameter, and tabs with `href` are routes of their own: under a
+ * router the tab whose path the page is on is the selected one, and coming
+ * back to a tab brings back the search it was left with. `shared` names the
+ * parameters every tab carries on.
  */
 export function ResponsiveTabs(props: ResponsiveTabsProps) {
   const messages = useArcMessages();
@@ -118,13 +155,80 @@ export function ResponsiveTabs(props: ResponsiveTabsProps) {
   const list = makeRef<HTMLDivElement>();
   const viewport = makeRef<HTMLDivElement>();
   const more = makeRef<HTMLElement>();
-  const [selected, setSelected] = controllable<string | undefined>(
-    () => props.selectedKey,
-    () => props.defaultSelectedKey ?? props.items.find((one) => one.isDisabled !== true)?.id,
+  const router = maybeRouter();
+  function items(): readonly TabItem[] {
+    return props.items.filter((one) => one.hidden !== true);
+  }
+  function first(): string | undefined {
+    return items().find((one) => one.isDisabled !== true)?.id;
+  }
+  const param = untrack(() => props.param);
+  const search: SearchParamState<string> | undefined =
+    param === undefined || router === undefined
+      ? undefined
+      : useSearchParam(param, {
+          defaultValue: untrack(() => props.defaultSelectedKey ?? first() ?? ""),
+          parse: (raw) => (items().some((one) => one.id === raw) ? raw : undefined),
+        });
+  const [own, setOwn] = controllable<string | undefined>(
+    () => props.selectedKey ?? search?.value(),
+    () => props.defaultSelectedKey ?? first(),
     (next) => {
       if (next !== undefined) props.onSelectionChange?.(next);
     },
   );
+  function routed(): string | undefined {
+    if (router === undefined || props.selectedKey !== undefined) return undefined;
+    const here = pathOf(router.location().pathname);
+    let best: TabItem | undefined;
+    for (const one of items()) {
+      if (one.href === undefined) continue;
+      const path = pathOf(one.href);
+      if (path === here) return one.id;
+      const under = here.startsWith(path === "/" ? "/" : `${path}/`);
+      if (under && (best === undefined || path.length > pathOf(best.href ?? "").length)) {
+        best = one;
+      }
+    }
+    return best?.id;
+  }
+  function selected(): string | undefined {
+    return routed() ?? own();
+  }
+  function setSelected(next: string): void {
+    if (search !== undefined && props.selectedKey === undefined) search.setValue(next);
+    setOwn(next);
+  }
+  function linkOf(item: TabItem): string | undefined {
+    if (item.href === undefined || router === undefined) return item.href;
+    const target = new URL(item.href, "http://tab.invalid");
+    const path = pathOf(item.href);
+    const current = router.search();
+    const kept = new URLSearchParams(target.search);
+    const shared = props.shared ?? [];
+    if (path !== pathOf(router.location().pathname)) {
+      for (const [key, value] of remembered.get(path) ?? []) kept.set(key, value);
+    }
+    for (const key of shared) {
+      const value = current.get(key);
+      if (value !== null) kept.set(key, value);
+    }
+    const query = kept.toString();
+    return `${target.pathname}${query === "" ? "" : `?${query}`}${target.hash}`;
+  }
+  if (router !== undefined && !isServer) {
+    createEffect(
+      () => [router.location().pathname, router.search().toString()] as const,
+      ([pathname, query]) => {
+        const path = pathOf(pathname);
+        const tabs = untrack(items);
+        if (!tabs.some((one) => one.href !== undefined && pathOf(one.href) === path)) return;
+        const kept = new URLSearchParams(query);
+        for (const key of untrack(() => props.shared) ?? []) kept.delete(key);
+        remembered.set(path, kept);
+      },
+    );
+  }
   function scrolls(): boolean {
     return props.overflow === "scroll";
   }
@@ -135,14 +239,14 @@ export function ResponsiveTabs(props: ResponsiveTabsProps) {
     menuRef: more,
     isCollapsing: () => !scrolls(),
     orientation: () => "horizontal",
-    keys: () => props.items.map((one) => one.id),
+    keys: () => items().map((one) => one.id),
     keep: selected,
   });
   function shown(): readonly TabItem[] {
-    return props.items.filter((one) => !hidden().has(one.id) || one.id === selected());
+    return items().filter((one) => !hidden().has(one.id) || one.id === selected());
   }
   function folded(): readonly TabItem[] {
-    return props.items.filter((one) => hidden().has(one.id) && one.id !== selected());
+    return items().filter((one) => hidden().has(one.id) && one.id !== selected());
   }
 
   const [ends, setEnds] = createSignal({ back: false, forward: false }, { ownedWrite: true });
@@ -218,8 +322,10 @@ export function ResponsiveTabs(props: ResponsiveTabsProps) {
       items={shown()}
       getKey={(item: TabItem) => item.id}
       getTextValue={(item: TabItem) => item.label}
-      getProps={(item: TabItem) => ({ isDisabled: item.isDisabled === true, href: item.href })}
-      disabledKeys={props.items.filter((one) => one.isDisabled === true).map((one) => one.id)}
+      getProps={(item: TabItem) => ({ isDisabled: item.isDisabled === true, href: linkOf(item) })}
+      disabledKeys={items()
+        .filter((one) => one.isDisabled === true)
+        .map((one) => one.id)}
       selectedKey={selected()}
       onSelectionChange={(key: Key) => setSelected(String(key))}
       keyboardActivation={props.keyboardActivation}
@@ -286,7 +392,11 @@ export function ResponsiveTabs(props: ResponsiveTabsProps) {
         </Show>
       </div>
       <Show when={props.children !== undefined}>
-        <TabsContent<TabItem> class={cls().panel} data-slot="responsive-tabs-panel">
+        <TabsContent<TabItem>
+          class={cls().panel}
+          data-slot="responsive-tabs-panel"
+          shouldForceMount={props.keepMounted === true}
+        >
           {(item: TabItem) => props.children?.(item)}
         </TabsContent>
       </Show>

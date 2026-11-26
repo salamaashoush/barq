@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { DEV, createSignal, type ParentProps } from "@barqjs/core";
 import { provideLocale } from "@barqjs/aria/i18n";
-import { ariaViolations, render, screen, user, within } from "@barqjs/testing";
+import { Link } from "@barqjs/router";
+import { ariaViolations, render, screen, user, waitFor, within } from "@barqjs/testing";
+import { renderRoute } from "@barqjs/testing/router";
 
 import { hydrates, settle, wears } from "../test-arc.ts";
 import { Indicator, indicatorStyles } from "./indicator.tsx";
@@ -290,5 +292,119 @@ describe("ResponsiveTabs", () => {
     expect(result.container.querySelectorAll('[role="tab"]')).toHaveLength(2);
     expect(result.container.querySelector('[role="tabpanel"]')?.textContent).toBe("Alpha body");
     result.unmount();
+  });
+});
+
+describe("ResponsiveTabs in the address", () => {
+  test("a search parameter holds the tab, the first tab leaves it out, and a link opens one", async () => {
+    function Person() {
+      return (
+        <>
+          <Link to="/people/7" search={{ tab: "billing" }}>
+            Billing
+          </Link>
+          <ResponsiveTabs
+            aria-label="Person"
+            param="tab"
+            items={[
+              { id: "overview", label: "Overview" },
+              { id: "classes", label: "Classes" },
+              { id: "billing", label: "Billing" },
+            ]}
+          >
+            {(tab) => <p>{tab.label} panel</p>}
+          </ResponsiveTabs>
+        </>
+      );
+    }
+    const view = await renderRoute({
+      routeTree: [{ path: "/people/$id", component: Person }] as never,
+      path: "/people/7?tab=classes",
+    });
+    await settle();
+    expect(screen.getByRole("tabpanel").textContent).toBe("Classes panel");
+    await user.click(screen.getByRole("tab", { name: "Overview" }));
+    await settle();
+    await waitFor(() => expect(view.state.search().has("tab")).toBe(false));
+    expect(screen.getByRole("tabpanel").textContent).toBe("Overview panel");
+    await user.click(screen.getByRole("link", { name: "Billing" }));
+    await settle();
+    await waitFor(() => expect(screen.getByRole("tabpanel").textContent).toBe("Billing panel"));
+    expect(screen.getByRole("tab", { name: "Billing" }).getAttribute("aria-selected")).toBe("true");
+    view.unmount();
+  });
+
+  test("a parameter naming no tab falls back to the first", async () => {
+    function Page() {
+      return (
+        <ResponsiveTabs aria-label="Person" param="tab" items={ITEMS}>
+          {(tab) => <p>{tab.label}</p>}
+        </ResponsiveTabs>
+      );
+    }
+    const view = await renderRoute({
+      routeTree: [{ path: "/", component: Page }] as never,
+      path: "/?tab=nope",
+    });
+    await settle();
+    expect(screen.getByRole("tabpanel").textContent).toBe("Overview");
+    view.unmount();
+  });
+
+  test("tabs that are routes: the page's path picks the tab, and each tab's search comes back", async () => {
+    function Check() {
+      return (
+        <ResponsiveTabs
+          aria-label="Check"
+          shared={["window"]}
+          items={[
+            { id: "runs", label: "Runs", href: "/checks/1" },
+            { id: "alerts", label: "Alerts", href: "/checks/1/alerts" },
+            { id: "values", label: "Values", href: "/checks/1/values", hidden: true },
+          ]}
+        />
+      );
+    }
+    const view = await renderRoute({
+      routeTree: [
+        { path: "/checks/1", component: Check },
+        { path: "/checks/1/alerts", component: Check },
+      ] as never,
+      path: "/checks/1?status=failed&window=7d",
+    });
+    await settle();
+    expect(screen.queryByRole("tab", { name: "Values" })).toBeNull();
+    expect(screen.getByRole("tab", { name: "Runs" }).getAttribute("aria-selected")).toBe("true");
+    const alerts = screen.getByRole("tab", { name: "Alerts" });
+    expect(alerts.getAttribute("href")).toBe("/checks/1/alerts?window=7d");
+
+    await view.state.navigate("/checks/1/alerts?window=7d&q=muted");
+    await settle();
+    await waitFor(() =>
+      expect(screen.getByRole("tab", { name: "Alerts" }).getAttribute("aria-selected")).toBe(
+        "true",
+      ),
+    );
+    expect(screen.getByRole("tab", { name: "Runs" }).getAttribute("href")).toBe(
+      "/checks/1?status=failed&window=7d",
+    );
+    view.unmount();
+  });
+
+  test("keepMounted keeps a panel's state while another tab shows", async () => {
+    render(() => (
+      <ResponsiveTabs aria-label="Sections" items={ITEMS.slice(0, 2)} keepMounted>
+        {(tab) => <input aria-label={`${tab.label} note`} />}
+      </ResponsiveTabs>
+    ));
+    await settle();
+    await user.type(screen.getByRole("textbox", { name: "Overview note" }), "kept");
+    await user.click(screen.getByRole("tab", { name: /Checks/ }));
+    await settle();
+    await user.click(screen.getByRole("tab", { name: "Overview" }));
+    await settle();
+    expect(screen.getByRole<HTMLInputElement>("textbox", { name: "Overview note" }).value).toBe(
+      "kept",
+    );
   });
 });
