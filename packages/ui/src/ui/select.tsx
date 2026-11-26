@@ -1,4 +1,4 @@
-import { cells } from "@barqjs/core";
+import { Show, cells } from "@barqjs/core";
 import type { Key } from "@barqjs/aria/collections";
 import {
   Section,
@@ -224,6 +224,16 @@ const indicator = ui({
   "[data-selected] & > svg": {
     display: "block",
   },
+});
+
+const detail = ui({
+  fontSize: "var(--text-xs)",
+  lineHeight: "var(--ui-leading, var(--text-xs--line-height))",
+  minWidth: "0px",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+  color: "var(--muted-foreground)",
 });
 
 const label = ui({
@@ -529,6 +539,11 @@ export function SelectContent(props: SelectContentProps) {
 export interface SelectItemProps extends OptionComponentProps {
   /** shadcn's name for `isDisabled`, for an item written as a child. */
   disabled?: boolean;
+  /**
+   * A faint line after the option's text: what a preset sets, what a record
+   * type is for. It stays in the list; the trigger shows the text alone.
+   */
+  detail?: Child;
 }
 
 /**
@@ -563,6 +578,11 @@ export function SelectItem(props: SelectItemProps) {
         <Check />
       </span>
       <SelectItemText data-slot="select-item-text">{props.children}</SelectItemText>
+      <Show when={props.detail !== undefined}>
+        <span data-slot="select-item-detail" class={detail}>
+          {props.detail}
+        </span>
+      </Show>
     </Option>
   );
 }

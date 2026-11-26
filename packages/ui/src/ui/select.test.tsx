@@ -187,6 +187,30 @@ describe("Select", () => {
   });
 });
 
+describe("an option's detail", () => {
+  test("is a faint line in the list that the trigger leaves out", async () => {
+    render(() => (
+      <Select items={FRUITS} aria-label="Fruit" placeholder="Pick one" defaultValue="banana">
+        {(fruit: (typeof FRUITS)[number]) => (
+          <SelectItem detail={`${fruit.name} detail`}>{fruit.name}</SelectItem>
+        )}
+      </Select>
+    ));
+    await settle();
+    const trigger = screen.getByRole("button", { name: /Banana/ });
+    expect(trigger.textContent).toBe("Banana");
+    await user.click(trigger);
+    await settle();
+    const banana = screen.getByRole("option", { name: /Banana/ });
+    expect(banana.querySelector('[data-slot="select-item-detail"]')?.textContent).toBe(
+      "Banana detail",
+    );
+    await user.click(screen.getByRole("option", { name: /Apple/ }));
+    await settle();
+    expect(screen.getByRole("button", { name: /Apple/ }).textContent).toBe("Apple");
+  });
+});
+
 describe("a Select built from data carries shadcn's state attributes too", () => {
   test("open and closed on the trigger and the content, checked and highlighted on an item", async () => {
     render(() => (
