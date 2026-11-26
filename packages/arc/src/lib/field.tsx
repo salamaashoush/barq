@@ -1,4 +1,12 @@
-import { type Child, Show, createMemo, createUniqueId, hasContext, untrack } from "@barqjs/core";
+import {
+  type Accessor,
+  type Child,
+  Show,
+  createMemo,
+  createUniqueId,
+  hasContext,
+  untrack,
+} from "@barqjs/core";
 import { variants } from "@barqjs/css";
 import { controllable } from "@barqjs/aria/utils";
 import { type AnyFieldApi, type AnyFormApi, createFormHookContexts } from "@barqjs/form";
@@ -155,6 +163,11 @@ function retireServerError(api: AnyFieldApi): void {
 
 export interface FieldBinding<T> {
   field: ReturnType<typeof useArcField<T>>;
+}
+
+/** The form's array field behind a binding, when the binding is the form's. */
+export function arrayFieldOf<T>(of: Binding<T>): Accessor<AnyFieldApi> | undefined {
+  return "field" in of ? (of as Binding<T> & FieldBinding<T>).field : undefined;
 }
 
 /**

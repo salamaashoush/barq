@@ -46,7 +46,9 @@ import { CurrencyField, PercentField, UnitField } from "./number-fields.tsx";
 import { OptionalLimitField, PairedNumberField } from "./limit-fields.tsx";
 import { AddressFields } from "./address-fields.tsx";
 import { FileField } from "./file-field.tsx";
+import { OrderedMemberList } from "./ordered-member-list.tsx";
 import { RepeaterField } from "./repeater-field.tsx";
+import { StepSequenceEditor } from "./step-sequence-editor.tsx";
 import { PhoneField } from "./phone-field.tsx";
 import { RangeSlider } from "./range-slider.tsx";
 import { Rating } from "./rating.tsx";
@@ -786,6 +788,8 @@ const arcFieldComponents = {
   OptionalLimitField,
   PairedNumberField,
   RepeaterField,
+  StepSequenceEditor,
+  OrderedMemberList,
   AddressFields,
   FileField,
   SecretField,

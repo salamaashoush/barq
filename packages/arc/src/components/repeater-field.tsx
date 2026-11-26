@@ -5,17 +5,16 @@ import { ArrowDown } from "@barqjs/lucide/icons/arrow-down";
 import { ArrowUp } from "@barqjs/lucide/icons/arrow-up";
 import { Plus } from "@barqjs/lucide/icons/plus";
 import { Trash2 } from "@barqjs/lucide/icons/trash-2";
-import { type AnyFieldApi, getBy } from "@barqjs/form";
+import { getBy } from "@barqjs/form";
 import { Button } from "@barqjs/ui/button";
 
 import { arcLayer as arc } from "../layer.ts";
 import {
   type ArcFieldProps,
-  type Binding,
-  type FieldBinding,
   type FieldSlots,
   type FieldValueProps,
   Frame,
+  arrayFieldOf,
   bindField,
   fieldStyles,
   useArcFormContext,
@@ -72,11 +71,6 @@ export interface RepeaterFieldProps<T>
   emptyLabel?: Child;
 }
 
-/** The form's array field behind a binding, when the binding is the form's. */
-function arrayOf<T>(of: Binding<T>): Accessor<AnyFieldApi> | undefined {
-  return "field" in of ? (of as Binding<T> & FieldBinding<T>).field : undefined;
-}
-
 /**
  * Rows of the same fields, added and removed by the reader: request
  * headers, a question's options, a family's contacts, a grade scale's bands.
@@ -101,7 +95,7 @@ function arrayOf<T>(of: Binding<T>): Accessor<AnyFieldApi> | undefined {
 export function RepeaterField<T>(props: RepeaterFieldProps<T>) {
   const messages = useArcMessages();
   const of = bindField<readonly T[]>(props, []);
-  const array = arrayOf(of);
+  const array = arrayFieldOf(of);
   let list: HTMLElement | undefined;
   let adder: HTMLButtonElement | undefined;
   function cls(): Slots {

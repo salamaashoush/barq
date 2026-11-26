@@ -149,6 +149,12 @@ export {
   checklistFieldStyles,
 } from "./components/checklist-field.tsx";
 export {
+  ChecklistEditor,
+  type ChecklistEditorProps,
+  type ChecklistItem,
+  checklistEditorStyles,
+} from "./components/checklist-editor.tsx";
+export {
   type ThemeChoice,
   ThemePicker,
   type ThemePickerProps,
@@ -191,6 +197,16 @@ export {
   addressFieldsStyles,
   addressFormat,
 } from "./components/address-fields.tsx";
+export {
+  StepSequenceEditor,
+  type StepSequenceEditorProps,
+  stepSequenceEditorStyles,
+} from "./components/step-sequence-editor.tsx";
+export {
+  OrderedMemberList,
+  type OrderedMemberListProps,
+  orderedMemberListStyles,
+} from "./components/ordered-member-list.tsx";
 export {
   RepeaterField,
   type RepeaterFieldProps,
