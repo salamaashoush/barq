@@ -35,6 +35,7 @@ import { Route as MediaRoute } from "./routes/media";
 import { Route as NavigationRoute } from "./routes/navigation";
 import { Route as NotificationsRoute } from "./routes/notifications";
 import { Route as OverlaysRoute } from "./routes/overlays";
+import { Route as SecretsRoute } from "./routes/secrets";
 import { Route as SettingsRoute } from "./routes/settings";
 import { Route as ViewsRoute } from "./routes/views";
 import { Route as ApiNotificationsRoute } from "./routes/api/notifications";
@@ -117,6 +118,7 @@ export const routeTree: AnyRouteDefinition[] = [
         path: "overlays",
         src: "/src/routes/overlays.tsx",
       },
+      { ...SecretsRoute.options, id: "/secrets", path: "secrets", src: "/src/routes/secrets.tsx" },
       {
         ...SettingsRoute.options,
         id: "/settings",
@@ -175,6 +177,7 @@ export interface FileRoutesById {
   "/navigation": typeof NavigationRoute;
   "/notifications": typeof NotificationsRoute;
   "/overlays": typeof OverlaysRoute;
+  "/secrets": typeof SecretsRoute;
   "/settings": typeof SettingsRoute;
   "/views": typeof ViewsRoute;
   "/api/notifications": typeof ApiNotificationsRoute;
@@ -208,6 +211,7 @@ export interface FileRouteTypes {
     | "/navigation"
     | "/notifications"
     | "/overlays"
+    | "/secrets"
     | "/settings"
     | "/views"
     | "/api/notifications"
@@ -237,6 +241,7 @@ export interface FileRouteTypes {
     | "/navigation"
     | "/notifications"
     | "/overlays"
+    | "/secrets"
     | "/settings"
     | "/views"
     | "/api/notifications"

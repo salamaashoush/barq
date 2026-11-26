@@ -9,6 +9,7 @@ import { FormInput } from "@barqjs/lucide/icons/form-input";
 import { Hash } from "@barqjs/lucide/icons/hash";
 import { House } from "@barqjs/lucide/icons/house";
 import { Image } from "@barqjs/lucide/icons/image";
+import { KeyRound } from "@barqjs/lucide/icons/key-round";
 import { Layers } from "@barqjs/lucide/icons/layers";
 import { LayoutDashboard } from "@barqjs/lucide/icons/layout-dashboard";
 import { ListFilter } from "@barqjs/lucide/icons/list-filter";
@@ -45,6 +46,7 @@ import { catalog as media } from "../examples/media/catalog.ts";
 import { catalog as navigation } from "../examples/navigation/catalog.ts";
 import { catalog as notifications } from "../examples/notifications/catalog.ts";
 import { catalog as overlays } from "../examples/overlays/catalog.ts";
+import { catalog as secrets } from "../examples/secrets/catalog.ts";
 import { catalog as settings } from "../examples/settings/catalog.ts";
 import { catalog as views } from "../examples/views/catalog.ts";
 import type { GroupCatalog } from "./types.ts";
@@ -89,6 +91,7 @@ export const SECTIONS: readonly Section[] = [
       { catalog: forms, icon: ClipboardList },
       { catalog: auth, icon: LockKeyhole },
       { catalog: settings, icon: Settings },
+      { catalog: secrets, icon: KeyRound },
       { catalog: notifications, icon: Bell },
       { catalog: collaboration, icon: MessageSquareMore },
     ],
