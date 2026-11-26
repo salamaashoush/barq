@@ -1,6 +1,7 @@
-import { type Child, Show, createMemo } from "@barqjs/core";
+import { type Child, Show, createMemo, flush, untrack } from "@barqjs/core";
 import { variants } from "@barqjs/css";
 import type { Key, Node } from "@barqjs/aria/collections";
+import { DragButton, DropIndicator, dragAndDrop } from "@barqjs/aria/drag-and-drop";
 import {
   GridList,
   GridListHeader,
@@ -9,7 +10,11 @@ import {
   GridListSection,
 } from "@barqjs/aria/gridlist";
 import { dateFormatter } from "@barqjs/aria/i18n";
+import { announce } from "@barqjs/aria/live";
 import { Virtualizer, listLayout } from "@barqjs/aria/virtualizer";
+import { ArrowDown } from "@barqjs/lucide/icons/arrow-down";
+import { ArrowUp } from "@barqjs/lucide/icons/arrow-up";
+import { GripVertical } from "@barqjs/lucide/icons/grip-vertical";
 import {
   Item,
   ItemActions,
@@ -27,18 +32,23 @@ import { Spinner } from "@barqjs/ui/spinner";
 import { arcLayer as arc } from "../layer.ts";
 import { type Customisable, parts } from "../lib/parts.ts";
 import {
+  control,
   edge,
   fg,
   focus,
   gap,
+  glyph,
   interaction,
   layout,
   motion,
   place,
+  rounded,
   space,
   surface,
+  target,
   type,
 } from "../style/index.ts";
+import { IconButton } from "./icon-button.tsx";
 import { useArcMessages } from "./messages.ts";
 
 export const listStyles = variants({
@@ -77,6 +87,19 @@ export const listStyles = variants({
       },
     ),
     more: arc(layout.row, layout.centre, { paddingBlock: space.x3 }),
+    sortable: arc(layout.row, gap[1], interaction.dragging),
+    cell: arc(layout.grow, layout.minZero),
+    drag: arc(
+      control.bare,
+      layout.inlineCentre,
+      layout.noShrink,
+      fg.muted,
+      glyph.sm,
+      target.size,
+      interaction.draggable,
+    ),
+    move: arc(layout.row, layout.noShrink, gap[0.5]),
+    indicator: arc(rounded.full, interaction.dropLine),
   },
   variants: {
     divided: {
@@ -110,6 +133,18 @@ export interface ListSection {
   label: Child;
 }
 
+/** Where rows were put: beside another row. */
+export interface ListDropTarget {
+  key: Key;
+  position: "before" | "after";
+}
+
+/** Rows moved by a drag, a drag button's keys or a move button. `reorderItems` applies it. */
+export interface ListReorderEvent {
+  keys: Key[];
+  target: ListDropTarget;
+}
+
 export interface ListVirtual {
   rowHeight: number;
   height: string;
@@ -123,8 +158,9 @@ export interface ListProps<T> extends Customisable<Slots> {
   getTextValue?: (item: T) => string;
   /** One row's content: a `<ListItem>`. */
   children: (item: T) => Child;
-  /** Names the list. */
-  "aria-label": string;
+  /** Names the list. One of this and `aria-labelledby` is needed. */
+  "aria-label"?: string;
+  "aria-labelledby"?: string;
   /** @default "none" */
   selectionMode?: "none" | "single" | "multiple";
   /**
@@ -160,6 +196,19 @@ export interface ListProps<T> extends Customisable<Slots> {
   loadMoreLabel?: string;
   /** Shown when there are no items. */
   empty?: Child;
+  /**
+   * Rows reorder: a drag by pointer or touch from the row's handle, which
+   * scrolls the list near its edges, or from the keyboard through the handle.
+   * `reorderItems` applies the event to the items.
+   */
+  onReorder?: (event: ListReorderEvent) => void;
+  /** With `onReorder`, buttons at each row's end that move it up and down. @default false */
+  moveButtons?: boolean;
+  /**
+   * `tab` keeps every key typed into a control in a row for that control, and
+   * only Tab goes on, which rows holding text fields want. @default "arrow"
+   */
+  keyboardNavigationBehavior?: "arrow" | "tab";
   id?: string;
 }
 
@@ -204,6 +253,16 @@ export function List<T>(props: ListProps<T>) {
   function keyOf(item: T): Key {
     return props.getKey?.(item) ?? ((item as MaybeKeyed).id as Key);
   }
+  function textOf(item: T): string {
+    const own = props.getTextValue?.(item);
+    if (own !== undefined) return own;
+    const record = item as TextFields;
+    const text = record.label ?? record.name ?? record.title;
+    return typeof text === "string" ? text : "";
+  }
+  function nameOf(item: T): string {
+    return textOf(item) || String(keyOf(item));
+  }
   function scrolls(): boolean {
     return props.onLoadMore !== undefined && props.loadMore !== "button";
   }
@@ -224,6 +283,96 @@ export function List<T>(props: ListProps<T>) {
     return scrolls() ? [...shown, LOADER] : shown;
   }
 
+  const reorder = dragAndDrop<Row<T>>({
+    getItems: (keys) =>
+      [...keys].map((key) => {
+        const item = props.items.find((one) => keyOf(one) === key);
+        return { "text/plain": item === undefined ? String(key) : nameOf(item) };
+      }),
+    pointerDragSource: "handle",
+    renderDropIndicator: (where) => (
+      <DropIndicator target={where} class={cls().indicator} data-slot="list-drop-indicator" />
+    ),
+    onReorder: (event) => {
+      if (event.target.dropPosition === "on") return;
+      props.onReorder?.({
+        keys: [...event.keys],
+        target: {
+          key: event.target.key,
+          position: event.target.dropPosition === "after" ? "after" : "before",
+        },
+      });
+    },
+  });
+  function sortable(): boolean {
+    return props.onReorder !== undefined;
+  }
+  let root: HTMLElement | undefined;
+  function move(item: T, by: -1 | 1): void {
+    const items = untrack(() => props.items);
+    const at = items.indexOf(item);
+    const beside = items[at + by];
+    if (beside === undefined) return;
+    const key = keyOf(item);
+    untrack(() => props.onReorder)?.({
+      keys: [key],
+      target: { key: keyOf(beside), position: by < 0 ? "before" : "after" },
+    });
+    announce(
+      untrack(() => messages().rowMoved(nameOf(item), at + by + 1, items.length)),
+      "polite",
+    );
+    flush();
+    const shown = root?.querySelectorAll<HTMLElement>('[data-slot="list-row"]');
+    const moved = [...(shown ?? [])].find((one) => one.getAttribute("data-key") === String(key));
+    const order = by < 0 ? ["up", "down"] : ["down", "up"];
+    const button = order
+      .map((way) =>
+        moved?.querySelector<HTMLElement>(`[data-slot="list-move-${way}"]:not([disabled])`),
+      )
+      .find((one) => one !== null && one !== undefined);
+    (button ?? moved?.querySelector<HTMLElement>('[data-slot="list-drag"]'))?.focus();
+  }
+  function row(item: T) {
+    function items(): readonly T[] {
+      return props.items;
+    }
+    return (
+      <Show when={sortable()} fallback={props.children(item)}>
+        <div class={cls().sortable} data-slot="list-sortable">
+          <DragButton class={cls().drag} data-slot="list-drag">
+            <GripVertical aria-hidden="true" />
+          </DragButton>
+          <div class={cls().cell} data-slot="list-cell">
+            {props.children(item)}
+          </div>
+          <Show when={props.moveButtons === true}>
+            <div class={cls().move} data-slot="list-move">
+              <IconButton
+                label={messages().moveRowUpOf(nameOf(item))}
+                size="sm"
+                slot="list-move-up"
+                isDisabled={items()[0] === item}
+                onPress={() => move(item, -1)}
+              >
+                <ArrowUp />
+              </IconButton>
+              <IconButton
+                label={messages().moveRowDownOf(nameOf(item))}
+                size="sm"
+                slot="list-move-down"
+                isDisabled={items().at(-1) === item}
+                onPress={() => move(item, 1)}
+              >
+                <ArrowDown />
+              </IconButton>
+            </div>
+          </Show>
+        </div>
+      </Show>
+    );
+  }
+
   function list() {
     return (
       <GridList<Row<T>>
@@ -231,6 +380,7 @@ export function List<T>(props: ListProps<T>) {
         id={props.id}
         data-slot="list"
         aria-label={props["aria-label"]}
+        aria-labelledby={props["aria-labelledby"]}
         items={rows()}
         getKey={(item: Row<T>) => {
           if (item === LOADER) return "__loader";
@@ -238,14 +388,7 @@ export function List<T>(props: ListProps<T>) {
           return keyOf(item);
         }}
         getChildren={(item: Row<T>) => (isGroup(item) ? item.children : undefined)}
-        getTextValue={(item: Row<T>) => {
-          if (item === LOADER || isGroup(item)) return "";
-          const own = props.getTextValue?.(item);
-          if (own !== undefined) return own;
-          const record = item as TextFields;
-          const text = record.label ?? record.name ?? record.title;
-          return typeof text === "string" ? text : "";
-        }}
+        getTextValue={(item: Row<T>) => (item === LOADER || isGroup(item) ? "" : textOf(item))}
         getType={(item: Row<T>): Node<unknown>["type"] =>
           item === LOADER ? "loader" : isGroup(item) ? "section" : "item"
         }
@@ -263,6 +406,11 @@ export function List<T>(props: ListProps<T>) {
             : { height: props.virtual.height, overflow: "auto" }
         }
         renderEmptyState={() => props.empty}
+        dragAndDropHooks={sortable() ? reorder.dragAndDropHooks : undefined}
+        keyboardNavigationBehavior={props.keyboardNavigationBehavior}
+        ref={(element: HTMLElement) => {
+          root = element;
+        }}
       >
         {(item: Row<T>) =>
           isGroup(item) ? (
@@ -286,8 +434,9 @@ export function List<T>(props: ListProps<T>) {
               class={cls().row}
               data-slot="list-row"
               data-selection-mode={props.selectionMode ?? "none"}
+              data-key={String(keyOf(item))}
             >
-              {props.children(item)}
+              {row(item)}
             </GridListItem>
           )
         }
@@ -438,4 +587,26 @@ export function useDateSections(
     const sameYear = key.slice(0, 4) === today.slice(0, 4);
     return { id: key, label: (sameYear ? day() : dayWithYear()).format(date) };
   };
+}
+
+/**
+ * The items in their order after a `ListReorderEvent`: the moved ones, in
+ * the order they were, taken out and put back beside the target.
+ *
+ * ```tsx
+ * <List items={steps()} onReorder={(event) => setSteps(reorderItems(steps(), event))}>…</List>
+ * ```
+ */
+export function reorderItems<T>(
+  items: readonly T[],
+  event: ListReorderEvent,
+  getKey: (item: T) => Key = (item) => (item as MaybeKeyed).id as Key,
+): T[] {
+  const moving = new Set(event.keys);
+  const moved = items.filter((item) => moving.has(getKey(item)));
+  const kept = items.filter((item) => !moving.has(getKey(item)));
+  const beside = kept.findIndex((item) => getKey(item) === event.target.key);
+  const at = beside < 0 ? kept.length : beside + (event.target.position === "after" ? 1 : 0);
+  kept.splice(at, 0, ...moved);
+  return kept;
 }

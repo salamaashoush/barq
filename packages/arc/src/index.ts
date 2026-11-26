@@ -1301,8 +1301,11 @@ export {
   ListItem,
   type ListItemProps,
   type ListProps,
+  type ListDropTarget,
+  type ListReorderEvent,
   type ListSection,
   listStyles,
+  reorderItems,
   useDateSections,
 } from "./components/item-list.tsx";
 export {

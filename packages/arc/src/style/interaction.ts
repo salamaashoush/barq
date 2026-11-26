@@ -22,6 +22,8 @@ export const interaction = arc.create({
     "@media (hover: hover)": { ":hover": { color: tokens.foreground } },
   },
   pressable: { cursor: "pointer" },
+  /** The line a drop would land on in a list, drawn while it is the target. */
+  dropLine: { height: "2px", "[data-drop-target]": { backgroundColor: tokens.ring } },
   /** A stronger edge under a resting pointer, for a card the whole of which opens something. */
   hoverEdge: {
     "@media (hover: hover)": {

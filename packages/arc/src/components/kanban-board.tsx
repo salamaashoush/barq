@@ -91,10 +91,7 @@ export const kanbanBoardStyles = variants({
     drag: arc(control.bare, layout.inlineCentre, layout.noShrink, fg.muted, glyph.sm, target.size, {
       cursor: "grab",
     }),
-    indicator: arc(rounded.full, {
-      height: "2px",
-      "[data-drop-target]": { backgroundColor: tokens.ring },
-    }),
+    indicator: arc(rounded.full, interaction.dropLine),
     empty: arc(type.meta, layout.centre, { minHeight: space.x12 }),
     add: arc({ justifyContent: "flex-start" }),
   },
