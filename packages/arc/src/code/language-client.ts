@@ -377,24 +377,27 @@ export function languageClient(options: LanguageClientOptions): LanguageClient {
     options.onError?.(error);
   }
 
+  /** A request once the server is up: `@codemirror/lsp-client` refuses one before it has a transport. */
+  async function ready<Result>(method: string, params: object): Promise<Result> {
+    await client.initializing;
+    return client.request<object, Result>(method, params);
+  }
+
   function fetchSymbols(uri: string): void {
-    client
-      .request<lsp.DocumentSymbolParams, lsp.DocumentSymbol[] | lsp.SymbolInformation[] | null>(
-        "textDocument/documentSymbol",
-        { textDocument: { uri } },
-      )
-      .then(
-        (found) => {
-          const list = found ?? [];
-          const symbols =
-            list.length > 0 && "location" in (list[0] as object)
-              ? flatSymbols(list as lsp.SymbolInformation[])
-              : (list as lsp.DocumentSymbol[]);
-          symbolsKnown.set(uri, symbols);
-          setSymbolMap(new Map(symbolsKnown));
-        },
-        (error: unknown) => report(error),
-      );
+    ready<lsp.DocumentSymbol[] | lsp.SymbolInformation[] | null>("textDocument/documentSymbol", {
+      textDocument: { uri },
+    }).then(
+      (found) => {
+        const list = found ?? [];
+        const symbols =
+          list.length > 0 && "location" in (list[0] as object)
+            ? flatSymbols(list as lsp.SymbolInformation[])
+            : (list as lsp.DocumentSymbol[]);
+        symbolsKnown.set(uri, symbols);
+        setSymbolMap(new Map(symbolsKnown));
+      },
+      (error: unknown) => report(error),
+    );
   }
 
   function synced(uri: string): void {
@@ -517,6 +520,9 @@ export function languageClient(options: LanguageClientOptions): LanguageClient {
         navigate: (uri, range) => options.onNavigate?.(uri, range),
         edited: (uri, text) => options.onEdit?.(uri, text),
         synced,
+        opened: (uri) => {
+          if (asked.has(uri)) fetchSymbols(uri);
+        },
       });
       return workspace;
     },
@@ -590,8 +596,9 @@ export function languageClient(options: LanguageClientOptions): LanguageClient {
 
   async function executeCommand(command: lsp.Command): Promise<unknown> {
     if ((await options.onCommand?.(command)) === true) return null;
+    await client.initializing;
     if (client.serverCapabilities?.executeCommandProvider === undefined) return null;
-    return client.request<lsp.ExecuteCommandParams, unknown>("workspace/executeCommand", {
+    return ready<unknown>("workspace/executeCommand", {
       command: command.command,
       ...(command.arguments === undefined ? {} : { arguments: command.arguments }),
     });
@@ -653,7 +660,8 @@ export function languageClient(options: LanguageClientOptions): LanguageClient {
     symbols: (uri) => {
       if (!asked.has(uri)) {
         asked.add(uri);
-        fetchSymbols(uri);
+        // A file the server has not been told about yet is asked for once it is.
+        if (workspace.getFile(uri) !== null) fetchSymbols(uri);
       }
       return symbolMap().get(uri);
     },
@@ -665,7 +673,7 @@ export function languageClient(options: LanguageClientOptions): LanguageClient {
     navigate,
     applyEdit,
     executeCommand,
-    request: (method, params) => client.request(method, params),
+    request: (method, params) => ready(method, params),
     notify: (method, params) => client.notification(method, params),
     client,
     dispose: () => {

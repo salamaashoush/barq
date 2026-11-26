@@ -112,8 +112,12 @@ const chrome = EditorView.theme({
   },
   ".cm-tooltip-hover": { maxWidth: "36rem" },
   ".cm-lsp-docs": {
+    // A code block in the docs takes the sizes of its own, not the editor's it sits in.
+    "--code-min-height": "auto",
+    "--code-max-height": "none",
     padding: "0.5rem 0.75rem",
     maxHeight: "20rem",
+    fontFamily: "var(--font-sans)",
     overflow: "auto",
     fontSize: "var(--code-font-size)",
   },

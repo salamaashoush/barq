@@ -543,6 +543,31 @@ describe("what the server draws in the editor", () => {
   });
 });
 
+describe("asked before the server is up", () => {
+  test("symbols read before a file opens arrive once it does, and a command waits for the server", async () => {
+    const server = toyServer();
+    let starts = 0;
+    const client = languageClient({
+      transport: () => {
+        starts++;
+        return server.transport;
+      },
+      languageId: "toy",
+    });
+    cleanups.push(() => client.dispose());
+    expect(client.symbols(LIB)).toBeUndefined();
+    expect(starts).toBe(0);
+    client.open(LIB, LIB_SOURCE);
+    const ran = client.executeCommand({ title: "Run", command: "toy.run", arguments: [] });
+    await waitFor(() => {
+      flush();
+      if (client.symbols(LIB)?.[0]?.name !== "double") throw new Error("no symbols");
+    });
+    await ran;
+    expect(server.commands).toEqual([{ command: "toy.run", arguments: [] }]);
+  });
+});
+
 describe("code actions", () => {
   test("a quick fix lists the server's actions, preferred first, and Enter applies one", async () => {
     const { view, container } = await setup(`${MAIN_SOURCE}missing(1)\n`);

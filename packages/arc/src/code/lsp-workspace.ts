@@ -50,6 +50,8 @@ export interface WorkspaceHooks {
   edited: (uri: string, text: string) => void;
   /** A file's text reached the server. */
   synced: (uri: string) => void;
+  /** The server was told a file is open. */
+  opened: (uri: string) => void;
 }
 
 export function textOf(text: string): Text {
@@ -138,6 +140,7 @@ export class LanguageWorkspace extends Workspace {
       file.view = view;
       this.files.push(file);
       this.client.didOpen(file);
+      this.hooks.opened(uri);
     }
     const waiting = this.navigation;
     if (waiting !== null && waiting.uri === uri) {
@@ -175,6 +178,7 @@ export class LanguageWorkspace extends Workspace {
     file.held = true;
     this.files.push(file);
     this.client.didOpen(file);
+    this.hooks.opened(uri);
   }
 
   /** New text for a file no editor shows; an editor's own text wins over this. */
