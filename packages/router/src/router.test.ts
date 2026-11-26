@@ -1549,6 +1549,38 @@ describe("Link", () => {
     expect(anchor.getAttribute("href")).toBe("/u/550e8400-e29b-41d4");
     dispose();
   });
+
+  test("a surviving NavLink re-resolves a relative href when the location moves", () => {
+    const history = memoryHistory({ initial: ["/u/1/edit"] });
+    const { host, dispose } = mount({
+      routeTree: [
+        {
+          path: "/u/$id",
+          component: () => {
+            const wrapper = document.createElement("div");
+            wrapper.append(
+              (NavLink as never as (p: unknown) => Node)({
+                to: () => "..",
+                children: () => "up",
+              }),
+            );
+            return wrapper;
+          },
+          children: [{ path: "edit", component: page("edit") }],
+        },
+      ] as never,
+      history,
+    });
+
+    const anchor = host.querySelector("a") as HTMLAnchorElement;
+    expect(anchor.getAttribute("href")).toBe("/u/1");
+
+    history.push("/u/550e8400-e29b-41d4/edit");
+    flush();
+    expect(host.querySelector("a")).toBe(anchor);
+    expect(anchor.getAttribute("href")).toBe("/u/550e8400-e29b-41d4");
+    dispose();
+  });
 });
 
 interface MountedLink {

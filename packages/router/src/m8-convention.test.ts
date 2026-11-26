@@ -240,16 +240,12 @@ describe("the nine workarounds are deletions", () => {
   });
 
   // #9 — `Link` read `state.location()` at CONSTRUCTION, so a relative href
-  // never re-resolved. `router.test.tsx` pins the behaviour by navigating; this
-  // pins the SHAPE, because the behavioural test only sees it where the Link
-  // survives the location change.
+  // never re-resolved. `router.test.ts` pins the behaviour by navigating under
+  // a layout that survives the location change, for `Link` and `NavLink`.
   test("9. both link components resolve their href inside the computation", () => {
     // No `const currentLocation = state.location()` above a memo that then
     // closes over the snapshot.
     expect(ROUTER).not.toMatch(/const currentLocation = state\.location\(\)/);
-    // Read per binding evaluation, so a surviving link re-resolves when the
-    // location moves.
-    expect(ROUTER).toContain("function target(): string {\n    return resolveTo(state, props);");
     // Both components resolve the same way, because `NavLink` is `Link`'s
     // `anchorElement` with an extra binding rather than a second copy — the old
     // pair were two near-identical bodies and the duplication is what let one
