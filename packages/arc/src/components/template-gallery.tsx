@@ -22,9 +22,14 @@ export interface TemplateItem {
   description?: string;
   /** The key of the category it is filed under. */
   category?: string;
-  /** Drawn small across the top of its card. Decorative: the name names it. */
+  /** A picture of it, drawn across the top of its card and large in the pane. Decorative: the name names it. */
+  image?: string;
+  /** A drawing across the top of its card, in place of the picture. */
   thumbnail?: Child;
-  /** Drawn large in the preview pane. @default the thumbnail */
+  /**
+   * A drawing in the pane, in place of the picture. One element is drawn in
+   * one place, so this is a second one, never the thumbnail itself.
+   */
   preview?: Child;
 }
 
@@ -160,7 +165,9 @@ export function TemplateGallery(props: TemplateGalleryProps) {
         value: template.key,
         label: template.name,
         description: template.description,
-        media: template.thumbnail,
+        media:
+          template.thumbnail ??
+          (template.image === undefined ? undefined : <img src={template.image} alt="" />),
       })),
     ];
   }
@@ -248,9 +255,11 @@ export function TemplateGallery(props: TemplateGalleryProps) {
               </p>
             }
           >
-            <Show when={chosen()?.preview ?? chosen()?.thumbnail}>
+            <Show when={chosen()?.preview !== undefined || chosen()?.image !== undefined}>
               <div class={cls().preview} data-slot="template-gallery-preview" aria-hidden="true">
-                {chosen()?.preview ?? chosen()?.thumbnail}
+                <Show when={chosen()?.preview === undefined} fallback={chosen()?.preview}>
+                  <img src={chosen()?.image} alt="" />
+                </Show>
               </div>
             </Show>
             <h3 class={cls().paneName} data-slot="template-gallery-name">

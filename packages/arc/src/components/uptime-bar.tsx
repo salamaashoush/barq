@@ -84,7 +84,7 @@ export const uptimeBarStyles = variants({
     summary: arc(type.meta, type.numeric),
     plot: arc(layout.relative),
     cells: arc(layout.row, { alignItems: "stretch", gap: "2px", blockSize: space.x8 }),
-    cell: arc(rounded.xs, focus.slot, motion.colours, layout.minZero, {
+    cell: arc(rounded.xs, focus.visible, motion.colours, layout.minZero, {
       flex: "1 1 0",
       outlineOffset: "1px",
       "[data-active]": { opacity: "0.75" },
@@ -93,6 +93,7 @@ export const uptimeBarStyles = variants({
       insetBlockEnd: `calc(100% + ${space.x2})`,
       paddingInline: space.x2_5,
       paddingBlock: space.x1_5,
+      inlineSize: "max-content",
       maxInlineSize: "16rem",
       zIndex: "1",
     }),

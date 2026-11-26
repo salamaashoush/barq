@@ -45,7 +45,7 @@ export const quotedMessageCardStyles = variants({
     ),
     top: arc(layout.row, layout.between, layout.minZero, gap[2]),
     source: arc(layout.inlineRow, layout.minZero, gap[1], type.meta, {
-      "& > svg": { inlineSize: space.x3, blockSize: space.x3, flexShrink: "0" },
+      "& svg": { inlineSize: space.x3, blockSize: space.x3, flexShrink: "0" },
     }),
     sourceLink: arc(fg.muted, interaction.hoverText, layout.relative, {
       zIndex: "1",
@@ -62,6 +62,8 @@ export const quotedMessageCardStyles = variants({
       paddingInlineStart: space.x10,
     }),
     note: arc(type.sm, fg.muted, edge.start, {
+      marginBlock: "0px",
+      marginInlineEnd: "0px",
       marginInlineStart: space.x10,
       paddingInlineStart: space.x3,
       fontStyle: "italic",
@@ -217,7 +219,7 @@ export function QuotedMessageCard(props: QuotedMessageCardProps) {
         </p>
       </Show>
       <Show when={props.note !== undefined}>
-        <blockquote class={arc(cls().note, layout.flush)} data-slot="quoted-message-note">
+        <blockquote class={cls().note} data-slot="quoted-message-note">
           {props.note}
         </blockquote>
       </Show>

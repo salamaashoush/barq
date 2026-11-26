@@ -20,7 +20,7 @@ const TEMPLATES: TemplateItem[] = [
     category: "plans",
   },
   { key: "unit", name: "Unit overview", description: "Weeks at a glance.", category: "plans" },
-  { key: "letter", name: "Letter home", category: "letters", thumbnail: <span>letter art</span> },
+  { key: "letter", name: "Letter home", category: "letters", image: "/letter.png" },
 ];
 
 const CATEGORIES = [
@@ -107,8 +107,11 @@ describe("TemplateGallery", () => {
     expect(document.querySelector('[data-slot="template-gallery-loading"]')).not.toBeNull();
     expect(screen.getByText("No templates here yet.")).toBeDefined();
     expect(screen.getByRole("button", { name: "Start from this" })).toBeDefined();
-    expect(document.querySelector('[data-slot="template-gallery-preview"]')?.textContent).toBe(
-      "letter art",
+    expect(
+      document.querySelector('[data-slot="template-gallery-preview"] img')?.getAttribute("src"),
+    ).toBe("/letter.png");
+    expect(document.querySelector('[data-slot="choice-card-media"] img')?.getAttribute("alt")).toBe(
+      "",
     );
   });
 
@@ -132,7 +135,7 @@ describe("TemplateGallery", () => {
         return (
           <TemplateGallery label="Templates" blank onStart={() => {}}
             categories={[{ key: "a", label: "A" }]}
-            templates={[{ key: "x", name: "X", category: "a" }]} />
+            templates={[{ key: "x", name: "X", category: "a", image: "/x.png" }]} defaultSelected="x" />
         );
       }
     `);

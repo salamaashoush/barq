@@ -82,8 +82,8 @@ export function CountUp(props: CountUpProps) {
       setShown(current);
       if (progress >= 1) loop.stop();
     });
-    function run(start: number, end: number): void {
-      if (reduced() || start === end) {
+    function run(start: number, end: number, still: boolean): void {
+      if (still || start === end) {
         loop.stop();
         current = end;
         setShown(end);
@@ -101,14 +101,14 @@ export function CountUp(props: CountUpProps) {
       (entry) => {
         if (!entry.isIntersecting || started) return;
         started = true;
-        run(props.from ?? 0, props.value);
+        run(props.from ?? 0, props.value, reduced());
       },
       { threshold: 0.25 },
     );
     createEffect(
-      () => props.value,
-      (value) => {
-        if (started) run(current, value);
+      () => [props.value, reduced()] as const,
+      ([value, still]) => {
+        if (started) run(current, value, still);
         else setShown(value);
       },
       { defer: true },
