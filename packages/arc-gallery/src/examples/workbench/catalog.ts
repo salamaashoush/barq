@@ -60,7 +60,7 @@ export const catalog: GroupCatalog = {
       title: "Empty, loading and failed",
       description:
         "Each panel before anything is known, with nothing to show, and when its tool fails.",
-      covers: ["ProblemsPanel", "TestResults", "CheckResults"],
+      covers: ["ProblemsPanel", "TestResults", "CheckResults", "ConsoleLogView"],
     },
   ],
 };

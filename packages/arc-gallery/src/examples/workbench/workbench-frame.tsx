@@ -71,12 +71,7 @@ export default function WorkbenchFrame() {
             {panel() === "problems" ? (
               <ProblemsPanel class={place.fill} problems={PROBLEMS} />
             ) : (
-              <ConsoleLogView
-                class={place.fill}
-                entries={OUTPUT}
-                height="100%"
-                aria-label="Output"
-              />
+              <ConsoleLogView entries={OUTPUT} height="100%" aria-label="Output" />
             )}
           </ResizablePanel>
         </ResizablePanelGroup>
