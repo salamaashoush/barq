@@ -6,10 +6,7 @@ import { edge } from "./surface.ts";
 /** The inside of a sheet or a dialog. */
 export const panel = {
   /** Its body: the room left, scrolling by itself, the page not scrolled past it. */
-  body: arc(layout.column, layout.minZeroBlock, layout.grow, gap[4], {
-    overflowY: "auto",
-    overscrollBehavior: "contain",
-  }),
+  body: arc(layout.column, layout.minZeroBlock, layout.grow, gap[4], layout.scrollBlock),
   /** Its foot of actions: in a row from the end, clear of a phone's home indicator. */
   footer: arc(layout.wrap, layout.end, edge.top, {
     flexDirection: "row",

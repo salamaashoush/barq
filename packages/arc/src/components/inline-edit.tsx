@@ -8,43 +8,14 @@ import { Textarea } from "@barqjs/ui/textarea";
 import { arcLayer as arc } from "../layer.ts";
 import { type Customisable, parts } from "../lib/parts.ts";
 import { textDirection } from "../lib/text-direction.ts";
-import {
-  control,
-  fg,
-  focus,
-  gap,
-  interaction,
-  layout,
-  motion,
-  rounded,
-  space,
-  type,
-} from "../style/index.ts";
+import { control, fg, gap, layout, type } from "../style/index.ts";
 import { useArcMessages } from "./messages.ts";
 import { serverMessage } from "./server-message.ts";
-
-/** Drawn as the text it holds, filled under the pointer: a value that edits where it is read. */
-const quiet = arc(
-  control.bare,
-  rounded.sm,
-  interaction.hover,
-  focus.visible,
-  motion.colours,
-  layout.fill,
-  {
-    display: "block",
-    textAlign: "start",
-    paddingInline: space.x1_5,
-    marginInline: `calc(${space.x1_5} * -1)`,
-    paddingBlock: space.x0_5,
-    minBlockSize: space.x8,
-  },
-);
 
 export const inlineEditStyles = variants({
   slots: {
     root: arc(layout.column, gap[1], layout.minZero),
-    display: arc(quiet, type.written),
+    display: arc(control.quiet, type.written),
     placeholder: arc(fg.muted),
     editor: arc(layout.row, gap[2]),
     input: arc(layout.grow),
@@ -264,8 +235,7 @@ const NONE = "__arc-none";
 export const inlineSelectStyles = variants({
   slots: {
     root: arc(layout.column, gap[1], layout.minZero),
-    trigger: arc(quiet, layout.row, gap[2], {
-      height: "auto",
+    trigger: arc(control.quiet, layout.row, gap[2], {
       boxShadow: "none",
       justifyContent: "space-between",
       "[data-disabled]": { opacity: "1" },

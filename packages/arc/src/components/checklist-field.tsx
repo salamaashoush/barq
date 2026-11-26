@@ -60,18 +60,24 @@ export const checklistFieldStyles = variants({
   slots: {
     panel: arc(edge.all, rounded.md, layout.column, layout.minZero, { overflow: "hidden" }),
     search: arc(flush, edge.bottom),
-    list: arc(plainList, layout.column, {
+    list: arc(plainList, layout.column, layout.scrollBlock, {
       maxHeight: "var(--checklist-height, 12rem)",
-      overflowY: "auto",
-      overscrollBehavior: "contain",
-      "& > li + li": { borderBlockStartWidth: "1px", borderColor: "var(--border)" },
+      "& > li:first-child": { borderBlockStartWidth: "0px" },
     }),
-    row: arc(layout.row, gap[3], target.size, interaction.hover, {
-      minBlockSize: space.x11,
-      paddingInline: space.x3,
-      cursor: "pointer",
-      "[data-disabled]": { cursor: "default", opacity: "0.5" },
-    }),
+    item: arc(edge.top),
+    row: arc(
+      layout.row,
+      gap[3],
+      target.size,
+      interaction.hover,
+      interaction.pressable,
+      interaction.disabled,
+      {
+        minBlockSize: space.x11,
+        paddingInline: space.x3,
+        "[data-disabled]": { cursor: "default" },
+      },
+    ),
     control: arc(layout.noShrink),
     icon: arc(layout.inlineCentre, layout.noShrink, fg.muted, glyph.md),
     label: arc(layout.grow, layout.minZero, truncate, type.sm),
@@ -246,7 +252,7 @@ export function ChecklistField(props: ChecklistFieldProps) {
           >
             <For each={shown()}>
               {(row: ChecklistOption) => (
-                <li>
+                <li class={cls().item}>
                   <label
                     class={cls().row}
                     data-slot="checklist-field-row"

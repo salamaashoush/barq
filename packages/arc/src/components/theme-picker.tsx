@@ -9,7 +9,7 @@ import type { ThemeTokens } from "@barqjs/ui/theme";
 import { arcLayer as arc } from "../layer.ts";
 import { type Customisable, parts } from "../lib/parts.ts";
 import { type ArcThemeSelection, arcThemeValues } from "../theme/index.ts";
-import { bg, edge, gap, layout, rounded, space, surface } from "../style/index.ts";
+import { bg, gap, layout, place, rounded, space, surface } from "../style/index.ts";
 import { type ChoiceOption, RadioCards } from "./choice-cards.tsx";
 import { type ArcMessages, useArcMessages } from "./messages.ts";
 import { SegmentedControl } from "./segmented-control.tsx";
@@ -22,13 +22,13 @@ const bar = arc(rounded.full, { display: "block", height: space.x1_5 });
 export const themePickerStyles = variants({
   slots: {
     root: arc({}),
-    preview: arc(layout.row, { alignItems: "stretch", width: "100%", height: "100%" }),
+    preview: arc(layout.row, place.fill, { alignItems: "stretch" }),
     half: arc(layout.row, layout.grow, bg.page, gap[1.5], { padding: space.x2, minWidth: "0px" }),
     rail: arc(bg.muted, rounded.sm, { display: "block", width: "22%" }),
     card: arc(surface.card, layout.column, layout.grow, gap[1.5], { padding: space.x2 }),
     line: arc(bar, bg.muted),
     short: arc(bar, bg.muted, { width: "70%" }),
-    accent: arc(bar, edge.none, { width: "40%", backgroundColor: "var(--primary)" }),
+    accent: arc(bar, bg.primary, { width: "40%" }),
   },
 });
 

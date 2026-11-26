@@ -25,6 +25,8 @@ export const bg = arc.create({
   popover: { backgroundColor: tokens.popover },
   sunken: { backgroundColor: "var(--sunken)" },
   muted: { backgroundColor: tokens.muted },
+  /** The brand's own fill: a primary button, a chosen mark. */
+  primary: { backgroundColor: tokens.primary },
   transparent: { backgroundColor: "transparent" },
   /** The subtle fill of the tone an ancestor chose. */
   tone: { backgroundColor: "var(--arc-tone-subtle)" },

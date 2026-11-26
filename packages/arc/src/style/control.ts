@@ -5,6 +5,7 @@ import { bg, fg } from "./colour.ts";
 import { focus } from "./focus.ts";
 import { interaction } from "./interaction.ts";
 import { layout } from "./layout.ts";
+import { motion } from "./motion.ts";
 import { place } from "./place.ts";
 import { edge, rounded } from "./surface.ts";
 import { target } from "./target.ts";
@@ -20,13 +21,15 @@ const boxedButton = arc(rounded.sm, edge.none, bg.transparent, target.size, {
 /** The text around it, in its colour and its font. */
 const inheritText = arc(fg.inherit, { font: "inherit" });
 
+const bare = arc(bg.transparent, edge.none, inheritText, interaction.pressable, place.unpadded);
+
 /**
  * Controls drawn without chrome of their own: a button that is only its
  * content, and the parts of a field whose box draws the edge and the ring.
  */
 export const control = {
   /** A `<button>` drawn as nothing but its content: no fill, no edge, no padding, the text around it. */
-  bare: arc(bg.transparent, edge.none, inheritText, interaction.pressable, place.unpadded),
+  bare,
   /**
    * A box of typed segments, a date's or a time's: an input's edge, the
    * focused segment filled, the empty ones muted, and a finger's height under
@@ -70,6 +73,17 @@ export const control = {
     paddingInline: space.x1_5,
   }),
   boxedButton,
+  /**
+   * A value that edits where it is read: drawn as its text, filled under the
+   * pointer, lined up with the text around it however much room it takes.
+   */
+  quiet: arc(bare, rounded.sm, interaction.hover, focus.visible, motion.colours, layout.fill, {
+    textAlign: "start",
+    paddingInline: space.x1_5,
+    marginInline: `calc(${space.x1_5} * -1)`,
+    paddingBlock: space.x0_5,
+    minBlockSize: space.x8,
+  }),
   /** ui's select trigger as a boxed button: its own height and shadow given up to the box's. */
   boxedTrigger: arc(boxedButton, { height: "auto", boxShadow: "none" }),
 };

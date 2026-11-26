@@ -44,6 +44,8 @@ export const layout = {
   flush: arc({ margin: "0" }),
   /** A query container, for what is laid out by `on.cq*`. */
   container: arc({ containerType: "inline-size" }),
+  /** Scrolls by itself along the block axis, the page not scrolled past it. */
+  scrollBlock: arc({ overflowY: "auto", overscrollBehavior: "contain" }),
   relative: arc({ position: "relative" }),
   /** Held at the top of its scroller, over what scrolls under it. */
   sticky: arc({ position: "sticky", zIndex: zIndex.sticky }),

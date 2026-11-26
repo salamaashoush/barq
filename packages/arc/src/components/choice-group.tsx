@@ -19,7 +19,7 @@ import {
   withOwnErrors,
 } from "../lib/field.tsx";
 import { type Customisable, parts } from "../lib/parts.ts";
-import { fg, gap, layout, plainList, tone, type } from "../style/index.ts";
+import { fg, gap, layout, plainList, space, tone, type } from "../style/index.ts";
 import { useArcMessages } from "./messages.ts";
 
 /** One choice of a `CheckboxGroupField` or a `RadioGroupField`. */
@@ -54,7 +54,7 @@ export const choiceGroupStyles = variants({
   variants: {
     layout: {
       column: { group: arc(layout.column) },
-      row: { group: arc(layout.row, layout.wrap, { columnGap: "calc(var(--spacing) * 6)" }) },
+      row: { group: arc(layout.row, layout.wrap, { columnGap: space.x6 }) },
       grid: {
         group: arc({
           display: "grid",
