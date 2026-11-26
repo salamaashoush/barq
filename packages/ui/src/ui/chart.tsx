@@ -179,9 +179,11 @@ const popup = ui({
 
 const legend = ui({
   display: "flex",
+  flexWrap: "wrap",
   alignItems: "center",
   justifyContent: "center",
-  gap: "calc(var(--spacing) * 4)",
+  columnGap: "calc(var(--spacing) * 4)",
+  rowGap: "calc(var(--spacing) * 1)",
   paddingTop: "calc(var(--spacing) * 3)",
   // Above the plot, which in a column is a matter of order, with the gap on
   // the side that now faces the drawing.
@@ -208,6 +210,16 @@ const legendSwatch = ui({
   width: "calc(var(--spacing) * 2)",
   flexShrink: "0",
   borderRadius: "2px",
+  // A dashed series is a dashed stroke in the legend too, so the key matches
+  // the drawing in shape as well as colour.
+  "&[data-dashed]": {
+    height: "0px",
+    width: "calc(var(--spacing) * 3)",
+    borderRadius: "0px",
+    borderTopWidth: "2px",
+    borderTopStyle: "dashed",
+    background: "none",
+  },
 });
 
 /** The axis type size, in scene units, which the guides are told directly. */
@@ -244,6 +256,8 @@ export interface ChartConfigEntry {
   readonly color?: string;
   /** A colour per scheme, for a series whose colour is not a theme token. Wins over `color`. */
   readonly theme?: Readonly<Record<ChartTheme, string>>;
+  /** Drawn dashed, so its legend entry is a dashed stroke: a percentile, a target, a forecast. */
+  readonly dashed?: boolean;
 }
 
 /** One series as a chart reads it, whichever shape it was written in. */
@@ -888,7 +902,12 @@ export function ChartLegendContent(props: ChartLegendContentProps) {
                     <span
                       class={legendSwatch}
                       data-slot="chart-legend-swatch"
-                      style={{ background: item.color }}
+                      data-dashed={entryOf(item)?.dashed === true ? "" : undefined}
+                      style={
+                        entryOf(item)?.dashed === true
+                          ? { "border-top-color": item.color }
+                          : { background: item.color }
+                      }
                     />
                   }
                 >

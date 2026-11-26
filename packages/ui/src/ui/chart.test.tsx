@@ -223,6 +223,29 @@ describe("Chart", () => {
     expect(swatch?.style.background).toBe("var(--color-desktop)");
   });
 
+  test("a dashed series is a dashed stroke in its colour, and the entries wrap", () => {
+    const { container } = render(() => (
+      <ChartContainer
+        config={[
+          { key: "p50", label: "p50", color: "var(--chart-1)" },
+          { key: "p95", label: "p95", color: "var(--chart-1)", dashed: true },
+        ]}
+      >
+        <ChartLegend />
+      </ChartContainer>
+    ));
+    const [solid, dashed] = [
+      ...container.querySelectorAll<HTMLElement>('[data-slot="chart-legend-swatch"]'),
+    ];
+    expect(solid?.hasAttribute("data-dashed")).toBe(false);
+    expect(dashed?.hasAttribute("data-dashed")).toBe(true);
+    expect(dashed?.style.getPropertyValue("border-top-color")).toBe("var(--color-p95)");
+    expect(dashed?.style.background).toBe("");
+    expect(rulesFor(dashed?.className ?? "")).toContain("border-top-style: dashed");
+    const legend = container.querySelector('[data-slot="chart-legend"]') as HTMLElement;
+    expect(rulesFor(legend.className)).toContain("flex-wrap: wrap");
+  });
+
   test("a tooltip row is an indicator, a name and a value", () => {
     render(() => (
       <ChartTooltipContent
