@@ -1284,9 +1284,25 @@ export {
 export {
   Timeline,
   type TimelineEvent,
+  type TimelineKind,
   type TimelineProps,
+  type TimelineRenders,
   timelineStyles,
 } from "./components/timeline.tsx";
+export {
+  type ChangeActor,
+  type ChangeEntry,
+  ChangeLog,
+  type ChangeLogFilter,
+  type ChangeLogParams,
+  type ChangeLogProps,
+  type FieldChange,
+  FieldChanges,
+  type FieldChangesProps,
+  changeLogStyles,
+  fieldChangesStyles,
+  matchesChangeLogFilter,
+} from "./components/change-log.tsx";
 export {
   type DescriptionItem,
   DescriptionList,

@@ -988,6 +988,34 @@ export interface ArcMessages {
   moveRowUpOf: (row: string) => string;
   moveRowDownOf: (row: string) => string;
   removeRowOf: (row: string) => string;
+  duplicateRowOf: (row: string) => string;
+  rowDuplicated: (row: string) => string;
+  eventKinds: string;
+  noMatchingEvents: string;
+  keyEvent: string;
+  markKeyEvent: string;
+  unmarkKeyEvent: string;
+  changedFrom: string;
+  changedTo: string;
+  changeActor: string;
+  changeDate: string;
+  noChanges: string;
+  changeLog: string;
+  checklistDone: (done: number, total: number) => string;
+  addChecklistItem: string;
+  checklistItem: string;
+  emptyChecklistItem: string;
+  memberLeft: string;
+  addMember: string;
+  noMembers: string;
+  allResults: string;
+  resultsFor: (query: string) => string;
+  noResultsFor: (query: string) => string;
+  showAllOf: (count: number, kind: string) => string;
+  addStep: string;
+  stepNumbered: (position: number) => string;
+  showDetailsOf: (row: string) => string;
+  clearDate: string;
   editRecordOf: (record: string) => string;
   addRecord: string;
   records: string;
@@ -2265,6 +2293,34 @@ export const ENGLISH: ArcMessages = {
   moveRowUpOf: (row) => `Move ${row} up`,
   moveRowDownOf: (row) => `Move ${row} down`,
   removeRowOf: (row) => `Remove ${row}`,
+  duplicateRowOf: (row) => `Duplicate ${row}`,
+  rowDuplicated: (row) => `${row} duplicated`,
+  eventKinds: "Show only",
+  noMatchingEvents: "No events of the kinds chosen.",
+  keyEvent: "Key event",
+  markKeyEvent: "Mark as a key event",
+  unmarkKeyEvent: "Key event; unmark it",
+  changedFrom: "changed from",
+  changedTo: "to",
+  changeActor: "Who",
+  changeDate: "When",
+  noChanges: "Nothing has changed yet.",
+  changeLog: "Changes",
+  checklistDone: (done, total) => `${String(done)} of ${String(total)} done`,
+  addChecklistItem: "Add an item",
+  checklistItem: "Item",
+  emptyChecklistItem: "Write something, or remove the item.",
+  memberLeft: "Someone who left",
+  addMember: "Add a member",
+  noMembers: "No members yet.",
+  allResults: "All",
+  resultsFor: (query) => `Results for “${query}”`,
+  noResultsFor: (query) => `Nothing matches “${query}”.`,
+  showAllOf: (count, kind) => `Show all ${String(count)} ${kind}`,
+  addStep: "Add step",
+  stepNumbered: (position) => `Step ${String(position)}`,
+  showDetailsOf: (row) => `Details of ${row}`,
+  clearDate: "No date",
   editRecordOf: (record) => `Edit ${record}`,
   addRecord: "Add",
   records: "Records",
