@@ -71,7 +71,9 @@ export interface TabItem {
 
 export const responsiveTabsStyles = variants({
   slots: {
-    root: arc(layout.minZero),
+    root: arc(layout.minZero, {
+      "&[data-fill]": { height: "100%", minHeight: "0px" },
+    }),
     bar: arc(layout.row, layout.minZero, gap[1], { width: "100%" }),
     viewport: arc(layout.grow, layout.minZero, layout.scrollInline, {
       overflowY: "hidden",
@@ -121,7 +123,16 @@ export const responsiveTabsStyles = variants({
     }),
     more: arc(layout.noShrink, gap[1]),
     menuItem: arc(gap[2]),
-    panel: arc({}),
+    // A kept panel is `hidden`; the flex layout applies only to the shown one,
+    // so it never outranks the attribute.
+    panel: arc({
+      "[data-fill] > &:not([hidden])": {
+        display: "flex",
+        flexDirection: "column",
+        flex: "1 1 0",
+        minHeight: "0px",
+      },
+    }),
   },
 });
 
@@ -160,6 +171,8 @@ export interface ResponsiveTabsProps extends Customisable<Slots> {
   shared?: readonly string[];
   /** Keep every tab's panel in the document, hidden, so its state survives switching away. */
   keepMounted?: boolean;
+  /** Take the whole height of the parent, the selected panel the rest of it below the tabs: a workbench's bottom panel. */
+  fill?: boolean;
   id?: string;
   /**
    * Tabs close: a close button on each, a middle click, Delete on a focused
@@ -757,6 +770,7 @@ export function ResponsiveTabs(props: ResponsiveTabsProps) {
       class={arc(cls().root, props.class, props.className)}
       id={props.id}
       data-slot="responsive-tabs"
+      data-fill={props.fill === true ? "" : undefined}
       data-overflow={scrolls() ? "scroll" : "menu"}
       items={shown()}
       getKey={(item: TabItem) => item.id}

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { DEV, createSignal, type ParentProps } from "@barqjs/core";
 import { provideLocale } from "@barqjs/aria/i18n";
+import { collectCss } from "@barqjs/css";
 import { Link } from "@barqjs/router";
 import { ariaViolations, render, screen, user, waitFor, within } from "@barqjs/testing";
 import { renderRoute } from "@barqjs/testing/router";
@@ -92,6 +93,23 @@ describe("Indicator", () => {
 });
 
 describe("ResponsiveTabs", () => {
+  test("with fill it takes its parent's height, the selected panel below the tabs and the kept ones hidden", async () => {
+    render(() => (
+      <div style={{ height: "300px" }}>
+        <ResponsiveTabs aria-label="Panels" items={ITEMS.slice(0, 2)} keepMounted fill>
+          {(item) => <p>{item.label} panel</p>}
+        </ResponsiveTabs>
+      </div>
+    ));
+    await settle();
+    expect(slot("responsive-tabs").hasAttribute("data-fill")).toBe(true);
+    const panels = all("responsive-tabs-panel");
+    expect(panels).toHaveLength(2);
+    expect(panels.filter((panel) => panel.hasAttribute("hidden"))).toHaveLength(1);
+    const sheet = collectCss();
+    expect(sheet).toMatch(/\[data-fill\] > [^{]*:not\(\[hidden\]\)\{flex:1 1 0\}/);
+    expect(sheet).not.toMatch(/\[data-fill\] > [^{]*\.[\w-]+\{display:flex\}/);
+  });
   test("a tab list with the selected tab's panel, and counts", async () => {
     render(() => (
       <ResponsiveTabs aria-label="Project" items={ITEMS}>

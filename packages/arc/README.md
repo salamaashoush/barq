@@ -712,6 +712,8 @@ import { ResponsiveTabs } from "@barqjs/arc";
   router, tabs with `href` are routes of their own: the one whose path the
   page is on is selected, a tab comes back with the search it was left with,
   and `shared` names the parameters every tab carries on, such as a window.
+  `fill` takes the parent's height and gives the selected panel what is left
+  below the tabs: the bottom panel of a `Workbench`.
   Tabs that are open documents: `onClose` puts a close button on each, and a
   middle click or Delete closes the focused one, its neighbour selected
   first; `onReorder` moves tabs by dragging, by Ctrl+Shift+Page Up and Page
