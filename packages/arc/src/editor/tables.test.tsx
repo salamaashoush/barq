@@ -48,9 +48,7 @@ function grid(editor: LexicalEditor): string[][] {
       .getChildren()
       .map((row) =>
         "getChildren" in row
-          ? (row as TableNode)
-              .getChildren()
-              .map((cell) => cell.getTextContent())
+          ? (row as TableNode).getChildren().map((cell) => cell.getTextContent())
           : [],
       ),
   );
@@ -133,9 +131,9 @@ describe("a table's menus", () => {
     await caretInCell(editor, "a");
     await menu();
     expect(await ariaViolations(document.body)).toEqual([]);
-    expect(screen.getByRole("menuitem", { name: "Move row up" }).getAttribute("aria-disabled")).toBe(
-      "true",
-    );
+    expect(
+      screen.getByRole("menuitem", { name: "Move row up" }).getAttribute("aria-disabled"),
+    ).toBe("true");
     await choose("Move column after");
     expect(grid(editor)).toEqual([
       ["b", "a"],
@@ -246,16 +244,39 @@ describe("a table's grips", () => {
   test("a column's grip dragged by a pointer moves its column to where it is let go", async () => {
     const editor = await mount("| a | b | c |\n| --- | --- | --- |\n| d | e | f |");
     await caretInCell(editor, "d");
-    for (const [index, element] of [...content().querySelectorAll("tr:first-child > *")].entries()) {
+    for (const [index, element] of [
+      ...content().querySelectorAll("tr:first-child > *"),
+    ].entries()) {
       element.getBoundingClientRect = () =>
-        ({ top: 0, bottom: 30, height: 30, left: index * 100, right: index * 100 + 100, width: 100, x: index * 100, y: 0 }) as DOMRect;
+        ({
+          top: 0,
+          bottom: 30,
+          height: 30,
+          left: index * 100,
+          right: index * 100 + 100,
+          width: 100,
+          x: index * 100,
+          y: 0,
+        }) as DOMRect;
     }
     editor.update(() => $getRoot().markDirty());
     await settle();
     const grip = screen.getByRole("button", { name: "Column 1" });
-    grip.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0, pointerId: 1, clientX: 50, clientY: -10 }));
-    grip.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, pointerId: 1, clientX: 180, clientY: -10 }));
-    grip.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerId: 1, clientX: 260, clientY: -10 }));
+    grip.dispatchEvent(
+      new PointerEvent("pointerdown", {
+        bubbles: true,
+        button: 0,
+        pointerId: 1,
+        clientX: 50,
+        clientY: -10,
+      }),
+    );
+    grip.dispatchEvent(
+      new PointerEvent("pointermove", { bubbles: true, pointerId: 1, clientX: 180, clientY: -10 }),
+    );
+    grip.dispatchEvent(
+      new PointerEvent("pointerup", { bubbles: true, pointerId: 1, clientX: 260, clientY: -10 }),
+    );
     await settle();
     expect(grid(editor)[0]).toEqual(["b", "c", "a"]);
   });

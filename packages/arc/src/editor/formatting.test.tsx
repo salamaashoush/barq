@@ -96,7 +96,15 @@ const STYLED = {
             mode: "normal",
             detail: 0,
           },
-          { type: "text", version: 1, text: "O is ", format: 0, style: "", mode: "normal", detail: 0 },
+          {
+            type: "text",
+            version: 1,
+            text: "O is ",
+            format: 0,
+            style: "",
+            mode: "normal",
+            detail: 0,
+          },
           {
             type: "text",
             version: 1,
@@ -106,7 +114,15 @@ const STYLED = {
             mode: "normal",
             detail: 0,
           },
-          { type: "text", version: 1, text: " and ", format: 0, style: "", mode: "normal", detail: 0 },
+          {
+            type: "text",
+            version: 1,
+            text: " and ",
+            format: 0,
+            style: "",
+            mode: "normal",
+            detail: 0,
+          },
           {
             type: "text",
             version: 1,
@@ -167,9 +183,11 @@ describe("formatting over selected text", () => {
     await user.click(superscript);
     await settle();
     expect(pieces(editor.get()).at(-1)?.format).toBe(IS_SUPERSCRIPT);
-    expect(bar().getByRole("button", { name: /Superscript/ }).getAttribute("aria-pressed")).toBe(
-      "true",
-    );
+    expect(
+      bar()
+        .getByRole("button", { name: /Superscript/ })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
 
     await user.click(bar().getByRole("button", { name: "Text colour" }));
     await settle();

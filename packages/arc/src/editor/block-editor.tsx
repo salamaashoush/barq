@@ -458,8 +458,17 @@ function BlockHandles(props: BlockHandlesProps) {
         (event) => {
           const mod = event.metaKey || event.ctrlKey;
           const moving =
-            event.altKey && event.shiftKey && !mod && (event.key === "ArrowUp" || event.key === "ArrowDown");
-          if ((mod && event.shiftKey && !event.altKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) || moving) {
+            event.altKey &&
+            event.shiftKey &&
+            !mod &&
+            (event.key === "ArrowUp" || event.key === "ArrowDown");
+          if (
+            (mod &&
+              event.shiftKey &&
+              !event.altKey &&
+              (event.key === "ArrowUp" || event.key === "ArrowDown")) ||
+            moving
+          ) {
             const key = caretBlock();
             if (key === null) return false;
             event.preventDefault();

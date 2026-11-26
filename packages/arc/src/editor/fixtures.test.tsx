@@ -4,11 +4,7 @@ import { ariaViolations, cleanup, render } from "@barqjs/testing";
 import { $getRoot } from "lexical";
 
 import { hydrates } from "../test-arc.ts";
-import {
-  createDocumentEditor,
-  documentToMarkdown,
-  markdownToDocument,
-} from "./document.ts";
+import { createDocumentEditor, documentToMarkdown, markdownToDocument } from "./document.ts";
 import { everyBlock, largeDocument } from "./fixtures.ts";
 import { RichTextRenderer } from "./renderer.tsx";
 import { RichTextEditor } from "./rich-text-editor.tsx";
@@ -49,7 +45,7 @@ describe("the every-block document", () => {
     const editor = createDocumentEditor();
     const known = [...editor._nodes.keys()].filter((type) => !PIECES.has(type));
     editor.dispose();
-    const held = typesIn(everyBlock().root as unknown as Walked);
+    const held = typesIn(everyBlock().root);
     expect(known.filter((type) => !held.has(type))).toEqual([]);
   });
 
@@ -87,7 +83,9 @@ describe("the every-block document", () => {
       "RichTextEditor",
       `<RichTextEditor label="Every block" defaultValue={${stored}} />`,
     );
-    expect(page.container.querySelector('[data-lexical-editor] [data-slot="callout"]')).not.toBeNull();
+    expect(
+      page.container.querySelector('[data-lexical-editor] [data-slot="callout"]'),
+    ).not.toBeNull();
     page.dispose();
   });
 });
@@ -115,9 +113,7 @@ describe("a long document", () => {
 
   test("takes keystrokes at its end without redrawing the rest", async () => {
     const editor = capture();
-    render(() => (
-      <RichTextEditor label="Long" defaultMarkdown={markdown} onEditor={editor.set} />
-    ));
+    render(() => <RichTextEditor label="Long" defaultMarkdown={markdown} onEditor={editor.set} />);
     await settle();
     const first = document.querySelector('[data-slot="rich-text-editor-content"] h2');
     editor.get().update(() => $getRoot().selectEnd());

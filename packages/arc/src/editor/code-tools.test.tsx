@@ -83,7 +83,11 @@ describe("a code block's tools", () => {
       provideLocale("ar-EG");
       return (
         <div dir="rtl">
-          <RichTextEditor label="ملاحظات" defaultMarkdown={"مرحبا\n\n```js\nlet a;\n```"} onEditor={editor.set} />
+          <RichTextEditor
+            label="ملاحظات"
+            defaultMarkdown={"مرحبا\n\n```js\nlet a;\n```"}
+            onEditor={editor.set}
+          />
         </div>
       );
     }

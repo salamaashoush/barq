@@ -267,7 +267,10 @@ function Node(props: NodeProps): JSX.Element {
       return (
         <div class={context.slots.tableScroller}>
           <table
-            class={arc(context.slots.table, node.rowStriping === true ? context.slots.tableStriped : undefined)}
+            class={arc(
+              context.slots.table,
+              node.rowStriping === true ? context.slots.tableStriped : undefined,
+            )}
             data-lexical-row-striping={node.rowStriping === true ? "true" : undefined}
           >
             <Show when={(node.colWidths?.length ?? 0) > 0}>
@@ -303,7 +306,8 @@ function Node(props: NodeProps): JSX.Element {
         node.verticalAlign === "middle" || node.verticalAlign === "bottom"
           ? { "vertical-align": node.verticalAlign }
           : undefined;
-      const cellStyle = colour === undefined && vertical === undefined ? undefined : { ...colour, ...vertical };
+      const cellStyle =
+        colour === undefined && vertical === undefined ? undefined : { ...colour, ...vertical };
       return (
         <Cell
           class={

@@ -484,4 +484,3 @@ export function removeBlock(editor: LexicalEditor, key: NodeKey): void {
     (next ?? $getRoot().getFirstChild())?.selectStart();
   });
 }
-

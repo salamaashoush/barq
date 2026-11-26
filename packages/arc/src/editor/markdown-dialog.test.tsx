@@ -20,7 +20,7 @@ afterEach(() => {
 const DOC = "## Plan\n\n- one\n- **two**\n\n> [!warning]\n> Careful";
 
 function source(): HTMLTextAreaElement {
-  return screen.getByRole("textbox", { name: "Markdown" }) as HTMLTextAreaElement;
+  return screen.getByRole<HTMLTextAreaElement>("textbox", { name: "Markdown" });
 }
 
 describe("the markdown dialog", () => {

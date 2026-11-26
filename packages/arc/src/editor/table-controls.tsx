@@ -202,7 +202,12 @@ function $cellsOfLine(table: TableNode, line: TableLine, index: number): TableCe
   const [map] = $computeTableMapSkipCellCheck(table, null, null);
   const cells = new Set<TableCellNode>();
   if (line === "row") for (const one of map[index] ?? []) cells.add(one.cell);
-  else for (const row of map) if (row[index] !== undefined) cells.add(row[index]!.cell);
+  else {
+    for (const row of map) {
+      const spot = row[index];
+      if (spot !== undefined) cells.add(spot.cell);
+    }
+  }
   return [...cells];
 }
 
@@ -591,8 +596,7 @@ export function TableControls(props: TableControlsProps) {
     const boxes = line === "row" ? at.rows : at.columns;
     let index = 0;
     for (const [at2, box] of boxes.entries()) {
-      const past =
-        line === "row" ? y > box.y + 10 : cell()!.rtl ? x < box.x + 10 : x > box.x + 10;
+      const past = line === "row" ? y > box.y + 10 : cell()!.rtl ? x < box.x + 10 : x > box.x + 10;
       if (past) index = at2;
     }
     return index;

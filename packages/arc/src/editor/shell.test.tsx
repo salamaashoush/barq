@@ -92,7 +92,9 @@ describe("handing the document over", () => {
     expect(content().getAttribute("aria-describedby")).toBe(alert.id);
     expect(await ariaViolations(document.body)).toEqual([]);
     editor.get().update(() => {
-      $getRoot().clear().append($createParagraphNode().append($createTextNode("fine")));
+      $getRoot()
+        .clear()
+        .append($createParagraphNode().append($createTextNode("fine")));
     });
     await settle();
     expect(validity).toEqual([false, true]);

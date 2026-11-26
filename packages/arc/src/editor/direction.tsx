@@ -41,7 +41,10 @@ function settle(element: HTMLElement, direction: TextDirection): void {
   }
 }
 
-function documentDirectionOf(editor: LexicalEditor, language: string | undefined): TextDirection | null {
+function documentDirectionOf(
+  editor: LexicalEditor,
+  language: string | undefined,
+): TextDirection | null {
   return language === undefined
     ? editor.getEditorState().read($documentDirection)
     : languageDirection(language);

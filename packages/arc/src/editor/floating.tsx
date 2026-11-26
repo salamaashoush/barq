@@ -134,6 +134,12 @@ export interface FloatingFormatToolbarProps extends Customisable<Slots> {
 /** What the bar is over: words selected, or a block chosen whole. */
 type BarMode = "text" | "block";
 
+/** What the selection gives the bar to stand over: words, or a block by its key. */
+interface BarTarget {
+  mode: BarMode;
+  key: NodeKey | null;
+}
+
 interface BarPlace {
   mode: BarMode;
   rect: AnchorRect;
@@ -183,31 +189,33 @@ export function FloatingFormatToolbar(props: FloatingFormatToolbarProps) {
     const active = editor.getRootElement()?.ownerDocument.activeElement ?? null;
     const inBar = active !== null && (barRef()?.contains(active) ?? false);
     if (inBar || pressed) return;
-    const found = editor.read((): BarMode | NodeKey | null => {
+    const found = editor.read((): BarTarget | null => {
       const selection = $getSelection();
       if (!editor.isEditable()) return null;
       if ($isNodeSelection(selection)) {
         const [node] = selection.getNodes();
         return selection.getNodes().length === 1 && node !== undefined && node.getParent() !== null
-          ? node.getKey()
+          ? { mode: "block", key: node.getKey() }
           : null;
       }
       if (!$isRangeSelection(selection) || selection.isCollapsed()) return null;
       if (selection.getTextContent().trim() === "") return null;
-      const inCode = selection.getNodes().some((node) => $findMatchingParent(node, $isCodeNode) !== null);
-      return inCode ? null : "text";
+      const inCode = selection
+        .getNodes()
+        .some((node) => $findMatchingParent(node, $isCodeNode) !== null);
+      return inCode ? null : { mode: "text", key: null };
     });
     if (found === null) {
       setPlace(null);
       return;
     }
-    if (found === "text") {
+    if (found.mode === "text" || found.key === null) {
       const rect = selectionRect(editor);
       setPlace(rect === null ? null : { mode: "text", rect, block: null });
       return;
     }
-    const element = editor.getElementByKey(found);
-    setPlace(element === null ? null : { mode: "block", rect: rectOf(element), block: found });
+    const element = editor.getElementByKey(found.key);
+    setPlace(element === null ? null : { mode: "block", rect: rectOf(element), block: found.key });
   }
 
   function enter(event: KeyboardEvent): boolean {
@@ -221,15 +229,17 @@ export function FloatingFormatToolbar(props: FloatingFormatToolbarProps) {
 
   useRegistration(() =>
     mergeRegister(
-      editor.registerUpdateListener(({ editorState, prevEditorState, dirtyElements, dirtyLeaves }) => {
-        // Escape keeps it away until the text or the selection changes; focus
-        // coming back to the text is neither.
-        const now = editorState.read(() => $getSelection());
-        const before = prevEditorState.read(() => $getSelection());
-        const moved = now === null || before === null ? now !== before : !now.is(before);
-        if (moved || dirtyElements.size > 0 || dirtyLeaves.size > 0) setDismissed(false);
-        read();
-      }),
+      editor.registerUpdateListener(
+        ({ editorState, prevEditorState, dirtyElements, dirtyLeaves }) => {
+          // Escape keeps it away until the text or the selection changes; focus
+          // coming back to the text is neither.
+          const now = editorState.read(() => $getSelection());
+          const before = prevEditorState.read(() => $getSelection());
+          const moved = now === null || before === null ? now !== before : !now.is(before);
+          if (moved || dirtyElements.size > 0 || dirtyLeaves.size > 0) setDismissed(false);
+          read();
+        },
+      ),
       editor.registerCommand(
         SELECTION_CHANGE_COMMAND,
         () => {
@@ -314,13 +324,17 @@ export function FloatingFormatToolbar(props: FloatingFormatToolbarProps) {
           $turnInto(block, value, conversions);
         }
       });
-      if (TEXT_BLOCK_TYPES.some((one) => one === value)) setTextBlock(editor, value as TextBlockType);
+      if (TEXT_BLOCK_TYPES.some((one) => one === value))
+        setTextBlock(editor, value as TextBlockType);
     } else {
       editor.update(() => {
         const selection = $getSelection();
         if (!$isRangeSelection(selection)) return;
         const block = $rootBlockOf(selection.anchor.getNode());
-        if (block !== null && $findMatchingParent(selection.anchor.getNode(), $isTableCell) === null) {
+        if (
+          block !== null &&
+          $findMatchingParent(selection.anchor.getNode(), $isTableCell) === null
+        ) {
           $turnInto(block, value, conversions);
         }
       });

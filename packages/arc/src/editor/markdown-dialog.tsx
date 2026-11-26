@@ -21,9 +21,8 @@ import { defineEditorExtension, editorExtensions, transformersOf } from "./exten
 import { useRegistration } from "./hooks.ts";
 
 /** Opens the document as markdown: the toolbar's Markdown. */
-export const OPEN_MARKDOWN_DIALOG_COMMAND: LexicalCommand<void> = createCommand(
-  "OPEN_MARKDOWN_DIALOG",
-);
+export const OPEN_MARKDOWN_DIALOG_COMMAND: LexicalCommand<void> =
+  createCommand("OPEN_MARKDOWN_DIALOG");
 
 export const markdownDialogStyles = variants({
   slots: {

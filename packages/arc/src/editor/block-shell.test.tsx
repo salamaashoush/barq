@@ -224,16 +224,18 @@ describe("blocks in place", () => {
   });
 
   test("an empty toggle title and a callout of one empty line say what they are", async () => {
-    const editor = await mount("> [!info]\n>\n\n<details open>\n<summary></summary>\n\nInside\n\n</details>");
+    const editor = await mount(
+      "> [!info]\n>\n\n<details open>\n<summary></summary>\n\nInside\n\n</details>",
+    );
     await settle();
     const callout = content().querySelector('[data-slot="callout"] > *');
     expect(callout?.getAttribute("data-placeholder")).toBe("Callout");
     const title = content().querySelector('[data-slot="toggle-title"]');
     expect(title?.getAttribute("data-placeholder")).toBe("Toggle heading");
     await caretIn(editor, 0);
-    expect(content().querySelector('[data-slot="callout"] > *')?.getAttribute("data-placeholder")).toBe(
-      "Callout",
-    );
+    expect(
+      content().querySelector('[data-slot="callout"] > *')?.getAttribute("data-placeholder"),
+    ).toBe("Callout");
   });
 
   test("in an Arabic document the block menu's turn-into and placeholders read right to left", async () => {
@@ -256,7 +258,8 @@ describe("blocks in place", () => {
 });
 
 describe("blocks read and drawn", () => {
-  const TURNED = "> [!info]\n> Second\n\n<details open>\n<summary>Title</summary>\n\nInside\n\n</details>\n\n***\n\nAfter";
+  const TURNED =
+    "> [!info]\n> Second\n\n<details open>\n<summary>Title</summary>\n\nInside\n\n</details>\n\n***\n\nAfter";
 
   test("turned blocks write and read back as markdown, and the renderer draws them", async () => {
     const state = markdownToDocument(TURNED);

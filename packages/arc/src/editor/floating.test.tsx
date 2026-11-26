@@ -158,12 +158,12 @@ describe("links", () => {
     await settle();
     const preview = within(document.querySelector<HTMLElement>('[data-slot="link-preview"]')!);
     expect(preview.getByRole("link", { name: "https://example.com/docs" })).toBeDefined();
-    expect(
-      preview.getByRole("link", { name: "Open link" }).getAttribute("href"),
-    ).toBe("https://example.com/docs");
+    expect(preview.getByRole("link", { name: "Open link" }).getAttribute("href")).toBe(
+      "https://example.com/docs",
+    );
     await user.click(preview.getByRole("button", { name: "Edit link" }));
     await settle();
-    const field = screen.getByRole("textbox", { name: "Link address" }) as HTMLInputElement;
+    const field = screen.getByRole<HTMLInputElement>("textbox", { name: "Link address" });
     expect(field.value).toBe("https://example.com/docs");
     await user.keyboard("{Escape}");
     await settle();
@@ -190,7 +190,9 @@ describe("links", () => {
     render(() => <RichTextEditor label="Notes" onEditor={editor.set} />);
     await settle();
     editor.get().update(() => {
-      $getRoot().clear().append($createParagraphNode().append($createTextNode("See ")));
+      $getRoot()
+        .clear()
+        .append($createParagraphNode().append($createTextNode("See ")));
       $getRoot().selectEnd();
     });
     await settle();

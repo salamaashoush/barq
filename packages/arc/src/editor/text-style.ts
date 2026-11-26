@@ -60,7 +60,6 @@ export const TEXT_SIZES: Readonly<Record<TextSize, string>> = {
   huge: "1.75em",
 };
 
-
 /** One colour as `#rrggbb`, or nothing for a transparent one. */
 function normaliseColour(value: string): string | null {
   const rgb = /^rgba?\(\s*(\d+)[\s,]+(\d+)[\s,]+(\d+)(?:[\s,/]+([\d.]+%?))?\s*\)$/i.exec(value);

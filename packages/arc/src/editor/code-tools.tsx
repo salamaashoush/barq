@@ -165,12 +165,16 @@ export function CodeBlockTools(props: CodeBlockToolsProps) {
                   size="xs"
                   class={cls().language}
                   aria-label={`${messages().codeLanguage}: ${
-                    code().language === "" ? messages().plainText : codeLanguageName(code().language)
+                    code().language === ""
+                      ? messages().plainText
+                      : codeLanguageName(code().language)
                   }`}
                   data-slot="code-language"
                 >
                   <span>
-                    {code().language === "" ? messages().plainText : codeLanguageName(code().language)}
+                    {code().language === ""
+                      ? messages().plainText
+                      : codeLanguageName(code().language)}
                   </span>
                   <ChevronDown class={cls().chevron} aria-hidden="true" />
                 </Button>

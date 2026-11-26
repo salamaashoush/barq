@@ -44,7 +44,6 @@ export { isSafeUrl } from "./core.tsx";
 
 const DEFAULT_HISTORY_LIMIT = 200;
 
-
 export interface DocumentOptions {
   /** The extensions it starts from. @default `documentPreset` */
   preset?: readonly EditorExtension[];
@@ -166,7 +165,9 @@ export function documentExtensions(options: DocumentOptions = {}): AnyLexicalExt
   );
   if (options.history !== false) {
     extensions.push(
-      configExtension(HistoryExtension, { maxDepth: options.historyLimit ?? DEFAULT_HISTORY_LIMIT }),
+      configExtension(HistoryExtension, {
+        maxDepth: options.historyLimit ?? DEFAULT_HISTORY_LIMIT,
+      }),
     );
   }
   if (options.markdownShortcuts !== false) {
