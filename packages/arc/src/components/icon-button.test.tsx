@@ -1,8 +1,11 @@
 import { describe, expect, test } from "bun:test";
+import { Outlet } from "@barqjs/router";
 import { ariaViolations, render, screen, user, waitFor } from "@barqjs/testing";
+import { renderRoute } from "@barqjs/testing/router";
 
 import { hydrates, settle } from "../test-arc.ts";
 import { IconButton } from "./icon-button.tsx";
+import { ArcProvider } from "./provider.tsx";
 
 const icon = <svg aria-hidden="true" />;
 
@@ -57,6 +60,38 @@ describe("IconButton", () => {
     expect(
       document.querySelector('[data-slot="icon-button-shortcut"]')?.classList.contains("s"),
     ).toBe(true);
+  });
+
+  test("a plain click on one with an href navigates through the app's router", async () => {
+    const tree = [
+      {
+        path: "/",
+        component: () => (
+          <ArcProvider colorScheme={false} toaster={false}>
+            <Outlet />
+          </ArcProvider>
+        ),
+        children: [
+          {
+            path: "",
+            component: () => (
+              <IconButton label="Settings" href="/settings">
+                {icon}
+              </IconButton>
+            ),
+          },
+          { path: "settings", component: () => <h1>Settings</h1> },
+        ],
+      },
+    ];
+    const view = await renderRoute({ routeTree: tree, path: "/" });
+    await settle();
+    const link = screen.getByRole("link", { name: "Settings" });
+    expect(link.getAttribute("href")).toBe("/settings");
+    user.click(link);
+    await waitFor(() => expect(view.state.location().pathname).toBe("/settings"));
+    expect(screen.getByRole("heading", { name: "Settings" })).toBeDefined();
+    view.unmount();
   });
 
   test("hydrates what the server wrote", async () => {

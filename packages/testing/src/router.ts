@@ -36,6 +36,29 @@ import {
 import { render } from "./pure.ts";
 import type { RenderResult } from "./types.ts";
 
+interface HappyPage {
+  setURL(url: string): void;
+}
+
+interface HappyWindow {
+  happyDOM?: HappyPage;
+}
+
+/**
+ * A real origin for the page while the route is up, and what puts it back.
+ *
+ * happy-dom starts at `about:blank`, which has no origin, so an `<a href>`
+ * resolves to nothing there and a link that hands a same-origin click to the
+ * client router (`@barqjs/aria`'s, ui's and arc's) refuses every one. An app
+ * under a router is always served from somewhere; so is its test.
+ */
+function withOrigin(): () => void {
+  const page = (window as unknown as HappyWindow).happyDOM;
+  if (page === undefined || location.origin !== "null") return () => {};
+  page.setURL("http://localhost/");
+  return () => page.setURL("about:blank");
+}
+
 export interface RenderRouteOptions {
   /** The table. A test's own, not `routeTree.gen.ts`. */
   readonly routeTree: readonly AnyRouteDefinition[];
@@ -72,14 +95,20 @@ export interface RouteRenderResult extends RenderResult {
  * rendered its fallback.
  */
 export async function renderRoute(options: RenderRouteOptions): Promise<RouteRenderResult> {
+  const restore = withOrigin();
   const initial = options.initial ?? [options.path ?? "/"];
   const state = createRouter({
     routeTree: options.routeTree,
     history: memoryHistory({ initial: [...initial] }),
   });
 
-  await state.start();
-  await preloadMatched(state.chain());
+  try {
+    await state.start();
+    await preloadMatched(state.chain());
+  } catch (error: unknown) {
+    restore();
+    throw error;
+  }
 
   // `(props)`, which is the real calling convention behind the props-first
   // type — the same cast `router.test.ts`'s `mountState` uses.
@@ -90,7 +119,10 @@ export async function renderRoute(options: RenderRouteOptions): Promise<RouteRen
     // `cleanup()` reaches it too. A router left running keeps its history
     // subscription and its loader cache; nothing fails, it just leaks for the
     // rest of the process.
-    onUnmount: () => state.dispose(),
+    onUnmount: () => {
+      state.dispose();
+      restore();
+    },
   });
   flush();
 

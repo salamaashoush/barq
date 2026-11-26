@@ -143,6 +143,21 @@ describe("renderRoute", () => {
   });
 });
 
+describe("renderRoute's page", () => {
+  test("has an origin while the route is up, so a link resolves as it would in a browser", async () => {
+    expect(location.href).toBe("about:blank");
+    const view = await renderRoute({
+      routeTree: [{ path: "/", component: () => <a href="/settings">Settings</a> }],
+    });
+    const link = view.container.querySelector("a") as HTMLAnchorElement;
+    expect(location.origin).toBe("http://localhost");
+    expect(link.origin).toBe(location.origin);
+    expect(link.href).toBe("http://localhost/settings");
+    view.unmount();
+    expect(location.href).toBe("about:blank");
+  });
+});
+
 interface DisposableState {
   dispose: () => void;
 }
