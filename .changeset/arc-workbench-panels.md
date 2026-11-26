@@ -13,6 +13,7 @@ arc gains the panels a browser playground puts around its editor, and primitives
 - arc `ShareDialog`: the state compressed into the link's hash, its size shown, copied in one press.
 - arc `SourceLocation`, the place in a document every panel reports, independent of any language client.
 - arc `CommandMenu` takes `bindKeys`, so an action's `keys` run it from anywhere; keys are shown as the reader's keyboard writes them.
-- arc `control.filter`, a panel toolbar's search box, shared with `ConsoleLogView`, which now fills a container it is given a height in.
+- arc `control.filter`, a panel toolbar's search box, shared with `ConsoleLogView`.
+- arc `ConsoleLogView`'s `height` is the whole log's, so `100%` fills a resizable panel, and a plain `EmptyState` draws no edge.
 - primitives `url-state`: `encodeUrlState`, `decodeUrlState`, `readUrlState`, `writeUrlState` and `urlStateLink` (`deflate-raw`, base64url, in the hash).
 - primitives `shortcut` binds sequences such as `"g p"`, with `sequenceTimeout`.
