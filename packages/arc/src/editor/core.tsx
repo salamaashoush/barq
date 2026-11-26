@@ -55,8 +55,12 @@ import {
 } from "@lexical/table";
 import {
   $createParagraphNode,
+  $createTextNode,
+  $getSelection,
+  $isNodeSelection,
   $isParagraphNode,
   $isTextNode,
+  BEFORE_INPUT_COMMAND,
   COMMAND_PRIORITY_LOW,
   type LexicalCommand,
   type LexicalEditor,
@@ -89,7 +93,7 @@ import {
 } from "./media.tsx";
 import { EmbedDialog, ImageDialog, ImagePaste } from "./media-insert.tsx";
 import { $createMentionNode, $isMentionNode, MentionNode } from "./mention-node.ts";
-import { TableControls } from "./table-controls.tsx";
+import { TableControls, registerTableKeys } from "./table-controls.tsx";
 import { TableDialog } from "./table-size.tsx";
 
 /** A web, mail or phone address, or a path on the same site: what a link may point at. */
@@ -129,12 +133,38 @@ const TEXT_ICONS: Record<TextBlockType, () => Child> = {
 };
 
 /**
+ * Typing with a block chosen whole starts a line after it. Lexical leaves
+ * that keystroke to the browser, which, with no caret in the text, writes
+ * the letter at the start of the document.
+ */
+function $typeAfterSelectedBlock(event: InputEvent): boolean {
+  if (event.inputType !== "insertText" || event.data === null || event.data === "") return false;
+  const selection = $getSelection();
+  if (!$isNodeSelection(selection)) return false;
+  const block = selection.getNodes().at(-1)?.getTopLevelElement() ?? selection.getNodes().at(-1);
+  if (block === undefined || block === null) return false;
+  event.preventDefault();
+  const next = block.getNextSibling();
+  const line =
+    $isParagraphNode(next) && next.getTextContentSize() === 0
+      ? next
+      : block.insertAfter($createParagraphNode());
+  if ($isParagraphNode(line)) {
+    line.append($createTextNode(event.data));
+    line.selectEnd();
+  }
+  return true;
+}
+
+/**
  * Rich text itself: paragraphs, headings, lists and check lists, quotes,
  * code blocks highlighted as `CodeBlock` highlights them, links, the marks,
  * the keys Lexical leaves to an app and the markdown they are written in.
  */
 export const richTextExtension = defineEditorExtension({
   name: "arc/rich-text",
+  register: (editor) =>
+    editor.registerCommand(BEFORE_INPUT_COMMAND, $typeAfterSelectedBlock, COMMAND_PRIORITY_LOW),
   lexical: [
     RichTextExtension,
     ListExtension,
@@ -302,13 +332,16 @@ function TableDialogHost() {
 }
 
 /**
- * Tables: sized on insert from a grid, rows, columns and the header row from
- * a button at the cell's corner, columns resized at their edge, and
- * markdown's pipe tables.
+ * Tables: sized on insert from a grid; rows and columns added, moved,
+ * deleted and made headers, cells merged, split, coloured and aligned, rows
+ * striped, from a button at the cell's corner and a grip on every row and
+ * column; Tab in the last cell adds a row; columns resized at their edge;
+ * and markdown's pipe tables.
  */
 export const tableExtension = defineEditorExtension({
   name: "arc/table",
   lexical: [configExtension(TableExtension, { hasHorizontalScroll: true })],
+  register: registerTableKeys,
   commands: [
     {
       id: "table",
