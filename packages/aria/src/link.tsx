@@ -8,7 +8,7 @@
  * looking at rather than treating every activation the same.
  */
 
-import { cells, getContext, Show, type Accessor, type Child } from "@barqjs/core";
+import { cells, getContext, onCleanup, Show, type Accessor, type Child } from "@barqjs/core";
 import { ref as makeRef, mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
 import { focusRing } from "./focus.ts";
 import { focusable, type FocusableOptions } from "./interactions/focusable.ts";
@@ -441,6 +441,11 @@ export interface ProgressBarComponentProps extends StyleProps {
 export function ProgressBar(props: ProgressBarComponentProps) {
   const options = fromProps(cells(props));
   const context = getContext(ProgressBarContext);
+  if (context?.present !== undefined) {
+    const present = context.present;
+    present(true);
+    onCleanup(() => present(false));
+  }
   const { progressBarProps, labelProps, percentage, valueText } = progressBar({
     ...(options as ProgressBarOptions),
     id: () =>

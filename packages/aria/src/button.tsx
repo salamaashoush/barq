@@ -9,7 +9,15 @@
  * cancelled by dragging off, and arrives late on touch.
  */
 
-import { cells, createEffect, onCleanup, provide, type Accessor, type Child } from "@barqjs/core";
+import {
+  cells,
+  createEffect,
+  createSignal,
+  onCleanup,
+  provide,
+  type Accessor,
+  type Child,
+} from "@barqjs/core";
 import { ref as makeRef, mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
 import { focusRing } from "./focus.ts";
 import { focusable, type FocusableOptions } from "./interactions/focusable.ts";
@@ -359,11 +367,14 @@ export function Button(props: ButtonComponentProps) {
 
   const buttonId = id(options.id);
   const progressId = id();
+  const [hasProgress, setHasProgress] = createSignal(false, { ownedWrite: true });
   // `aria-labelledby` outranks `aria-label` in the name computation, so a
   // labelled button that wants its progress bar read has to name itself.
+  // With no progress bar inside, there is nothing to point at, and the
+  // button keeps the name it was given.
   function labelledBy(): string | undefined {
     const given = access(options["aria-labelledby"]);
-    if (!isPending()) return given;
+    if (!isPending() || !hasProgress()) return given;
     if (given) return `${given} ${progressId()}`;
     if (access(options["aria-label"])) {
       return `${buttonId()} ${progressId()}`;
@@ -422,7 +433,7 @@ export function Button(props: ButtonComponentProps) {
     <button {...elementProps} ref={mergeRefs(domRef.set, slot.ref, props.ref)}>
       {provide(
         ProgressBarContext,
-        () => ({ id: progressId }),
+        () => ({ id: progressId, present: setHasProgress }),
         () => props.children as unknown,
       )}
     </button>

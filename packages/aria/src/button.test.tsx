@@ -304,6 +304,29 @@ describe("Button: isPending", () => {
     expect(button.getAttribute("aria-labelledby")).toBe(`${button.id} ${progress.id}`);
   });
 
+  test("a pending button with no progress bar keeps its own name", () => {
+    const [pending, setPending] = createSignal(false);
+    render(() => (
+      <Button aria-label="Revoke" isPending={pending()}>
+        {pending() ? <ProgressBar aria-label="Revoking" isIndeterminate /> : null}
+      </Button>
+    ));
+    const button = screen.getByRole("button");
+    expect(button.getAttribute("aria-labelledby")).toBeNull();
+    setPending(true);
+    flush();
+    expect(button.getAttribute("aria-labelledby")).toBe(
+      `${button.id} ${screen.getByRole("progressbar").id}`,
+    );
+    render(() => (
+      <Button aria-label="Copy" isPending>
+        <span aria-hidden="true">…</span>
+      </Button>
+    ));
+    const bare = screen.getByRole("button", { name: "Copy" });
+    expect(bare.getAttribute("aria-labelledby")).toBeNull();
+  });
+
   test("a pending button with aria-labelledby adds its progress bar to it", () => {
     render(() => (
       <>

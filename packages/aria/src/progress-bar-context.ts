@@ -10,6 +10,11 @@ import type { MaybeAccessor } from "./utils.ts";
  */
 export interface ProgressBarContextValue {
   id?: MaybeAccessor<string | undefined>;
+  /**
+   * Called with `true` while a progress bar carrying `id` is mounted, so the
+   * button names itself with it only while there is one to point at.
+   */
+  present?: (mounted: boolean) => void;
 }
 
 export const ProgressBarContext = createContext<ProgressBarContextValue | null>(null);
