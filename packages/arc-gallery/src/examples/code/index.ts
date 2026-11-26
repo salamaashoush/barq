@@ -16,6 +16,8 @@ import consoleLog from "./console-log.tsx?raw";
 import EditorTools from "./editor-tools.tsx";
 import editorTools from "./editor-tools.tsx?raw";
 import JsonSchema from "./json-schema.tsx";
+import LanguageServer from "./language-server.tsx";
+import languageServer from "./language-server.tsx?raw";
 import jsonSchema from "./json-schema.tsx?raw";
 import Terminal from "./terminal.tsx";
 import terminal from "./terminal.tsx?raw";
@@ -29,6 +31,7 @@ export const demos: Demos = {
   terminal: { component: Terminal, code: terminal },
   "code-tabs": { component: CodeTabs, code: codeTabs },
   "editor-tools": { component: EditorTools, code: editorTools },
+  "language-server": { component: LanguageServer, code: languageServer },
   "console-log": { component: ConsoleLog, code: consoleLog },
   "json-schema": { component: JsonSchema, code: jsonSchema },
 };

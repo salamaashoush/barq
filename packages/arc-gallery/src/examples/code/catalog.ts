@@ -77,6 +77,20 @@ export const catalog: GroupCatalog = {
       covers: ["languageClient", "serveLanguageServer", "tokenCompletions", "TemplateTokenField"],
     },
     {
+      id: "language-server",
+      title: "Language server",
+      description:
+        "Two files of a toy language on an in-page language server: completion, hover, diagnostics with a fix, semantic colours, inlay hints, lenses, folding, definition across files, rename, an outline, problems and progress.",
+      covers: [
+        "languageClient",
+        "defineLanguage",
+        "serveLanguageServer",
+        "portTransport",
+        "symbolNodes",
+        "OutlineView",
+      ],
+    },
+    {
       id: "console-log",
       title: "Console log",
       description:
