@@ -5,6 +5,7 @@ import { ClipboardList } from "@barqjs/lucide/icons/clipboard-list";
 import { CodeXml } from "@barqjs/lucide/icons/code-xml";
 import { Compass } from "@barqjs/lucide/icons/compass";
 import { FilePen } from "@barqjs/lucide/icons/file-pen";
+import { FolderTree } from "@barqjs/lucide/icons/folder-tree";
 import { FormInput } from "@barqjs/lucide/icons/form-input";
 import { Gauge } from "@barqjs/lucide/icons/gauge";
 import { Hash } from "@barqjs/lucide/icons/hash";
@@ -39,6 +40,7 @@ import { catalog as diagram } from "../examples/diagram/catalog.ts";
 import { catalog as editor } from "../examples/editor/catalog.ts";
 import { catalog as feedback } from "../examples/feedback/catalog.ts";
 import { catalog as fields } from "../examples/fields/catalog.ts";
+import { catalog as files } from "../examples/files/catalog.ts";
 import { catalog as exampleApp } from "../examples/example-app/catalog.ts";
 import { catalog as formatting } from "../examples/formatting/catalog.ts";
 import { catalog as forms } from "../examples/forms/catalog.ts";
@@ -110,6 +112,7 @@ export const SECTIONS: readonly Section[] = [
       { catalog: editor, icon: FilePen },
       { catalog: chat, icon: MessagesSquare },
       { catalog: code, icon: CodeXml },
+      { catalog: files, icon: FolderTree },
       { catalog: workbench, icon: PanelBottom },
       { catalog: diagram, icon: Shapes },
       { catalog: exampleApp, icon: LayoutDashboard },
