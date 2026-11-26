@@ -24,6 +24,7 @@ import { Route as DataRoute } from "./routes/data";
 import { Route as DiagramRoute } from "./routes/diagram";
 import { Route as EditorRoute } from "./routes/editor";
 import { Route as ExampleAppRoute } from "./routes/example-app";
+import { Route as FeedbackRoute } from "./routes/feedback";
 import { Route as FormattingRoute } from "./routes/formatting";
 import { Route as FormsRoute } from "./routes/forms";
 import { Route as FoundationsRoute } from "./routes/foundations";
@@ -33,6 +34,7 @@ import { Route as NavigationRoute } from "./routes/navigation";
 import { Route as NotificationsRoute } from "./routes/notifications";
 import { Route as OverlaysRoute } from "./routes/overlays";
 import { Route as SettingsRoute } from "./routes/settings";
+import { Route as ViewsRoute } from "./routes/views";
 import { Route as ApiNotificationsRoute } from "./routes/api/notifications";
 import { Route as ApiRoomRoute } from "./routes/api/room";
 import { Route as ApiUploadRoute } from "./routes/api/upload";
@@ -73,6 +75,12 @@ export const routeTree: AnyRouteDefinition[] = [
         src: "/src/routes/example-app.tsx",
       },
       {
+        ...FeedbackRoute.options,
+        id: "/feedback",
+        path: "feedback",
+        src: "/src/routes/feedback.tsx",
+      },
+      {
         ...FormattingRoute.options,
         id: "/formatting",
         path: "formatting",
@@ -111,6 +119,7 @@ export const routeTree: AnyRouteDefinition[] = [
         path: "settings",
         src: "/src/routes/settings.tsx",
       },
+      { ...ViewsRoute.options, id: "/views", path: "views", src: "/src/routes/views.tsx" },
       {
         ...ApiNotificationsRoute.options,
         id: "/api/notifications",
@@ -151,6 +160,7 @@ export interface FileRoutesById {
   "/diagram": typeof DiagramRoute;
   "/editor": typeof EditorRoute;
   "/example-app": typeof ExampleAppRoute;
+  "/feedback": typeof FeedbackRoute;
   "/formatting": typeof FormattingRoute;
   "/forms": typeof FormsRoute;
   "/foundations": typeof FoundationsRoute;
@@ -160,6 +170,7 @@ export interface FileRoutesById {
   "/notifications": typeof NotificationsRoute;
   "/overlays": typeof OverlaysRoute;
   "/settings": typeof SettingsRoute;
+  "/views": typeof ViewsRoute;
   "/api/notifications": typeof ApiNotificationsRoute;
   "/api/room": typeof ApiRoomRoute;
   "/api/upload": typeof ApiUploadRoute;
@@ -180,6 +191,7 @@ export interface FileRouteTypes {
     | "/diagram"
     | "/editor"
     | "/example-app"
+    | "/feedback"
     | "/formatting"
     | "/forms"
     | "/foundations"
@@ -189,6 +201,7 @@ export interface FileRouteTypes {
     | "/notifications"
     | "/overlays"
     | "/settings"
+    | "/views"
     | "/api/notifications"
     | "/api/room"
     | "/api/upload";
@@ -205,6 +218,7 @@ export interface FileRouteTypes {
     | "/diagram"
     | "/editor"
     | "/example-app"
+    | "/feedback"
     | "/formatting"
     | "/forms"
     | "/foundations"
@@ -214,6 +228,7 @@ export interface FileRouteTypes {
     | "/notifications"
     | "/overlays"
     | "/settings"
+    | "/views"
     | "/api/notifications"
     | "/api/room"
     | "/api/upload";
