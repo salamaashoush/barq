@@ -21,6 +21,7 @@ import { MessagesSquare } from "@barqjs/lucide/icons/messages-square";
 import { MessageSquareWarning } from "@barqjs/lucide/icons/message-square-warning";
 import { MousePointerClick } from "@barqjs/lucide/icons/mouse-pointer-click";
 import { PanelsTopLeft } from "@barqjs/lucide/icons/panels-top-left";
+import { PanelBottom } from "@barqjs/lucide/icons/panel-bottom";
 import { Palette } from "@barqjs/lucide/icons/palette";
 import { Settings } from "@barqjs/lucide/icons/settings";
 import { Shapes } from "@barqjs/lucide/icons/shapes";
@@ -53,6 +54,7 @@ import { catalog as records } from "../examples/records/catalog.ts";
 import { catalog as secrets } from "../examples/secrets/catalog.ts";
 import { catalog as settings } from "../examples/settings/catalog.ts";
 import { catalog as views } from "../examples/views/catalog.ts";
+import { catalog as workbench } from "../examples/workbench/catalog.ts";
 import type { GroupCatalog } from "./types.ts";
 
 export interface Group {
@@ -108,6 +110,7 @@ export const SECTIONS: readonly Section[] = [
       { catalog: editor, icon: FilePen },
       { catalog: chat, icon: MessagesSquare },
       { catalog: code, icon: CodeXml },
+      { catalog: workbench, icon: PanelBottom },
       { catalog: diagram, icon: Shapes },
       { catalog: exampleApp, icon: LayoutDashboard },
     ],

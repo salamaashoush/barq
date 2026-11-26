@@ -40,6 +40,7 @@ import { Route as RecordsRoute } from "./routes/records";
 import { Route as SecretsRoute } from "./routes/secrets";
 import { Route as SettingsRoute } from "./routes/settings";
 import { Route as ViewsRoute } from "./routes/views";
+import { Route as WorkbenchRoute } from "./routes/workbench";
 import { Route as ApiNotificationsRoute } from "./routes/api/notifications";
 import { Route as ApiRoomRoute } from "./routes/api/room";
 import { Route as ApiUploadRoute } from "./routes/api/upload";
@@ -131,6 +132,12 @@ export const routeTree: AnyRouteDefinition[] = [
       },
       { ...ViewsRoute.options, id: "/views", path: "views", src: "/src/routes/views.tsx" },
       {
+        ...WorkbenchRoute.options,
+        id: "/workbench",
+        path: "workbench",
+        src: "/src/routes/workbench.tsx",
+      },
+      {
         ...ApiNotificationsRoute.options,
         id: "/api/notifications",
         path: "api/notifications",
@@ -186,6 +193,7 @@ export interface FileRoutesById {
   "/secrets": typeof SecretsRoute;
   "/settings": typeof SettingsRoute;
   "/views": typeof ViewsRoute;
+  "/workbench": typeof WorkbenchRoute;
   "/api/notifications": typeof ApiNotificationsRoute;
   "/api/room": typeof ApiRoomRoute;
   "/api/upload": typeof ApiUploadRoute;
@@ -222,6 +230,7 @@ export interface FileRouteTypes {
     | "/secrets"
     | "/settings"
     | "/views"
+    | "/workbench"
     | "/api/notifications"
     | "/api/room"
     | "/api/upload";
@@ -254,6 +263,7 @@ export interface FileRouteTypes {
     | "/secrets"
     | "/settings"
     | "/views"
+    | "/workbench"
     | "/api/notifications"
     | "/api/room"
     | "/api/upload";
