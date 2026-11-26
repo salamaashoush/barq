@@ -1,6 +1,6 @@
 {
   "name": "@barqjs/start",
-  "version": "0.2.0-next.3",
+  "version": "0.2.0-next.4",
   "description": "Server functions, middleware, sessions, cookies and the built server for barq",
   "keywords": [
     "barq",
@@ -104,9 +104,9 @@
     "typescript": "^7.0.2"
   },
   "peerDependencies": {
-    "@barqjs/core": ">=0.2.0-next.3",
-    "@barqjs/server": ">=0.2.0-next.3",
-    "@barqjs/web": ">=0.2.0-next.3"
+    "@barqjs/core": ">=0.2.0-next.4",
+    "@barqjs/server": ">=0.2.0-next.4",
+    "@barqjs/web": ">=0.2.0-next.4"
   },
   "engines": {
     "node": ">=20.16.0"
