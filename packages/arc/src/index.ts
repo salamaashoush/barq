@@ -1408,15 +1408,32 @@ export {
 } from "./components/gallery.tsx";
 export {
   type AnsiSegment,
+  AnsiText,
+  type AnsiTextProps,
   ConsoleLogView,
   type ConsoleLogViewProps,
   LOG_LEVELS,
   type LogEntry,
   type LogLevel,
+  ansiColours,
   ansiSegments,
   consoleLogStyles,
   stripAnsi,
 } from "./components/console-log.tsx";
+export {
+  Repl,
+  type ReplCaret,
+  type ReplEntry,
+  type ReplEntryStatus,
+  type ReplHandle,
+  type ReplInputField,
+  type ReplOutput,
+  type ReplOutputKind,
+  type ReplProps,
+  type ReplReply,
+  bracketsBalanced,
+  replStyles,
+} from "./components/repl.tsx";
 export {
   type SourceLocation,
   type SourcePosition,

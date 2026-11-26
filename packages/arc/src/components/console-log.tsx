@@ -127,6 +127,22 @@ function lineCount(text: string): number {
   return count;
 }
 
+/** ANSI colours in arc's tones, for text drawn by `AnsiText` anywhere inside. */
+export const ansiColours = arc({
+  "& [data-ansi=red], & [data-ansi=bright-red]": { color: "var(--danger-foreground)" },
+  "& [data-ansi=green], & [data-ansi=bright-green]": { color: "var(--success-foreground)" },
+  "& [data-ansi=yellow], & [data-ansi=bright-yellow]": { color: "var(--warning-foreground)" },
+  "& [data-ansi=blue], & [data-ansi=bright-blue]": { color: "var(--info-foreground)" },
+  "& [data-ansi=magenta], & [data-ansi=bright-magenta]": { color: "var(--code-keyword)" },
+  "& [data-ansi=cyan], & [data-ansi=bright-cyan]": { color: "var(--code-type)" },
+  "& [data-ansi=black], & [data-ansi=bright-black]": { color: "var(--neutral-foreground)" },
+  "& [data-dim]": { opacity: "0.7" },
+  "& [data-italic]": { fontStyle: "italic" },
+  "& [data-underline]": { textDecorationLine: "underline" },
+});
+
+const ansiBold = arc({ fontWeight: "var(--font-weight-semibold)" });
+
 const LINE = 20;
 const ROW_PAD = 4;
 /** Below this many lines every line is drawn, so the browser's find reaches them all. */
@@ -144,21 +160,11 @@ export const consoleLogStyles = variants({
     search: control.filter,
     follow: arc(glyph.sm, gap[1]),
     copy: arc(layout.pushEnd),
-    viewport: arc(codeSurface, focus.outline, {
+    viewport: arc(codeSurface, focus.outline, ansiColours, {
       overflow: "auto",
       maxHeight: "var(--log-max-height, none)",
       overscrollBehavior: "contain",
       lineHeight: "20px",
-      "& [data-ansi=red], & [data-ansi=bright-red]": { color: "var(--danger-foreground)" },
-      "& [data-ansi=green], & [data-ansi=bright-green]": { color: "var(--success-foreground)" },
-      "& [data-ansi=yellow], & [data-ansi=bright-yellow]": { color: "var(--warning-foreground)" },
-      "& [data-ansi=blue], & [data-ansi=bright-blue]": { color: "var(--info-foreground)" },
-      "& [data-ansi=magenta], & [data-ansi=bright-magenta]": { color: "var(--code-keyword)" },
-      "& [data-ansi=cyan], & [data-ansi=bright-cyan]": { color: "var(--code-type)" },
-      "& [data-ansi=black], & [data-ansi=bright-black]": { color: "var(--neutral-foreground)" },
-      "& [data-dim]": { opacity: "0.7" },
-      "& [data-italic]": { fontStyle: "italic" },
-      "& [data-underline]": { textDecorationLine: "underline" },
     }),
     lines: arc({ minWidth: "max-content", paddingBlock: space.x1 }),
     line: arc(layout.row, gap[3], {
@@ -206,7 +212,7 @@ export const consoleLogStyles = variants({
       { position: "absolute" },
     ),
     frame: arc(layout.relative, layout.column, layout.minZero, layout.grow, layout.minZeroBlock),
-    ansiBold: arc({ fontWeight: "var(--font-weight-semibold)" }),
+    ansiBold,
   },
   variants: {
     sized: {
@@ -334,18 +340,24 @@ function Time(props: TimeProps) {
   );
 }
 
-interface AnsiTextProps {
+export interface AnsiTextProps {
   text: string;
-  redaction: RegExp | undefined;
-  classes: Slots;
+  /** What a redaction looks like in the text, as `ConsoleLogView` takes it. */
+  redaction?: RegExp;
+  /** On a bold run. @default arc's semibold */
+  boldClass?: string;
 }
 
-function AnsiText(props: AnsiTextProps) {
+/**
+ * Text with ANSI style codes drawn as spans, each run marked with its colour
+ * and style; `ansiColours` on an ancestor colours them in arc's tones.
+ */
+export function AnsiText(props: AnsiTextProps) {
   return (
     <For each={ansiSegments(props.text)}>
       {(segment: AnsiSegment) => (
         <span
-          class={segment.bold === true ? props.classes.ansiBold : undefined}
+          class={segment.bold === true ? (props.boldClass ?? ansiBold) : undefined}
           data-ansi={segment.colour}
           data-dim={segment.dim === true ? "" : undefined}
           data-italic={segment.italic === true ? "" : undefined}
@@ -390,7 +402,7 @@ function Line(props: LineProps) {
               <AnsiText
                 text={props.row.entry.text}
                 redaction={props.redaction}
-                classes={props.classes}
+                boldClass={props.classes.ansiBold}
               />
             </span>
           }
