@@ -207,6 +207,18 @@ describe("RadioGroup, invalid", () => {
     );
   }
 
+  test("a class lands on the grid of items, not on the group around it", () => {
+    render(() => (
+      <RadioGroup aria-label="Plan" class="mine">
+        <RadioGroupItem value="plus" aria-label="Plus" />
+      </RadioGroup>
+    ));
+    expect(screen.getByRole("radiogroup").classList.contains("mine")).toBe(false);
+    expect(
+      document.querySelector('[data-slot="radio-group-items"]')?.classList.contains("mine"),
+    ).toBe(true);
+  });
+
   test("an invalid group marks every radio in it, for a screen reader and for the eye", async () => {
     const { container } = render(() => <Plans isInvalid />);
     expect(screen.getByRole("radiogroup").getAttribute("aria-invalid")).toBe("true");

@@ -163,7 +163,7 @@ export function RadioGroup(props: RadioGroupProps) {
 
   return (
     <AriaRadioGroup
-      {...omit(props, ...GROUP_UPSTREAM)}
+      {...omit(props, ...GROUP_UPSTREAM, "class", "className")}
       data-slot="radio-group"
       isDisabled={props.isDisabled ?? props.disabled}
       isRequired={props.isRequired ?? props.required}
