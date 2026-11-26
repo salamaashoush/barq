@@ -201,6 +201,97 @@ export function CodeTabs(props: CodeTabsProps) {
   );
 }
 
+export const editorTabsStyles = variants({
+  slots: {
+    root: arc(layout.column, layout.minZero, { height: "100%" }),
+    panel: arc(layout.column, layout.grow, layout.minZero),
+    empty: arc(layout.column, layout.grow, layout.minZero),
+  },
+});
+
+type EditorSlots = ReturnType<typeof editorTabsStyles>;
+
+export interface EditorTabsProps extends Customisable<EditorSlots> {
+  /** The open documents, in their order: `dirty`, `pinned` and `title` (the path) on each. */
+  items: readonly TabItem[];
+  /** Names the tab list: "Open files". */
+  "aria-label": string;
+  selectedKey?: string;
+  defaultSelectedKey?: string;
+  onSelectionChange?: (id: string) => void;
+  /** Close these documents. A dirty one is the caller's to ask about. */
+  onClose?: (ids: string[]) => void;
+  /** Every document's id in its new order. */
+  onReorder?: (ids: string[]) => void;
+  onPinnedChange?: (id: string, pinned: boolean) => void;
+  /** The open document's editor. */
+  children?: (tab: TabItem) => Child;
+  /** Keep every document's editor in the page, hidden, so its undo history and scroll survive. @default true */
+  keepMounted?: boolean;
+  /** What shows while no document is open. */
+  empty?: Child;
+}
+
+/**
+ * The open documents of an editor, a tab each over the one being edited.
+ *
+ * ```tsx
+ * <EditorTabs
+ *   aria-label="Open files"
+ *   items={open().map((path) => ({ id: path, label: nameOf(path), title: path, dirty: unsaved(path) }))}
+ *   selectedKey={active()}
+ *   onSelectionChange={setActive}
+ *   onClose={(paths) => closeFiles(paths)}
+ *   onReorder={setOpen}
+ * >
+ *   {(tab) => <CodeEditor value={fs.read(tab.id)} onChange={(text) => edit(tab.id, text)} />}
+ * </EditorTabs>
+ * ```
+ *
+ * `ResponsiveTabs` with its document behaviour on: the row scrolls, each tab
+ * closes by its button, a middle click or Delete, a dot marks changes not
+ * saved, tabs drag or move from the keyboard (Ctrl+Shift+Page Up or Page
+ * Down) and a tab's menu holds Close others, Close the ones after, Close
+ * all, Pin and the moves. Closing the open document opens its neighbour.
+ * Every editor stays mounted while its tab is open, so switching back finds
+ * it as it was left.
+ */
+export function EditorTabs(props: EditorTabsProps) {
+  function cls(): EditorSlots {
+    return parts(editorTabsStyles(), props.classes);
+  }
+  function open(): boolean {
+    return props.items.some((one) => one.hidden !== true);
+  }
+  return (
+    <Show
+      when={open()}
+      fallback={
+        <div class={arc(cls().empty, props.class, props.className)} data-slot="editor-tabs-empty">
+          {props.empty}
+        </div>
+      }
+    >
+      <ResponsiveTabs
+        items={props.items}
+        aria-label={props["aria-label"]}
+        selectedKey={props.selectedKey}
+        defaultSelectedKey={props.defaultSelectedKey}
+        onSelectionChange={props.onSelectionChange}
+        onClose={props.onClose}
+        onReorder={props.onReorder}
+        onPinnedChange={props.onPinnedChange}
+        overflow="scroll"
+        keepMounted={props.keepMounted ?? true}
+        class={arc(cls().root, props.class, props.className)}
+        classes={{ panel: cls().panel }}
+      >
+        {props.children}
+      </ResponsiveTabs>
+    </Show>
+  );
+}
+
 const PLAIN = /^[\w@%+=:,./-]+$/;
 const VARIABLE = /\$(?:\{[A-Za-z_]\w*\}|[A-Za-z_]\w*)/;
 

@@ -10,7 +10,10 @@ export {
   type CodeTab,
   CodeTabs,
   type CodeTabsProps,
+  EditorTabs,
+  type EditorTabsProps,
   codeTabsStyles,
+  editorTabsStyles,
   shellQuote,
 } from "./code-tabs.tsx";
 export { languageForContentType, prettyJson } from "./content-type.ts";
