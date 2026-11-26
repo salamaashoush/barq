@@ -1125,6 +1125,72 @@ import { Chip } from "@barqjs/arc";
   the crop on its own, and `cropArea` and `cropImage` the arithmetic and the
   canvas behind it.
 
+## Form fields
+
+```tsx
+import { CheckboxGroupField, RepeaterField, SlugField, fieldRules } from "@barqjs/arc";
+
+<form.AppField name="slug">
+  {(field) => <field.SlugField label="Address" source={name()} prefix="acme.app/" />}
+</form.AppField>;
+```
+
+Each is `field.*` inside `form.AppField` and holds its own value with
+`value`, `defaultValue` and `onChange` outside one.
+
+- `TextField` and `TextareaField` take the direction of what is typed, so
+  Arabic reads right to left in an English form; an empty one keeps the
+  page's. `textDirection` is the rule, the first strong letter's.
+- `IdentifierField`: a name rewritten to a `convention` as it is typed
+  (`upper-snake`, `snake`, `kebab`, `filename`), the caret kept and the rule
+  said under it. `TagInput` takes `line` for a short list typed as one
+  comma-separated line, normalised and checked when left.
+- `SlugField`: follows `source` until typed over, steps past `taken`
+  (`acme-2`), asks `checkAvailability` once typing pauses, shows a URL
+  `prefix`, and with `collapsed` reads as "Its address is …" with Change.
+  `slugify` and `freeSlug` are the rules.
+- `SuggestionField`: free text with values in use offered under it; a new
+  one is as good as a listed one.
+- `InlineEdit` and `InlineSelect`: a value edited where it is read. Enter or
+  leaving saves, Escape puts it back, a promise holds it pending and a
+  rejection keeps the reason; the select keeps a value that left its
+  options and offers `noneLabel`.
+- `SelectField` options take a `hint` the trigger leaves out and a `group`;
+  `noneLabel` adds an option holding `null`, and a saved value no longer
+  listed stays one.
+- `CheckboxGroupField` and `RadioGroupField`: options as rows with a line and
+  a `caveat`, in a column, a wrapping row or a grid. The checkboxes hold the
+  options' order, keep a held value the list lacks, take `shortcuts`, can be
+  switches, and with `isRequired` ask for one once touched or submitted.
+  `RadioCards` and `CheckboxCards` take a full-bleed `media` per option.
+- `ChecklistField`: a bordered list of checkbox rows with what each carries
+  at its end, a search past `searchable` rows that counts what it leaves, a
+  free entry with `onAdd`, and a summary or a warning under it.
+- `ThemePicker`: light, dark and system as cards drawing each theme small,
+  or `segmented`; it sets the provider's scheme and tells `onChange`.
+- `OptionalLimitField`: a limit inside a sentence, switched off to `null`
+  (or blank meaning none with `mode="blank"`), its number restored when
+  switched back on. `PairedNumberField`: two numbers held as one pair, `null`
+  when both are empty, one error line when only one is filled.
+- `ColorField` and `ColorPicker` take `contrastWith`, colours the choice
+  must read against, warning with the WCAG ratio; `contrastRatio` is it.
+- `OptionGroup`: options folded under a title and a summary of what they
+  are set to, its fields mounted while shut, opening and saying so when one
+  named in `fields` takes an error.
+- `fieldRules` and `FieldRule`: fields shown, disabled with a reason or
+  bounded by the others, declared once; `prune` drops what the rules hide
+  before it is saved.
+- `RepeaterField`: rows of the same fields on a form array, added, removed
+  and moved through the array field so errors move with them, every button
+  named after its row and focus following. `CollectionField`: a table of
+  sub-records, cards on a phone, each added and edited in a sheet with a form
+  of its own.
+- `AddressFields`: an address laid out as its country writes it, its region
+  and postal code named as there, each input with its autofill token and a
+  `section` keeping two addresses apart.
+- `FileField`: files sent as they are picked, held as what the server
+  stored; the form cannot submit while one is on its way and says why.
+
 ## Actions
 
 ```tsx
