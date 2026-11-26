@@ -116,6 +116,33 @@ describe("required states", () => {
   });
 });
 
+describe("aria-hidden over focusable content", () => {
+  test("is a trap while the content can take focus", async () => {
+    render(() => (
+      <div aria-hidden="true">
+        <input aria-label="URL" />
+      </div>
+    ));
+    expect((await ariaViolations(document.body)).map((one) => one.rule)).toEqual([
+      "aria-hidden-focus",
+    ]);
+  });
+
+  test("is not one under `hidden`, `until-found` included, where nothing takes focus", async () => {
+    render(() => (
+      <>
+        <div aria-hidden="true" hidden="until-found">
+          <input aria-label="URL" />
+        </div>
+        <div aria-hidden="true" hidden>
+          <button type="button">Run</button>
+        </div>
+      </>
+    ));
+    expect(await ariaViolations(document.body)).toEqual([]);
+  });
+});
+
 describe("a violation that fails a test", () => {
   test("prints as its rule, message and markup, not as the whole document", () => {
     const { container } = render(() => <div role="img" aria-labelledby="gone" />);

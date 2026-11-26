@@ -719,7 +719,11 @@ export function ariaViolations(
       const focusable = element.matches(FOCUSABLE_SELECTOR)
         ? [element]
         : [...element.querySelectorAll(FOCUSABLE_SELECTOR)];
-      const reachable = focusable.filter((node) => node.getAttribute("tabindex") !== "-1");
+      // Under `hidden`, `until-found` included, nothing is rendered, so nothing
+      // takes focus: a folded disclosure panel holding a field is not a trap.
+      const reachable = focusable.filter(
+        (node) => node.getAttribute("tabindex") !== "-1" && node.closest("[hidden]") === null,
+      );
       if (reachable.length > 0) {
         found.push(
           violation(
