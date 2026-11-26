@@ -16,6 +16,10 @@ export const fg = arc.create({
   toneBase: { color: "var(--arc-tone)" },
   card: { color: tokens.cardForeground },
   popover: { color: tokens.popoverForeground },
+  /** The brand's own colour, for text or a mark that is the chosen one. */
+  primary: { color: tokens.primary },
+  /** Text on the brand's fill. */
+  onPrimary: { color: tokens.primaryForeground },
 });
 
 /** Fill by role. */
@@ -27,6 +31,8 @@ export const bg = arc.create({
   muted: { backgroundColor: tokens.muted },
   /** The brand's own fill: a primary button, a chosen mark. */
   primary: { backgroundColor: tokens.primary },
+  /** The brand's colour faintly, behind what it has already passed: a stage behind, a step done. */
+  primarySubtle: { backgroundColor: "color-mix(in oklab, var(--primary) 12%, transparent)" },
   transparent: { backgroundColor: "transparent" },
   /** The subtle fill of the tone an ancestor chose. */
   tone: { backgroundColor: "var(--arc-tone-subtle)" },

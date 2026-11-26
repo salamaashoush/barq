@@ -914,7 +914,9 @@ export {
 } from "./lib/search-state.ts";
 export {
   type StatCardProps,
+  type StatCardRenders,
   type StatDelta,
+  type StatMeter,
   StatCard,
   statCardStyles,
 } from "./components/stat-card.tsx";
@@ -989,6 +991,70 @@ export {
   gaugeStyles,
   gaugeTone,
 } from "./components/gauge.tsx";
+export {
+  Meter,
+  type MeterProps,
+  type MeterSlots,
+  type UsageItem,
+  UsageList,
+  type UsageListProps,
+  type UsageListSlots,
+  type UsageState,
+  meterStyles,
+  usageListStyles,
+  usageState,
+} from "./components/meter.tsx";
+export {
+  type BarSegment,
+  SegmentedBar,
+  type SegmentedBarProps,
+  type SegmentedBarSlots,
+  TallyProgress,
+  type TallyProgressProps,
+  segmentedBarStyles,
+} from "./components/segmented-bar.tsx";
+export {
+  SIGNAL_TONE,
+  type SignalLevel,
+  SignalMeter,
+  type SignalMeterProps,
+  type SignalMeterSlots,
+  signalLabel,
+  signalMeterStyles,
+} from "./components/signal-meter.tsx";
+export {
+  type MetricBounds,
+  MetricRating,
+  type MetricRatingLevel,
+  type MetricRatingProps,
+  RATING_TONE,
+  rateMetric,
+  ratingLabel,
+} from "./components/metric-rating.tsx";
+export {
+  type UptimeCell,
+  UptimeBar,
+  type UptimeBarProps,
+  type UptimeBarSlots,
+  type UptimeState,
+  type UptimeThresholds,
+  uptimeBarStyles,
+  uptimeState,
+} from "./components/uptime-bar.tsx";
+export {
+  CountUp,
+  type CountUpProps,
+  type CountUpSlots,
+  countUpStyles,
+} from "./components/count-up.tsx";
+export {
+  type PathOutcome,
+  type PathStage,
+  StagePath,
+  type StagePathProps,
+  type StagePathSlots,
+  stagePathStyles,
+} from "./components/stage-path.tsx";
 export {
   Heatmap,
   type HeatmapProps,

@@ -275,9 +275,12 @@ describe("StatGroup", () => {
       />
     ));
     const sheet = collectCss();
-    expect(sheet).toContain("grid-template-columns:repeat(2, minmax(0, 1fr))");
+    expect(sheet).toContain("--arc-stat-per-row:2");
     expect(sheet).toMatch(
-      /@container \(width >= 48rem\)\{[^}]*grid-template-columns:repeat\(var\(--arc-stat-columns\)/,
+      /@container \(width >= 32rem\)\{[^}]*--arc-stat-per-row:min\(3, var\(--arc-stat-columns\)\)/,
+    );
+    expect(sheet).toMatch(
+      /@container \(width >= 48rem\)\{[^}]*--arc-stat-per-row:var\(--arc-stat-columns\)/,
     );
     expect(slot("stat-group-grid").getAttribute("style")).toContain("--arc-stat-columns: 4");
     classesReach([

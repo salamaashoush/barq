@@ -5,29 +5,35 @@ import { tokens } from "@barqjs/ui/theme/tokens";
 
 import { arcLayer as arc } from "../layer.ts";
 import { type Customisable, parts } from "../lib/parts.ts";
-import { edge, gap, layout, surface } from "../style/index.ts";
+import { edge, layout, space, surface } from "../style/index.ts";
 import { StatCard, type StatCardProps } from "./stat-card.tsx";
 
 export const statGroupStyles = variants({
   slots: {
     root: arc(layout.container, layout.minZero),
-    grid: arc({
-      display: "grid",
-      gridTemplateColumns: {
-        default: "repeat(2, minmax(0, 1fr))",
-        [on.cqMd]: "repeat(min(3, var(--arc-stat-columns)), minmax(0, 1fr))",
-        [on.cqLg]: "repeat(var(--arc-stat-columns), minmax(0, 1fr))",
+    grid: arc(layout.wrap, {
+      display: "flex",
+      gap: "var(--arc-stat-gap)",
+      "--arc-stat-per-row": {
+        default: "2",
+        [on.cqMd]: "min(3, var(--arc-stat-columns))",
+        [on.cqLg]: "var(--arc-stat-columns)",
       },
     }),
-    stat: arc({}),
+    stat: arc(layout.minZero, {
+      flex: "1 1 calc((100% - (var(--arc-stat-per-row) - 1) * var(--arc-stat-gap)) / var(--arc-stat-per-row))",
+    }),
   },
   variants: {
     variant: {
       joined: {
-        grid: arc(surface.bordered, layout.clip, { gap: "1px", backgroundColor: tokens.border }),
+        grid: arc(surface.bordered, layout.clip, {
+          "--arc-stat-gap": "1px",
+          backgroundColor: tokens.border,
+        }),
         stat: arc(edge.none, { borderRadius: "0px" }),
       },
-      separate: { grid: gap[4] },
+      separate: { grid: arc({ "--arc-stat-gap": space.x4 }) },
     },
   },
   defaults: { variant: "joined" },
@@ -42,6 +48,8 @@ export interface StatGroupProps extends Customisable<Slots> {
   variant?: "joined" | "separate";
   /** Across a wide container, how many in a row. @default how many there are, up to 5 */
   columns?: number;
+  /** Every card's shapes in place of its number while the numbers load. */
+  loading?: boolean;
   /** Names the group. */
   "aria-label"?: string;
   id?: string;
@@ -62,9 +70,10 @@ export interface StatGroupProps extends Customisable<Slots> {
  * />
  * ```
  *
- * `StatCard`s in a grid that is two across a narrow container, three across
- * a middling one and `columns` across a wide one. `joined` draws them as one
- * bordered strip with a rule between each, on both axes as they wrap.
+ * `StatCard`s two across a narrow container, three across a middling one and
+ * `columns` across a wide one, the cards of a short last row growing to
+ * fill it. `joined` draws them as one bordered strip with a rule between
+ * each, on both axes as they wrap.
  */
 export function StatGroup(props: StatGroupProps) {
   function cls(): Slots {
@@ -86,7 +95,13 @@ export function StatGroup(props: StatGroupProps) {
         style={{ "--arc-stat-columns": String(columns()) }}
       >
         <For each={() => props.stats}>
-          {(stat: StatCardProps) => <StatCard {...stat} class={arc(cls().stat, stat.class)} />}
+          {(stat: StatCardProps) => (
+            <StatCard
+              {...stat}
+              class={arc(cls().stat, stat.class)}
+              loading={stat.loading ?? props.loading}
+            />
+          )}
         </For>
       </div>
     </section>

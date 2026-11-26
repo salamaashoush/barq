@@ -1052,6 +1052,29 @@ export interface ArcMessages {
   connectionWorked: string;
   connectionFailed: string;
   connectionTestFailed: string;
+  amountOf: (amount: string, limit: string) => string;
+  amountNoLimit: (amount: string) => string;
+  usageNear: string;
+  usageAt: string;
+  usageOver: string;
+  segmentsOf: (segments: readonly string[], total: string) => string;
+  tallyProgress: (settled: string, total: string) => string;
+  tallyDone: (total: string) => string;
+  connection: string;
+  signalExcellent: string;
+  signalGood: string;
+  signalFair: string;
+  signalPoor: string;
+  signalUnknown: string;
+  ratingGood: string;
+  ratingFair: string;
+  ratingPoor: string;
+  uptimeUp: string;
+  uptimeDegraded: string;
+  uptimeDown: string;
+  uptimeNone: string;
+  uptimeShare: (share: string) => string;
+  stageDone: string;
 }
 
 export const ENGLISH: ArcMessages = {
@@ -2227,6 +2250,29 @@ export const ENGLISH: ArcMessages = {
   connectionWorked: "It worked.",
   connectionFailed: "It failed.",
   connectionTestFailed: "Could not run the test. Try again.",
+  amountOf: (amount, limit) => `${amount} of ${limit}`,
+  amountNoLimit: (amount) => `${amount}, no limit`,
+  usageNear: "Near the limit",
+  usageAt: "At the limit",
+  usageOver: "Over the limit",
+  segmentsOf: (segments, total) => `${segments.join(", ")}; ${total} in all`,
+  tallyProgress: (settled, total) => `${settled} of ${total} finished`,
+  tallyDone: (total) => `All ${total} finished`,
+  connection: "Connection",
+  signalExcellent: "Excellent",
+  signalGood: "Good",
+  signalFair: "Fair",
+  signalPoor: "Poor",
+  signalUnknown: "Unknown",
+  ratingGood: "Good",
+  ratingFair: "Needs improvement",
+  ratingPoor: "Poor",
+  uptimeUp: "Operational",
+  uptimeDegraded: "Partial outage",
+  uptimeDown: "Outage",
+  uptimeNone: "No data",
+  uptimeShare: (share) => `${share} uptime`,
+  stageDone: ", completed",
 };
 
 const MessagesContext = createContext<ArcMessages>(ENGLISH, "ArcMessages");

@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { type ParentProps } from "@barqjs/core";
 import { provideLocale } from "@barqjs/aria/i18n";
-import { ariaViolations, render, screen } from "@barqjs/testing";
+import { ariaViolations, fireEvent, render, screen } from "@barqjs/testing";
 
+import { hydrates } from "../test-arc.ts";
 import { StatCard } from "./stat-card.tsx";
+import { StatGroup } from "./stat-group.tsx";
 
 function card(): HTMLElement {
   return document.querySelector('[data-slot="stat-card"]') as HTMLElement;
@@ -72,5 +74,106 @@ describe("StatCard", () => {
     expect(card().querySelector('[data-slot="stat-card-delta"]')).toBeNull();
     expect(card().querySelector('[data-slot="stat-card-description"]')?.textContent).toBe("of 10");
     expect(screen.queryByRole("img")).toBeNull();
+  });
+
+  test("draws how full it is against its limit as a meter named by its label", async () => {
+    render(() => (
+      <StatCard
+        label="Seats"
+        value="38"
+        meter={{ value: 38, max: 40, thresholds: [{ value: 36, tone: "warning" }] }}
+        description="2 left"
+        descriptionTone="warning"
+      />
+    ));
+    const meter = screen.getByRole("meter", { name: "Seats" });
+    expect(meter.getAttribute("aria-valuetext")).toBe("38 of 40");
+    expect(card().querySelector('[data-slot="meter"]')?.getAttribute("data-tone")).toBe("warning");
+    const description = card().querySelector('[data-slot="stat-card-description"]');
+    expect(description?.getAttribute("data-tone")).toBe("warning");
+    expect(description?.querySelector('[data-slot="stat-card-description-dot"]')).not.toBeNull();
+    expect(await ariaViolations(document.body)).toEqual([]);
+  });
+
+  test("tones its value only when it is wrong, and says a rating in words", () => {
+    render(() => (
+      <>
+        <StatCard label="LCP" value="4.2 s" rating="poor" />
+        <StatCard label="FCP" value="1.1 s" rating="good" />
+        <StatCard label="Errors" value="12" valueTone="warning" />
+      </>
+    ));
+    const values = [...document.querySelectorAll('[data-slot="stat-card-value"]')];
+    expect(values.map((value) => value.getAttribute("data-tone"))).toEqual([
+      "danger",
+      null,
+      "warning",
+    ]);
+    const ratings = [...document.querySelectorAll('[data-slot="metric-rating"], [data-rating]')];
+    expect(ratings.map((rating) => rating.textContent)).toEqual(["Poor", "Good"]);
+  });
+
+  test("the whole card opens its link or presses, its label the name", async () => {
+    let pressed = 0;
+    render(() => (
+      <>
+        <StatCard label="Open incidents" value="3" href="/incidents" aside={<span>new</span>} />
+        <StatCard label="Failing checks" value="2" onPress={() => pressed++} />
+      </>
+    ));
+    const link = screen.getByRole("link", { name: "Open incidents" });
+    expect(link.getAttribute("href")).toBe("/incidents");
+    expect(link.getAttribute("data-slot")).toBe("stat-card-link");
+    expect(document.querySelector('[data-slot="stat-card-aside"]')?.textContent).toBe("new");
+    const button = screen.getByRole("button", { name: "Failing checks" });
+    fireEvent.click(button);
+    expect(pressed).toBe(1);
+    expect(await ariaViolations(document.body)).toEqual([]);
+  });
+
+  test("while loading, shapes stand in for the number and the footer, and it is busy", () => {
+    render(() => <StatCard label="Runs" value="12" description="today" loading />);
+    expect(card().getAttribute("aria-busy")).toBe("true");
+    expect(card().querySelector('[data-slot="stat-card-value"]')).toBeNull();
+    expect(card().querySelector('[data-slot="stat-card-value-skeleton"]')).not.toBeNull();
+    expect(card().querySelector('[data-slot="stat-card-footer-skeleton"]')).not.toBeNull();
+    expect(screen.getByRole("group", { name: "Runs" })).toBe(card());
+  });
+
+  test("hydrates what the server wrote", async () => {
+    const result = await hydrates(`
+      import { StatCard, StatGroup } from "<arc>";
+      export function Page() {
+        return (
+          <>
+            <StatCard label="Seats" value="38" meter={{ value: 38, max: 40 }} href="/seats" rating="fair" />
+            <StatGroup stats={[{ label: "Runs", value: "12" }, { label: "Up", value: "99%" }, { label: "Down", value: "1" }]} />
+          </>
+        );
+      }
+    `);
+    expect(result.container.querySelector('[data-slot="stat-card-link"]')).not.toBeNull();
+    result.unmount();
+  });
+});
+
+describe("StatGroup", () => {
+  test("a card per stat in a strip whose rows fill, each loading while the group does", () => {
+    render(() => (
+      <StatGroup
+        aria-label="This month"
+        loading
+        stats={[
+          { label: "Runs", value: "12,480" },
+          { label: "Failures", value: "37", loading: false },
+          { label: "Uptime", value: "99.96%" },
+        ]}
+      />
+    ));
+    const group = screen.getByRole("region", { name: "This month" });
+    const grid = group.querySelector('[data-slot="stat-group-grid"]') as HTMLElement;
+    expect(grid.style.getPropertyValue("--arc-stat-columns")).toBe("3");
+    const cards = [...group.querySelectorAll('[data-slot="stat-card"]')];
+    expect(cards.map((one) => one.getAttribute("aria-busy"))).toEqual(["true", null, "true"]);
   });
 });
