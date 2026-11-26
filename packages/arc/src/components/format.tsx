@@ -1,4 +1,4 @@
-import { Show, createEffect, createSignal } from "@barqjs/core";
+import { type Accessor, Show, createEffect, createSignal } from "@barqjs/core";
 import { variants } from "@barqjs/css";
 import {
   dateFormatter,
@@ -13,8 +13,10 @@ import { isServer } from "@barqjs/web";
 
 import { arcLayer as arc } from "../layer.ts";
 import { type Customisable, parts } from "../lib/parts.ts";
+import { useReaderClock } from "../lib/reader-clock.ts";
 import { control, fg, focus, gap, layout, rounded, type } from "../style/index.ts";
 import { formatBytes } from "./file-upload.tsx";
+import { type ArcMessages, useArcMessages } from "./messages.ts";
 
 export const formattedStyles = variants({
   slots: {
@@ -75,15 +77,42 @@ export function hydrated(): () => boolean {
   return done;
 }
 
+/**
+ * The zone a moment is written in where the caller named none: the clock's,
+ * else the reader's own. Before the page has hydrated "own" is the zone the
+ * server was told of, or UTC, so the server and the hydrating page write the
+ * same thing; the browser's zone follows.
+ */
+export function useReaderZone(): Accessor<string | undefined> {
+  const clock = useReaderClock();
+  const local = hydrated();
+  return () => {
+    const current = clock();
+    const zone = current?.zone ?? "local";
+    if (zone === "utc") return "UTC";
+    if (zone !== "local") return zone;
+    if (local()) return undefined;
+    return current?.localZone ?? "UTC";
+  };
+}
+
 export interface FormattedDateProps extends FormattedProps {
   value: Moment;
   /** @default `{ dateStyle: "medium" }` */
   options?: Omit<Intl.DateTimeFormatOptions, "timeZone">;
   /**
-   * The zone it is written in. Left out, the server and the hydrating page
-   * write it in UTC, and the browser then rewrites it in the reader's own zone.
+   * The zone it is written in. Left out, it is the reader clock's; with
+   * none, the server and the hydrating page write it in UTC, and the browser
+   * then rewrites it in the reader's own zone. A date-only value
+   * (`"2026-11-26"`) is a calendar day, written as that day in every zone.
    */
   timeZone?: string;
+}
+
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
+function isDateOnly(moment: Moment): boolean {
+  return typeof moment === "string" && DATE_ONLY.test(moment);
 }
 
 /**
@@ -94,14 +123,16 @@ export interface FormattedDateProps extends FormattedProps {
  * <FormattedDate value={run.startedAt} options={{ timeStyle: "short" }} timeZone="Africa/Cairo" />
  * ```
  *
- * A `<time>` whose `datetime` is the ISO moment. Without a `timeZone` both
+ * A `<time>` whose `datetime` is the ISO moment. Without a `timeZone` it
+ * follows the reader clock (`<ArcProvider clock>`); without one either, both
  * halves of a hydration agree on UTC and the reader's own zone follows.
  */
 export function FormattedDate(props: FormattedDateProps) {
   const locale = useLocale();
-  const local = hydrated();
+  const reader = useReaderZone();
   function zone(): string | undefined {
-    return props.timeZone ?? (local() ? undefined : "UTC");
+    if (isDateOnly(props.value)) return "UTC";
+    return props.timeZone ?? reader();
   }
   function format(): string {
     const options = { ...(props.options ?? { dateStyle: "medium" as const }), timeZone: zone() };
@@ -115,7 +146,9 @@ export function FormattedDate(props: FormattedDateProps) {
       class={arc(cls().root, props.class, props.className)}
       id={props.id}
       data-slot="formatted-date"
-      datetime={toDate(props.value).toISOString()}
+      datetime={
+        isDateOnly(props.value) ? (props.value as string) : toDate(props.value).toISOString()
+      }
     >
       {format()}
     </time>
@@ -175,6 +208,7 @@ function refreshAfter(milliseconds: number): number {
 export function RelativeTime(props: RelativeTimeProps) {
   const locale = useLocale();
   const local = hydrated();
+  const reader = useReaderZone();
   const [clock, setClock] = createSignal(0, { ownedWrite: true });
   function moment(): Date {
     return toDate(props.value);
@@ -187,7 +221,7 @@ export function RelativeTime(props: RelativeTimeProps) {
     return props.now === undefined ? undefined : toDate(props.now).getTime();
   }
   function zone(): string | undefined {
-    return props.timeZone ?? (local() ? undefined : "UTC");
+    return props.timeZone ?? reader();
   }
   function absolute(): string {
     return dateFormatter(
@@ -278,6 +312,11 @@ export interface FormattedNumberProps extends FormattedProps {
   value: number;
   /** Anything `Intl.NumberFormat` takes: a percent, a unit, compact notation, a sign. */
   options?: Intl.NumberFormatOptions;
+  /**
+   * Cut the digits past the last one shown rather than round them, so an
+   * uptime of 99.996% reads 99.99% and never 100%.
+   */
+  truncate?: boolean;
 }
 
 /**
@@ -289,7 +328,9 @@ export interface FormattedNumberProps extends FormattedProps {
  * ```
  */
 export function FormattedNumber(props: FormattedNumberProps) {
-  const format = numberFormatter(props.options);
+  const format = numberFormatter(
+    props.truncate === true ? { ...props.options, roundingMode: "trunc" } : props.options,
+  );
   function cls(): Slots {
     return parts(formattedStyles({ numeric: props.numeric !== false }), props.classes);
   }
@@ -466,6 +507,52 @@ export function Duration(props: DurationProps) {
   return (
     <span class={arc(cls().root, props.class, props.className)} id={props.id} data-slot="duration">
       {text()}
+    </span>
+  );
+}
+
+/**
+ * How often something runs, in words: "Every 5 minutes", "Hourly", "Daily".
+ * A whole minute, hour, day or week has its own word; any other span is
+ * "Every" and the span, as `Duration` writes it at length.
+ */
+export function intervalText(milliseconds: number, locale: string, words: ArcMessages): string {
+  switch (milliseconds) {
+    case 60_000:
+      return words.everyMinute;
+    case 3_600_000:
+      return words.hourly;
+    case 86_400_000:
+      return words.daily;
+    case 604_800_000:
+      return words.weekly;
+    default:
+      return words.everyInterval(durationText(milliseconds, locale, { length: "long" }));
+  }
+}
+
+export interface IntervalProps extends FormattedProps {
+  /** How often, in milliseconds. */
+  value: number;
+}
+
+/**
+ * How often something runs: a check every 5 minutes, a digest daily.
+ *
+ * ```tsx
+ * <Interval value={300_000} />   // Every 5 minutes
+ * <Interval value={3_600_000} /> // Hourly
+ * ```
+ */
+export function Interval(props: IntervalProps) {
+  const locale = useLocale();
+  const messages = useArcMessages();
+  function cls(): Slots {
+    return parts(formattedStyles({ numeric: props.numeric === true }), props.classes);
+  }
+  return (
+    <span class={arc(cls().root, props.class, props.className)} id={props.id} data-slot="interval">
+      {intervalText(props.value, locale().locale, messages())}
     </span>
   );
 }

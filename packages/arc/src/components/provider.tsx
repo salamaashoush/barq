@@ -11,6 +11,7 @@ import {
   installArcTheme,
 } from "../theme/index.ts";
 import { ConfirmHost, type ConfirmHostProps } from "./confirm.tsx";
+import { type ReaderClock, provideReaderClock } from "../lib/reader-clock.ts";
 import { linkRouter, maybeRouter } from "./link.ts";
 import { type ArcMessages, provideArcMessages } from "./messages.ts";
 import { ModalHost, type ModalHostProps } from "./modals.tsx";
@@ -40,6 +41,11 @@ export interface ArcProviderProps {
   colorScheme?: ColorSchemeOptions | false;
   /** The locale below, whose direction the components lay out in. Put the same `lang` and `dir` on `<html>`. */
   locale?: string;
+  /**
+   * How the reader reads times: their zone or UTC, a 12- or 24-hour clock,
+   * the first day of a week. Every time and calendar arc draws follows it.
+   */
+  clock?: ReaderClock;
   /** The toast stack's options, or `false` for none. */
   toaster?: Omit<ToasterProps, "theme"> | false;
   /**
@@ -85,7 +91,12 @@ export function ArcProvider(props: ArcProviderProps) {
   const schemeOptions = untrack(() => props.colorScheme);
   const scheme = schemeOptions === false ? undefined : colorScheme(schemeOptions ?? {});
   const locale = untrack(() => props.locale);
-  if (locale !== undefined) provideLocale(() => props.locale ?? locale);
+  if (untrack(() => props.clock) !== undefined) {
+    provideReaderClock(
+      () => props.clock,
+      locale === undefined ? undefined : () => props.locale ?? locale,
+    );
+  } else if (locale !== undefined) provideLocale(() => props.locale ?? locale);
 
   function toastTheme(): "light" | "dark" | "system" {
     if (scheme === undefined) return "system";
