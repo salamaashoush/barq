@@ -1353,6 +1353,14 @@ export {
   useDateSections,
 } from "./components/item-list.tsx";
 export {
+  type SearchResult,
+  type SearchResultGroup,
+  type SearchResultKind,
+  SearchResults,
+  type SearchResultsProps,
+  searchResultsStyles,
+} from "./components/search-results.tsx";
+export {
   MasterDetailList,
   type MasterDetailListProps,
   masterDetailListStyles,
