@@ -17,6 +17,7 @@ import {
   markedAt,
   recordingExtension,
   recordingHtml,
+  takeRecording,
 } from "./recording.tsx";
 import { RichTextRenderer } from "./renderer.tsx";
 import { storedFilesExtension } from "./stored-files.ts";
@@ -241,6 +242,30 @@ describe("a recording in the editor", () => {
     expect(clockSeconds("1:02:05")).toBe(3725);
     expect(clockSeconds("1:75")).toBeNull();
     expect(markedAt([{ at: 3, title: "" }], 3)).toHaveLength(1);
+  });
+});
+
+describe("recording in the page", () => {
+  test("Insert opens the recorder for a sound or a video, and a clip used lands as a recording", async () => {
+    const [editor, sent] = await mount();
+    await user.click(screen.getByRole("button", { name: "Insert" }));
+    await settle();
+    await user.click(screen.getByRole("menuitem", { name: "Record a video" }));
+    await settle();
+    const dialog = screen.getByRole("dialog", { name: "Record a video" });
+    expect(dialog.querySelector('[data-slot="clip-recorder"]')?.getAttribute("data-kind")).toBe(
+      "video",
+    );
+    editor.update(() => $getRoot().selectEnd());
+    takeRecording(editor, {
+      blob: new Blob(["x"], { type: "audio/webm;codecs=opus" }),
+      url: "blob:clip",
+      mimeType: "audio/webm;codecs=opus",
+      duration: 3,
+    });
+    await settle();
+    expect(dataOf(editor).mime).toBe("audio/webm");
+    expect(sent.files[0]?.name).toMatch(/^audio-.+\.webm$/);
   });
 });
 

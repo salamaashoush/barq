@@ -5,6 +5,8 @@ import { useLexicalEditor } from "@barqjs/lexical";
 import { Captions } from "@barqjs/lucide/icons/captions";
 import { Flag } from "@barqjs/lucide/icons/flag";
 import { Film } from "@barqjs/lucide/icons/film";
+import { Mic } from "@barqjs/lucide/icons/mic";
+import { Video } from "@barqjs/lucide/icons/video";
 import { Timer } from "@barqjs/lucide/icons/timer";
 import { X } from "@barqjs/lucide/icons/x";
 import { Button } from "@barqjs/ui/button";
@@ -14,10 +16,13 @@ import { DRAG_DROP_PASTE } from "@lexical/rich-text";
 import {
   COMMAND_PRIORITY_LOW,
   type ElementFormatType,
+  type LexicalCommand,
   type LexicalEditor,
   type LexicalNode,
+  createCommand,
 } from "lexical";
 
+import { ClipRecorder, type RecordedClip } from "../components/clip-recorder.tsx";
 import { IconButton } from "../components/icon-button.tsx";
 import {
   type MediaChapter,
@@ -649,6 +654,64 @@ function RecordingDrop() {
   return null;
 }
 
+/** What is recorded in the page: a sound, or a video from the camera. */
+export type RecordingKind = "audio" | "video";
+
+/** Opens the recorder for a kind of recording. */
+export const OPEN_RECORDER_COMMAND: LexicalCommand<RecordingKind> = createCommand("OPEN_RECORDER");
+
+/** A clip recorded in the page, sent up the editor's queue as a recording where the caret is. */
+export function takeRecording(editor: LexicalEditor, clip: RecordedClip): void {
+  const extension = clip.mimeType.includes("mp4")
+    ? "mp4"
+    : clip.mimeType.includes("ogg")
+      ? "ogg"
+      : "webm";
+  const kind = clip.mimeType.startsWith("audio/") ? "audio" : "video";
+  const stamp = new Date().toISOString().slice(0, 19).replaceAll(":", "-");
+  const file = new File([clip.blob], `${kind}-${stamp}.${extension}`, {
+    type: clip.mimeType.split(";")[0] ?? clip.mimeType,
+  });
+  insertRecordings(editor, [file]);
+}
+
+function RecorderHost() {
+  const editor = useLexicalEditor();
+  const messages = useArcMessages();
+  const [kind, setKind] = createSignal<RecordingKind | null>(null, { ownedWrite: true });
+  useRegistration(() =>
+    editor.registerCommand(
+      OPEN_RECORDER_COMMAND,
+      (asked) => {
+        setKind(asked);
+        return true;
+      },
+      COMMAND_PRIORITY_LOW,
+    ),
+  );
+  return (
+    <ResponsiveOverlay
+      heading={kind() === "video" ? messages().recordVideo : messages().recordAudio}
+      open={kind() !== null}
+      onOpenChange={(open: boolean) => {
+        if (!open) setKind(null);
+      }}
+    >
+      <Show when={kind()}>
+        {(chosen: () => RecordingKind) => (
+          <ClipRecorder
+            kind={chosen()}
+            onAttach={(clip: RecordedClip) => {
+              takeRecording(editor, clip);
+              setKind(null);
+            }}
+          />
+        )}
+      </Show>
+    </ResponsiveOverlay>
+  );
+}
+
 /**
  * Video and sound: offered, dropped and pasted where the editor uploads, and
  * played on arc's `MediaPlayer` with their captions, chapters from markers
@@ -673,6 +736,24 @@ export function recordingExtension(options: RecordingOptions = {}): EditorExtens
         run: (editor) =>
           void pickFiles("audio/*,video/*", true).then((files) => insertRecordings(editor, files)),
       },
+      {
+        id: "record-audio",
+        label: (messages) => messages.recordAudio,
+        group: (messages) => messages.mediaBlocks,
+        icon: () => <Mic />,
+        keywords: ["record", "voice", "sound", "microphone"],
+        available: (editor) => editorUploads(editor) !== null,
+        run: (editor) => editor.dispatchCommand(OPEN_RECORDER_COMMAND, "audio"),
+      },
+      {
+        id: "record-video",
+        label: (messages) => messages.recordVideo,
+        group: (messages) => messages.mediaBlocks,
+        icon: () => <Video />,
+        keywords: ["record", "camera", "webcam"],
+        available: (editor) => editorUploads(editor) !== null,
+        run: (editor) => editor.dispatchCommand(OPEN_RECORDER_COMMAND, "video"),
+      },
     ],
     blockMenu: sizeAndAlignment($isRecordingNode),
     render: {
@@ -685,6 +766,6 @@ export function recordingExtension(options: RecordingOptions = {}): EditorExtens
         />
       ),
     },
-    plugins: [RecordingDrop],
+    plugins: [RecordingDrop, RecorderHost],
   });
 }

@@ -224,7 +224,9 @@ export {
   MAX_MARKER_TITLE,
   type Marker,
   MarkerList,
+  OPEN_RECORDER_COMMAND,
   type RecordingData,
+  type RecordingKind,
   RecordingBlock,
   RecordingFigure,
   type RecordingFigureProps,
@@ -237,6 +239,7 @@ export {
   recordingExtension,
   recordingHtml,
   recordingStyles,
+  takeRecording,
 } from "./recording.tsx";
 export {
   CompareBlock,
