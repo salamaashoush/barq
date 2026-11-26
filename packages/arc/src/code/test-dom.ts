@@ -16,7 +16,11 @@ export function queueSelectionChanges(): void {
   beforeAll(() => {
     const dispatch = document.dispatchEvent.bind(document);
     document.dispatchEvent = (event: Event): boolean => {
-      if (event.type !== "selectionchange") return dispatch(event);
+      // happy-dom calls this again for the document's own phases of an event
+      // aimed at a node inside it; only the first call is a new event.
+      if (event.type !== "selectionchange" || event.eventPhase !== Event.NONE) {
+        return dispatch(event);
+      }
       setTimeout(() => dispatch(event), 0);
       return true;
     };

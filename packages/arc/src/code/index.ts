@@ -14,6 +14,13 @@ export {
   shellQuote,
 } from "./code-tabs.tsx";
 export { languageForContentType, prettyJson } from "./content-type.ts";
+export {
+  type BlockComment,
+  type CommentRules,
+  type LanguageDefinition,
+  type StringRule,
+  defineLanguage,
+} from "./define-language.ts";
 export { lineMarks } from "./editor-marks.ts";
 export { codeTheme, diffChrome } from "./editor-theme.ts";
 export { codeHighlighter, highlightHtml, highlightLines } from "./highlight.ts";
