@@ -70,6 +70,20 @@ export const catalog: GroupCatalog = {
       ],
     },
     {
+      id: "panels-and-shared",
+      title: "Panels and shared blocks",
+      description:
+        "Tabs, steps, a timeline, flip cards and choices between paths, written in the block editor and read through the renderer, and a block kept once and shown wherever it is used.",
+      covers: [
+        "panelsExtension",
+        "PanelsView",
+        "sharedBlockExtension",
+        "SharedBlockSource",
+        "BlockEditor",
+        "RichTextRenderer",
+      ],
+    },
+    {
       id: "renderer",
       title: "Rich text renderer",
       description:
