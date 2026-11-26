@@ -1,11 +1,14 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { type ParentProps } from "@barqjs/core";
 import { provideLocale } from "@barqjs/aria/i18n";
-import { ariaViolations, render, screen, user } from "@barqjs/testing";
+import { ariaViolations, render, screen, user, waitFor } from "@barqjs/testing";
+import { renderRoute } from "@barqjs/testing/router";
+import { Dialog, DialogContent, DialogTitle } from "@barqjs/ui/dialog";
 
 import { hydrates, settle } from "../test-arc.ts";
 import { Button } from "@barqjs/ui/button";
 
+import { useOpenParam } from "../lib/search-state.ts";
 import { ResponsiveOverlay } from "./responsive-overlay.tsx";
 
 const original = window.matchMedia.bind(window);
@@ -151,5 +154,61 @@ describe("ResponsiveOverlay", () => {
     `);
     expect(result.container.querySelector("button")?.textContent).toBe("Open");
     result.unmount();
+  });
+
+  test("opens for a link's search parameter or its trigger; closing drops it and its companions", async () => {
+    screenIs(false);
+    function Page() {
+      return (
+        <ResponsiveOverlay
+          heading="New tunnel"
+          param="create"
+          clearParams={["preset"]}
+          trigger={<Button>New tunnel</Button>}
+        >
+          <p>Form</p>
+        </ResponsiveOverlay>
+      );
+    }
+    const view = await renderRoute({
+      routeTree: [{ path: "/tunnels", component: Page }] as never,
+      path: "/tunnels?create=1&preset=ssh&q=edge",
+    });
+    await settle();
+    expect(screen.getByRole("dialog", { name: "New tunnel" })).toBeDefined();
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(view.state.search().toString()).toBe("q=edge"));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+    await user.click(screen.getByRole("button", { name: "New tunnel" }));
+    await settle();
+    expect(screen.getByRole("dialog", { name: "New tunnel" })).toBeDefined();
+    expect(view.state.search().toString()).toBe("q=edge");
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(view.state.location().pathname).toBe("/tunnels");
+    view.unmount();
+  });
+
+  test("useOpenParam gives any dialog the same link", async () => {
+    function Page() {
+      const create = useOpenParam("create");
+      return (
+        <Dialog isOpen={create.isOpen()} onOpenChange={create.setOpen}>
+          <DialogContent>
+            <DialogTitle>New key</DialogTitle>
+          </DialogContent>
+        </Dialog>
+      );
+    }
+    const view = await renderRoute({
+      routeTree: [{ path: "/keys", component: Page }] as never,
+      path: "/keys?create",
+    });
+    await settle();
+    expect(screen.getByRole("dialog", { name: "New key" })).toBeDefined();
+    await user.click(screen.getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(view.state.search().has("create")).toBe(false));
+    view.unmount();
   });
 });

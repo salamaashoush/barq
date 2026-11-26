@@ -1,6 +1,5 @@
 import { type Accessor, type Child, Match, Show, Switch, untrack } from "@barqjs/core";
 import { variants } from "@barqjs/css";
-import { controllable } from "@barqjs/aria/utils";
 import { mediaQuery } from "@barqjs/primitives/media";
 import { type Breakpoint, breakpointQuery } from "@barqjs/ui/conditions";
 import {
@@ -32,6 +31,7 @@ import {
 
 import { arcLayer as arc } from "../layer.ts";
 import { type Customisable, parts } from "../lib/parts.ts";
+import { openState } from "../lib/search-state.ts";
 import { gap, layout, space } from "../style/index.ts";
 import { useArcMessages } from "./messages.ts";
 
@@ -80,6 +80,14 @@ export interface ResponsiveOverlayProps extends Customisable<Slots> {
   open?: boolean;
   defaultOpen?: boolean;
   onOpenChange?: (open: boolean) => void;
+  /**
+   * Read once: open while this search parameter is in the URL, so a link
+   * (`?create`) opens it; its trigger still opens it without one, and closing
+   * takes the parameter out.
+   */
+  param?: string;
+  /** Read once: parameters the link set beside `param` (`?create&preset=`), taken out with it. */
+  clearParams?: readonly string[];
   /** @default the provider's `close`, "Close" */
   closeLabel?: string;
 }
@@ -107,16 +115,19 @@ export function useCompactOverlay(breakpoint: Accessor<Breakpoint>): Accessor<bo
  * The same heading, description, body and footer in each, the same open
  * state across a change of presentation, and each one's own focus,
  * Escape and dismissal. A server, and a page being hydrated, draw the wide
- * one; the browser's answer takes over once hydration ends.
+ * one; the browser's answer takes over once hydration ends. With `param` its
+ * open state is also a search parameter's, so a create dialog has a link.
  */
 export function ResponsiveOverlay(props: ResponsiveOverlayProps) {
   const messages = useArcMessages();
   const compact = useCompactOverlay(() => props.breakpoint ?? "md");
-  const [isOpen, setOpen] = controllable<boolean>(
-    () => props.open,
-    () => untrack(() => props.defaultOpen) ?? false,
-    (next) => props.onOpenChange?.(next),
-  );
+  const { isOpen, setOpen } = openState({
+    param: untrack(() => props.param),
+    also: untrack(() => props.clearParams),
+    open: () => props.open,
+    defaultOpen: untrack(() => props.defaultOpen),
+    onOpenChange: (next) => props.onOpenChange?.(next),
+  });
   function presentation(): OverlayPresentation {
     return compact() ? "sheet" : (props.desktop ?? "dialog");
   }

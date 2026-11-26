@@ -3,8 +3,11 @@ import { createSignal, type ParentProps } from "@barqjs/core";
 import { provideLocale } from "@barqjs/aria/i18n";
 import { ariaViolations, render, screen, user, waitFor } from "@barqjs/testing";
 
-import { hydrates, settle } from "../test-arc.ts";
-import { Tearsheet } from "./tearsheet.tsx";
+import { renderRoute } from "@barqjs/testing/router";
+import { Button } from "@barqjs/ui/button";
+
+import { hydrates, settle, wears } from "../test-arc.ts";
+import { Tearsheet, tearsheetStyles } from "./tearsheet.tsx";
 
 function sheet(): HTMLElement {
   return document.querySelector('[data-slot="tearsheet"]') as HTMLElement;
@@ -123,5 +126,57 @@ describe("Tearsheet", () => {
     `);
     expect(result.container.textContent).toContain("Page");
     result.unmount();
+  });
+
+  test("a full-screen editor: close first in a bar, the heading cut to a line, the save beside it", async () => {
+    let saved = 0;
+    const changes: boolean[] = [];
+    render(() => (
+      <Tearsheet
+        defaultOpen
+        size="full"
+        heading="Untitled puzzle with a long name that runs past the edge"
+        actions={<Button onPress={() => saved++}>Save</Button>}
+        onOpenChange={(open) => changes.push(open)}
+      >
+        <p>Canvas</p>
+      </Tearsheet>
+    ));
+    await settle();
+    expect(sheet().getAttribute("data-size")).toBe("full");
+    expect(wears(sheet(), tearsheetStyles({ size: "full" }).root)).toBe(true);
+    const bar = sheet().querySelector('[data-slot="tearsheet-bar"]') as HTMLElement;
+    const close = screen.getByRole("button", { name: "Close" });
+    expect(bar.firstElementChild).toBe(close);
+    expect(document.activeElement).toBe(close);
+    expect(bar.lastElementChild?.textContent).toBe("Save");
+    expect(screen.getAllByRole("button", { name: "Close" })).toHaveLength(1);
+    expect(await ariaViolations(document.body)).toEqual([]);
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    expect(saved).toBe(1);
+    close.focus();
+    await user.keyboard("{Enter}");
+    await settle();
+    expect(changes).toEqual([false]);
+  });
+
+  test("opens for a search parameter and its own trigger; closing drops the parameter and its companions", async () => {
+    function Page() {
+      return (
+        <Tearsheet heading="New check" param="create" clearParams={["preset"]}>
+          <p>Form</p>
+        </Tearsheet>
+      );
+    }
+    const view = await renderRoute({
+      routeTree: [{ path: "/checks", component: Page }] as never,
+      path: "/checks?create=1&preset=http&page=2",
+    });
+    await settle();
+    expect(screen.getByRole("dialog", { name: "New check" })).toBeDefined();
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(view.state.search().toString()).toBe("page=2"));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    view.unmount();
   });
 });

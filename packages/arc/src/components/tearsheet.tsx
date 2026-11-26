@@ -1,8 +1,10 @@
 import { type Child, Show, untrack } from "@barqjs/core";
 import { variants } from "@barqjs/css";
+import { X } from "@barqjs/lucide/icons/x";
 import { on } from "@barqjs/ui/conditions";
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -13,7 +15,7 @@ import {
 import { arcLayer as arc } from "../layer.ts";
 import { type Customisable, parts } from "../lib/parts.ts";
 import { openState } from "../lib/search-state.ts";
-import { edge, gap, layout, panel, place, space, surface } from "../style/index.ts";
+import { edge, gap, layout, panel, place, space, surface, truncate } from "../style/index.ts";
 import { useArcMessages } from "./messages.ts";
 
 export const tearsheetStyles = variants({
@@ -39,6 +41,14 @@ export const tearsheetStyles = variants({
     }),
     title: arc({}),
     description: arc({}),
+    bar: arc(edge.bottom, layout.row, gap[2], place.padded, {
+      alignItems: "center",
+      paddingBlockStart: "max(calc(var(--spacing) * 2), env(safe-area-inset-top))",
+    }),
+    close: arc(layout.noShrink),
+    heading: arc(layout.column, layout.grow, layout.minZero),
+    barTitle: arc(truncate),
+    actions: arc(layout.row, layout.noShrink, gap[2], { alignItems: "center" }),
     main: arc(layout.row, layout.grow, layout.minZeroBlock, { alignItems: "stretch" }),
     influencer: arc(panel.body, edge.start, surface.sunken, {
       order: "-1",
@@ -57,6 +67,19 @@ export const tearsheetStyles = variants({
     size: {
       wide: {},
       narrow: { root: arc({ [on.md]: { width: "min(48rem, calc(100vw - 4rem))" } }) },
+      full: {
+        root: arc({
+          insetBlockStart: "0",
+          [on.md]: {
+            width: "100vw",
+            maxWidth: "100vw",
+            height: "100dvh",
+            maxHeight: "100dvh",
+            borderStartStartRadius: "0px",
+            borderStartEndRadius: "0px",
+          },
+        }),
+      },
     },
   },
   defaults: { size: "wide" },
@@ -77,13 +100,25 @@ export interface TearsheetProps extends Customisable<Slots> {
    * screen.
    */
   influencer?: Child;
-  /** `narrow` keeps a long form to a readable measure on a wide screen. @default "wide" */
-  size?: "wide" | "narrow";
+  /**
+   * `narrow` keeps a long form to a readable measure on a wide screen;
+   * `full` covers the whole screen at every size, for an editor.
+   * @default "wide"
+   */
+  size?: "wide" | "narrow" | "full";
+  /**
+   * The primary actions, in a bar across the top with the close button at
+   * its start and the heading cut to one line between: an editor's Save,
+   * which stays in reach however long the body is.
+   */
+  actions?: Child;
   open?: boolean;
   defaultOpen?: boolean;
   onOpenChange?: (open: boolean) => void;
   /** Open while this search parameter is in the URL; closing takes it out. */
   param?: string;
+  /** Read once: parameters the link set beside `param`, taken out with it. */
+  clearParams?: readonly string[];
   /** @default false, so a long task is not lost to a stray press outside */
   isDismissable?: boolean;
   /** @default the provider's `close`, "Close" */
@@ -105,11 +140,16 @@ export interface TearsheetProps extends Customisable<Slots> {
  * A modal dialog: focus moves in and stays, Escape closes, and a press
  * outside does not unless `isDismissable`. Its open state is the caller's,
  * its own, or a search parameter's, so the task has a link.
+ *
+ * An editor takes the whole screen with `size="full"` and its Save in
+ * `actions`, in a bar across the top whose close button comes first, so it
+ * is where focus starts.
  */
 export function Tearsheet(props: TearsheetProps) {
   const messages = useArcMessages();
   const { isOpen, setOpen } = openState({
     param: untrack(() => props.param),
+    also: untrack(() => props.clearParams),
     open: () => props.open,
     defaultOpen: untrack(() => props.defaultOpen),
     onOpenChange: (next) => props.onOpenChange?.(next),
@@ -121,17 +161,46 @@ export function Tearsheet(props: TearsheetProps) {
     <Dialog isOpen={isOpen()} onOpenChange={setOpen}>
       <DialogContent
         isDismissable={props.isDismissable === true}
+        showCloseButton={props.actions === undefined}
         closeLabel={props.closeLabel ?? messages().close}
         data-slot="tearsheet"
         data-size={props.size ?? "wide"}
         class={arc(cls().root, props.class, props.className)}
       >
-        <DialogHeader class={cls().header}>
-          <DialogTitle class={cls().title}>{props.heading}</DialogTitle>
-          <Show when={props.description !== undefined}>
-            <DialogDescription class={cls().description}>{props.description}</DialogDescription>
-          </Show>
-        </DialogHeader>
+        <Show
+          when={props.actions !== undefined}
+          fallback={
+            <DialogHeader class={cls().header}>
+              <DialogTitle class={cls().title}>{props.heading}</DialogTitle>
+              <Show when={props.description !== undefined}>
+                <DialogDescription class={cls().description}>{props.description}</DialogDescription>
+              </Show>
+            </DialogHeader>
+          }
+        >
+          <div class={cls().bar} data-slot="tearsheet-bar">
+            <DialogClose
+              class={cls().close}
+              data-slot="tearsheet-close"
+              variant="ghost"
+              size="icon"
+              aria-label={props.closeLabel ?? messages().close}
+            >
+              <X aria-hidden="true" />
+            </DialogClose>
+            <div class={cls().heading} data-slot="tearsheet-heading">
+              <DialogTitle class={arc(cls().title, cls().barTitle)}>{props.heading}</DialogTitle>
+              <Show when={props.description !== undefined}>
+                <DialogDescription class={arc(cls().description, cls().barTitle)}>
+                  {props.description}
+                </DialogDescription>
+              </Show>
+            </div>
+            <div class={cls().actions} data-slot="tearsheet-actions">
+              {props.actions}
+            </div>
+          </div>
+        </Show>
         <div class={cls().main} data-slot="tearsheet-main">
           <div class={cls().body} data-slot="tearsheet-body">
             {props.children}
