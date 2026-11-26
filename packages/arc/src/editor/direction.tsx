@@ -4,18 +4,11 @@ import { $getRoot, type LexicalEditor, type NodeKey, mergeRegister } from "lexic
 
 import { useRegistration } from "./hooks.ts";
 
-export type TextDirection = "ltr" | "rtl";
+import { type TextDirection, hasStrongLetter, textDirection } from "../lib/text-direction.ts";
 
-const RTL = /[֐-ࣿיִ-﷿ﹰ-ﻼ]/u;
-const STRONG = /[A-Za-zÀ-ɏͰ-ԯ֐-ࣿיִ-﷿ﹰ-ﻼ]/u;
+export { type TextDirection, textDirection };
+
 const NEUTRAL = '[dir="auto"], [data-neutral-dir]';
-
-/** The direction of text's first strong letter, or `null` for text with none: a number, a mark, nothing. */
-export function textDirection(text: string): TextDirection | null {
-  const letter = STRONG.exec(text)?.[0];
-  if (letter === undefined) return null;
-  return RTL.test(letter) ? "rtl" : "ltr";
-}
 
 /** The direction a document's own words read in: its first strong letter's. */
 export function $documentDirection(): TextDirection | null {
@@ -33,7 +26,7 @@ export function languageDirection(language: string): TextDirection {
 
 /** A block marked to read in its own direction holds no letter yet: it reads in the document's. */
 function settle(element: HTMLElement, direction: TextDirection): void {
-  const neutral = !STRONG.test(element.textContent ?? "");
+  const neutral = !hasStrongLetter(element.textContent ?? "");
   const dir = neutral ? direction : "auto";
   if (element.getAttribute("dir") !== dir) element.setAttribute("dir", dir);
   if (neutral !== element.hasAttribute("data-neutral-dir")) {

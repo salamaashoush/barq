@@ -33,6 +33,7 @@ import { srOnly } from "@barqjs/ui/sr-only";
 
 import { arcLayer as arc } from "../layer.ts";
 import type { Customisable } from "../lib/parts.ts";
+import { type TextDirection, textDirection } from "../lib/text-direction.ts";
 import { control as chrome, layout } from "../style/index.ts";
 import { useArcMessages } from "./messages.ts";
 import { CheckboxCards, RadioCards } from "./choice-cards.tsx";
@@ -44,6 +45,7 @@ import { PhoneField } from "./phone-field.tsx";
 import { RangeSlider } from "./range-slider.tsx";
 import { Rating } from "./rating.tsx";
 import { TagInput } from "./tag-input.tsx";
+import { IdentifierField, SlugField, SuggestionField } from "./text-fields.tsx";
 import { TimeField, TimePicker } from "./time-field.tsx";
 
 import {
@@ -76,9 +78,18 @@ export interface TextFieldProps extends ArcFieldProps {
   inputMode?: string;
 }
 
-/** A line of text. */
+/**
+ * A line of text. Text and search take the direction of what is typed, so
+ * Arabic reads right to left in an English form and the reverse; an empty
+ * field keeps the page's.
+ */
 export function TextField(props: TextFieldProps) {
   const of = control<string>();
+  function dir(): TextDirection | undefined {
+    const kind = props.type ?? "text";
+    if (kind !== "text" && kind !== "search") return undefined;
+    return textDirection(of.field().state.value ?? "") ?? undefined;
+  }
   return (
     <Frame of={of} label={props.label} description={props.description} field={props}>
       <Input
@@ -86,6 +97,7 @@ export function TextField(props: TextFieldProps) {
         id={of.ids.control}
         name={of.field().name}
         type={props.type ?? "text"}
+        dir={dir()}
         value={of.field().state.value ?? ""}
         placeholder={props.placeholder}
         autoComplete={props.autoComplete}
@@ -224,7 +236,7 @@ export interface TextareaFieldProps extends ArcFieldProps {
   maxLength?: number;
 }
 
-/** Text over several lines. */
+/** Text over several lines, in the direction of what is typed. */
 export function TextareaField(props: TextareaFieldProps) {
   const of = control<string>();
   return (
@@ -233,6 +245,7 @@ export function TextareaField(props: TextareaFieldProps) {
         class={props.classes?.control}
         id={of.ids.control}
         name={of.field().name}
+        dir={textDirection(of.field().state.value ?? "") ?? undefined}
         value={of.field().state.value ?? ""}
         rows={props.rows}
         placeholder={props.placeholder}
@@ -677,6 +690,9 @@ const arcFieldComponents = {
   CheckboxCards,
   SegmentedField,
   MultiSegmentedField,
+  IdentifierField,
+  SlugField,
+  SuggestionField,
 };
 
 const arcFormComponents = { SubmitButton, FormError };

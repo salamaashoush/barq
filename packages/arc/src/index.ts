@@ -28,6 +28,31 @@ export {
   tagInputStyles,
 } from "./components/tag-input.tsx";
 export {
+  type IdentifierConvention,
+  IdentifierField,
+  type IdentifierFieldProps,
+  SlugField,
+  type SlugFieldProps,
+  SuggestionField,
+  type SuggestionFieldProps,
+  freeSlug,
+  identifierFieldStyles,
+  slugFieldStyles,
+  slugify,
+  suggestionFieldStyles,
+  toIdentifier,
+} from "./components/text-fields.tsx";
+export {
+  InlineEdit,
+  type InlineEditProps,
+  type InlineOption,
+  InlineSelect,
+  type InlineSelectProps,
+  inlineEditStyles,
+  inlineSelectStyles,
+} from "./components/inline-edit.tsx";
+export { type TextDirection, textDirection } from "./lib/text-direction.ts";
+export {
   TimeField,
   type TimeFieldProps,
   TimePicker,

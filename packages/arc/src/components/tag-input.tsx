@@ -1,6 +1,7 @@
 import { For, createMemo, createSignal, untrack } from "@barqjs/core";
 import { variants } from "@barqjs/css";
 import { announce } from "@barqjs/aria/live";
+import { Input } from "@barqjs/ui/input";
 import { when } from "@barqjs/ui/shared-when";
 
 import { arcLayer as arc } from "../layer.ts";
@@ -26,7 +27,7 @@ import {
   type,
 } from "../style/index.ts";
 import type { ChipVariant } from "./chip.tsx";
-import { useArcMessages } from "./messages.ts";
+import { type ArcMessages, useArcMessages } from "./messages.ts";
 import { TagGroup, type TagGroupSlots } from "./tag-group.tsx";
 
 export const tagInputStyles = variants({
@@ -82,6 +83,13 @@ export interface TagInputProps
   addOnBlur?: boolean;
   /** @default "outline" */
   variant?: ChipVariant;
+  /**
+   * One line of text rather than tags: the entries typed with commas between
+   * them, each normalised and checked when the field is left or Enter is
+   * pressed. For a short list read as a sentence: hosts, ports, codes.
+   * @default false
+   */
+  line?: boolean;
 }
 
 /** A pasted list split into its entries. */
@@ -90,6 +98,51 @@ function splitList(text: string, separators: readonly string[]): string[] {
     mark.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
   );
   return text.split(new RegExp(marks.join("|"))).filter((part) => part.trim() !== "");
+}
+
+/** The rules a typed tag is held to. */
+type TagRules = Pick<TagInputProps, "normalize" | "validate" | "maxTags" | "caseInsensitive">;
+
+interface Admission {
+  /** What was held, with what could be added after it. */
+  tags: string[];
+  /** The entries that could not, as typed. */
+  left: string[];
+  /** Why, once each. */
+  reasons: string[];
+}
+
+/** `entries` added to `held` as far as the rules allow. */
+function admit(
+  entries: readonly string[],
+  held: readonly string[],
+  rules: TagRules,
+  messages: ArcMessages,
+): Admission {
+  const tags = [...held];
+  const left: string[] = [];
+  const reasons: string[] = [];
+  function same(one: string, other: string): boolean {
+    return rules.caseInsensitive === false
+      ? one === other
+      : one.toLowerCase() === other.toLowerCase();
+  }
+  for (const entry of entries) {
+    const tag = (rules.normalize ?? ((raw: string) => raw.trim()))(entry);
+    if (tag === "") continue;
+    const reason = tags.some((one) => same(one, tag))
+      ? messages.duplicateTag(tag)
+      : rules.maxTags !== undefined && tags.length >= rules.maxTags
+        ? messages.tooManyTags(rules.maxTags)
+        : rules.validate?.(tag, tags);
+    if (reason === undefined) {
+      tags.push(tag);
+    } else {
+      left.push(entry.trim());
+      if (!reasons.includes(reason)) reasons.push(reason);
+    }
+  }
+  return { tags, left, reasons };
 }
 
 /**
@@ -111,6 +164,7 @@ function splitList(text: string, separators: readonly string[]): string[] {
  * where a second Backspace removes it.
  */
 export function TagInput(props: TagInputProps) {
+  if (untrack(() => props.line) === true) return <TagLine {...props} />;
   const messages = useArcMessages();
   const of = bindField<readonly string[]>(props, []);
   const [text, setText] = createSignal("");
@@ -122,40 +176,15 @@ export function TagInput(props: TagInputProps) {
     return of.value() ?? [];
   }
   const items = createMemo(() => tags().map((tag) => ({ id: tag, label: tag })));
-  function same(one: string, other: string): boolean {
-    return props.caseInsensitive === false
-      ? one === other
-      : one.toLowerCase() === other.toLowerCase();
-  }
-
   const wiring = withOwnErrors(of, rejected);
   const isInvalid = wiring.isInvalid;
 
   /** Adds what it can, returns what it could not with why. */
   function add(entries: readonly string[]): string[] {
-    const held = [...untrack(tags)];
-    const left: string[] = [];
-    const reasons: string[] = [];
-    for (const entry of entries) {
-      const tag = (props.normalize ?? ((raw: string) => raw.trim()))(entry);
-      const reason =
-        tag === ""
-          ? undefined
-          : held.some((one) => same(one, tag))
-            ? messages().duplicateTag(tag)
-            : props.maxTags !== undefined && held.length >= props.maxTags
-              ? messages().tooManyTags(props.maxTags)
-              : props.validate?.(tag, held);
-      if (tag === "") continue;
-      if (reason === undefined) {
-        held.push(tag);
-        announce(messages().added(tag), "polite");
-      } else {
-        left.push(entry.trim());
-        if (!reasons.includes(reason)) reasons.push(reason);
-      }
-    }
-    if (held.length !== untrack(tags).length) of.change(held);
+    const before = untrack(tags);
+    const { tags: held, left, reasons } = admit(entries, before, props, untrack(messages));
+    for (const tag of held.slice(before.length)) announce(messages().added(tag), "polite");
+    if (held.length !== before.length) of.change(held);
     setRejected(reasons);
     return left;
   }
@@ -296,6 +325,78 @@ export function TagInput(props: TagInputProps) {
           {(tag: string) => <input type="hidden" name={of.name()} value={tag} />}
         </For>
       </div>
+    </Frame>
+  );
+}
+
+/** `TagInput` as one line of text: what `line` draws. */
+function TagLine(props: TagInputProps) {
+  const messages = useArcMessages();
+  const of = bindField<readonly string[]>(props, []);
+  const [rejected, setRejected] = createSignal<string[]>([]);
+  const [typed, setTyped] = createSignal<string | null>(null);
+  function tags(): readonly string[] {
+    return of.value() ?? [];
+  }
+  function text(): string {
+    return typed() ?? tags().join(", ");
+  }
+  const wiring = withOwnErrors(of, rejected);
+
+  function commit(): void {
+    const written = untrack(typed);
+    if (written === null) return;
+    const entries = splitList(written, props.separators ?? [","]);
+    const { tags: kept, left, reasons } = admit(entries, [], props, untrack(messages));
+    const before = untrack(tags);
+    if (kept.length !== before.length || kept.some((tag, index) => tag !== before[index])) {
+      of.change(kept);
+    }
+    setRejected(reasons);
+    setTyped(left.length === 0 ? null : [...kept, ...left].join(", "));
+  }
+
+  return (
+    <Frame
+      of={wiring}
+      label={props.label}
+      description={props.description}
+      field={{
+        label: props.label,
+        class: arc(props.classes?.root, props.class, props.className),
+        classes: {
+          label: props.classes?.label,
+          description: props.classes?.description,
+          error: props.classes?.error,
+        },
+      }}
+      slot="tag-input"
+    >
+      <Input
+        class={props.classes?.input}
+        data-slot="tag-input-field"
+        id={of.ids.control}
+        name={of.name()}
+        value={text()}
+        placeholder={props.placeholder}
+        disabled={props.isDisabled}
+        required={props.isRequired}
+        autoComplete="off"
+        spellCheck={false}
+        aria-invalid={wiring.isInvalid() ? true : undefined}
+        aria-describedby={wiring.describedBy(props.description !== undefined)}
+        onInput={(event: Event) => {
+          setTyped((event.currentTarget as HTMLInputElement).value);
+          if (untrack(rejected).length > 0) setRejected([]);
+        }}
+        onKeyDown={(event: KeyboardEvent) => {
+          if (event.key === "Enter" && !event.isComposing) commit();
+        }}
+        onBlur={() => {
+          commit();
+          of.blur();
+        }}
+      />
     </Frame>
   );
 }

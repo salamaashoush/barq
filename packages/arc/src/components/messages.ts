@@ -780,6 +780,18 @@ export interface ArcMessages {
   tableMoved: (kind: "row" | "column", position: number, total: number) => string;
   codeLanguage: string;
   plainText: string;
+  identifierUpperSnake: string;
+  identifierSnake: string;
+  identifierKebab: string;
+  identifierFilename: string;
+  slugAt: (address: string) => string;
+  change: string;
+  slugChecking: string;
+  slugFree: (slug: string) => string;
+  slugTaken: (slug: string) => string;
+  slugCheckFailed: string;
+  noSuggestions: string;
+  couldNotSave: string;
 }
 
 export const ENGLISH: ArcMessages = {
@@ -1629,6 +1641,21 @@ export const ENGLISH: ArcMessages = {
     `${kind === "row" ? "Row" : "Column"} moved to ${String(position)} of ${String(total)}`,
   codeLanguage: "Language",
   plainText: "Plain text",
+  identifierUpperSnake:
+    "Capital letters, digits and underscores; anything else becomes an underscore.",
+  identifierSnake:
+    "Lowercase letters, digits and underscores; anything else becomes an underscore.",
+  identifierKebab: "Lowercase letters, digits and dashes; anything else becomes a dash.",
+  identifierFilename:
+    "Letters, digits, dots, dashes and underscores; anything else becomes a dash.",
+  slugAt: (address) => `Its address is ${address}.`,
+  change: "Change",
+  slugChecking: "Checking the address…",
+  slugFree: (slug) => `${slug} is free.`,
+  slugTaken: (slug) => `${slug} is taken. Try another.`,
+  slugCheckFailed: "Could not check the address. It is checked again when you save.",
+  noSuggestions: "Nothing in use matches. What you type is used as it is.",
+  couldNotSave: "Could not save. Try again.",
 };
 
 const MessagesContext = createContext<ArcMessages>(ENGLISH, "ArcMessages");
