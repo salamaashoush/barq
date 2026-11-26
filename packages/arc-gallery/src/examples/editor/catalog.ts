@@ -53,6 +53,23 @@ export const catalog: GroupCatalog = {
       covers: ["BlockEditor", "defineBlock"],
     },
     {
+      id: "document-editor",
+      title: "Document editing",
+      description:
+        "Formatting over selected text (turn into, sub and superscript, colours, highlight, sizes, clear), the block menu by right-click and Mod+/, tables with grips, merge, colour and stripes, code blocks with a language menu, line numbers and copy, the markdown dialog, a document's own direction and a validated editor.",
+      covers: [
+        "formattingExtension",
+        "TextColourMenu",
+        "TextSizeMenu",
+        "TableControls",
+        "CodeBlockTools",
+        "MarkdownDialog",
+        "replaceDocument",
+        "BlockEditor",
+        "RichTextEditor",
+      ],
+    },
+    {
       id: "renderer",
       title: "Rich text renderer",
       description:

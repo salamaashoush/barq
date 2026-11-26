@@ -1,5 +1,7 @@
 import type { Demos } from "../../gallery/types.ts";
 import BlockEditor from "./block-editor.tsx";
+import DocumentEditor from "./document-editor.tsx";
+import documentEditor from "./document-editor.tsx?raw";
 import blockEditor from "./block-editor.tsx?raw";
 import EditorParts from "./editor-parts.tsx";
 import editorParts from "./editor-parts.tsx?raw";
@@ -17,6 +19,7 @@ export const demos: Demos = {
   "editor-parts": { component: EditorParts, code: editorParts },
   "editor-states": { component: EditorStates, code: editorStates },
   "block-editor": { component: BlockEditor, code: blockEditor },
+  "document-editor": { component: DocumentEditor, code: documentEditor },
   renderer: { component: Renderer, code: renderer },
   "message-editor": { component: MessageEditor, code: messageEditor },
 };

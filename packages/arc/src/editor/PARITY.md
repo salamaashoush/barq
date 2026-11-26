@@ -42,14 +42,14 @@ Borderline calls are justified where they are made.
 ## Editor shell
 
 - **Document, field and message variants**: generic; done, rich-text-editor.test.tsx, chat-composer.test.tsx; Editor.tsx, frame.ts.
-- **Change handed over after typing pauses, at once on blur and unmount**: generic; done for the pause (rich-text-editor.test.tsx, autosave), pending blur and unmount in phase 2; Editor.tsx.
-- **Validity callback and an invalid line**: generic; pending, phase 2; Editor.tsx.
+- **Change handed over after typing pauses, at once on blur and unmount**: generic; done, rich-text-editor.test.tsx (the pause), shell.test.tsx (blur and unmount); Editor.tsx.
+- **Validity callback and an invalid line**: generic (the app's schema check becomes `validate`); done, shell.test.tsx; Editor.tsx.
 - **Character count for a field, words and reading time for a document**: generic; done, rich-text-editor.test.tsx, find.test.tsx; Editor.tsx, plugins/document-status.tsx.
-- **Undo history capped, none on a shared document**: generic; pending, phase 2 (the cap); Editor.tsx.
-- **`replace` the whole content as one edit, quietly or not**: generic; pending, phase 2; Editor.tsx.
-- **Disabled, initial focus, placeholder, label**: generic; done for disabled, placeholder and label (rich-text-editor.test.tsx), pending initial focus in phase 2; Editor.tsx.
-- **Document direction and language, detected or set**: generic; pending, phase 2; Editor.tsx, plugins/Direction.tsx, direction.spec.tsx, language.spec.tsx.
-- **Lines without letters follow the document's direction**: generic; pending, phase 2; plugins/Direction.tsx.
+- **Undo history capped, none on a shared document**: generic; done, shell.test.tsx (`historyLimit`, 200 by default); Editor.tsx.
+- **`replace` the whole content as one edit, quietly or not**: generic; done, shell.test.tsx (`replaceDocument`, a function on the editor rather than a prop); Editor.tsx.
+- **Disabled, initial focus, placeholder, label**: generic; done, rich-text-editor.test.tsx, shell.test.tsx (`autoFocus`); Editor.tsx.
+- **Document direction and language, detected or set**: generic (any BCP 47 `language`, not two); done, shell.test.tsx; Editor.tsx, plugins/Direction.tsx, direction.spec.tsx, language.spec.tsx.
+- **Lines without letters follow the document's direction**: generic; done, shell.test.tsx; plugins/Direction.tsx.
 - **Each block's direction from its own text**: generic; done, rich-text-editor.test.tsx; plugins/Direction.tsx.
 - **Focus mode**: generic; done, find.test.tsx; Editor.tsx, plugins/document-status.tsx.
 - **Arabic digits for numbers the document draws**: generic; done, footnote.test.tsx; format.ts, view.tsx.
@@ -58,19 +58,19 @@ Borderline calls are justified where they are made.
 - **Host services for media, mentions, comments, the assistant**: generic; done for uploads and mentions (media.test.tsx, typeahead.test.tsx), pending for the rest by their phases; context.tsx.
 - **Host services for studio, puzzles, bank and standards**: domain; arc gives `defineEditorExtension` with plugins and commands; context.tsx.
 - **Feature flags for questions, forms, gates, draws, starter, narration**: domain; arc gives presets and `customizeExtensions`; Editor.tsx, context.tsx.
-- **Large-document and every-block fixtures for performance and coverage**: generic; pending, phase 2; large-document.ts, every-block.ts.
+- **Large-document and every-block fixtures for performance and coverage**: generic; done, fixtures.test.tsx (every node type the document preset knows, read, drawn and hydrated; a long document's budgets); large-document.ts, every-block.ts.
 
 ## Text and formatting
 
 - **Bold, italic, underline, strikethrough, inline code**: generic; done, rich-text-editor.test.tsx; formatting.ts, plugins/Toolbar.tsx.
-- **Superscript and subscript, Mod+. and Mod+,**: generic; pending, phase 2; extensions.ts, shortcuts.spec.ts.
-- **Text colour and highlight from nine colours**: generic; pending, phase 2; formatting.ts, plugins/SelectionToolbar.tsx.
-- **Text size small, large, huge**: generic; pending, phase 2; formatting.ts, writing.spec.ts.
-- **Clear formatting, Mod+\\**: generic; pending, phase 2; formatting.ts.
-- **Yellow highlight, Mod+Shift+H; strikethrough Mod+Shift+S**: generic; pending, phase 2 (strikethrough is Mod+Shift+X in arc, done in rich-text-editor.test.tsx); extensions.ts.
+- **Superscript and subscript, Mod+. and Mod+,**: generic; done, formatting.test.tsx; extensions.ts, shortcuts.spec.ts.
+- **Text colour and highlight from nine colours**: generic; done, formatting.test.tsx (the source's colours, so its documents show theirs as chosen); formatting.ts, plugins/SelectionToolbar.tsx.
+- **Text size small, large, huge**: generic; done, formatting.test.tsx; formatting.ts, writing.spec.ts.
+- **Clear formatting, Mod+\\**: generic; done, formatting.test.tsx; formatting.ts.
+- **Yellow highlight, Mod+Shift+H; strikethrough Mod+Shift+S**: generic; done, formatting.test.tsx (Mod+Shift+X strikes through as well, rich-text-editor.test.tsx); extensions.ts.
 - **Headings, lists, check lists, quote, code by keys** (Mod+Alt+0 to 3, Mod+Shift+7 to 9): generic; done, rich-text-editor.test.tsx (Mod+Shift+8 through the extension key path every binding shares); extensions.ts.
-- **Link editor: normalise, check, apply, remove; view mode with open, edit, unlink**: generic; done for the editor (rich-text-editor.test.tsx), pending a test of the view mode in phase 2; formatting.ts, plugins/SelectionToolbar.tsx.
-- **A link on a collapsed caret inserts the address as its text**: generic; pending, phase 2; formatting.ts.
+- **Link editor: normalise, check, apply, remove; view mode with open, edit, unlink**: generic; done, rich-text-editor.test.tsx, floating.test.tsx (the view mode); formatting.ts, plugins/SelectionToolbar.tsx.
+- **A link on a collapsed caret inserts the address as its text**: generic; done, floating.test.tsx; formatting.ts.
 - **Pasted styles kept to colour, highlight, size and first font**: generic; done, paste.test.tsx; extensions.ts, blocks.spec.ts.
 - **Unsafe links unwrapped to their words**: generic; done, paste.test.tsx; extensions.ts.
 - **Text-format and theme helpers** (number tags, bytes, clock, logical alignment): generic; done for the clock (text-tracks.test.tsx) and alignment (rich-text-editor.test.tsx), pending for bytes and sizes in phase 4; format.ts, theme.ts.
@@ -81,12 +81,12 @@ Borderline calls are justified where they are made.
 - **Toolbar folds into More as it narrows**: generic; done, rich-text-editor.test.tsx; plugins/Toolbar.tsx.
 - **Extension buttons on the toolbar and over selected text**: generic; done, find.test.tsx, footnote.test.tsx, extension.test.tsx; plugins/Toolbar.tsx, plugins/SelectionToolbar.tsx.
 - **Find and replace in More, Mod+F by key code**: generic; done, find.test.tsx; plugins/Toolbar.tsx.
-- **Markdown dialog: the document as markdown, replace from markdown**: generic; pending, phase 2; plugins/markdown-dialog.tsx.
-- **Floating bar shows for a range outside code, hides on pointer down**: generic; pending, phase 2 (it shows for a range, footnote.test.tsx; it does not yet stay away from code or a pressed pointer); plugins/SelectionToolbar.tsx.
-- **Floating bar: Alt+F10 in, Escape out, Tab from a selected block**: generic; pending, phase 2 (Alt+F10 and Escape are in floating.tsx without a test; Tab from a block is not); plugins/SelectionToolbar.tsx.
-- **Floating bar: turn into, colours, size, clear, comment, assistant**: generic; pending, phases 2, 11 and 13; plugins/SelectionToolbar.tsx.
+- **Markdown dialog: the document as markdown, replace from markdown**: generic; done, markdown-dialog.test.tsx; plugins/markdown-dialog.tsx.
+- **Floating bar shows for a range outside code, hides on pointer down**: generic; done, floating.test.tsx; plugins/SelectionToolbar.tsx.
+- **Floating bar: Alt+F10 in, Escape out, Tab from a selected block**: generic; done, floating.test.tsx, formatting.test.tsx (its arrows right to left in Arabic); a block chosen whole has a bar of its own, Duplicate and Delete, which the source gave its media only; plugins/SelectionToolbar.tsx.
+- **Floating bar: turn into, colours, size, clear, comment, assistant**: generic; done for turn into, colours, size and clear (floating.test.tsx, formatting.test.tsx), pending comment in phase 11 and assistant in phase 13; plugins/SelectionToolbar.tsx.
 - **Slash menu: grouped, ranked, Enter takes the first match**: generic; done, typeahead.test.tsx; plugins/SlashMenu.tsx, plugins/typeahead.tsx, slash-query.spec.ts.
-- **Insert picker with group chips**: generic; done as the block picker (block-editor.test.tsx), pending group chips in phase 2; plugins/insert-tool.tsx.
+- **Insert picker with group chips**: generic; done, block-editor.test.tsx, block-shell.test.tsx (the chips); plugins/insert-tool.tsx.
 - **Commands of a group sit together**: generic; done, typeahead.test.tsx; blocks.ts (`byGroup`).
 
 ## Blocks, handles and structure
@@ -94,20 +94,20 @@ Borderline calls are justified where they are made.
 - **Block handle: + and grip on the block under the pointer or caret, side flipped in right-to-left**: generic; done, block-editor.test.tsx; plugins/BlockHandle.tsx.
 - **Handle climbs out of containers to the top-level block**: generic; done, callout.test.tsx (the menu on a callout); plugins/BlockHandle.tsx.
 - **Drag to reorder, by mouse or finger**: generic; done, block-editor.test.tsx; plugins/BlockHandle.tsx.
-- **Block menu by right-click and Mod+/**: generic; pending, phase 2 (Mod+/ is in block-editor.tsx without a test; right-click is not); plugins/BlockHandle.tsx.
+- **Block menu by right-click and Mod+/**: generic; done, block-shell.test.tsx (the menu opens at the block's grip rather than the pointer, the same place a keyboard opens it); plugins/BlockHandle.tsx.
 - **Block menu: cut, copy, paste, paste as plain text**: generic; done, paste.test.tsx; plugins/BlockHandle.tsx, clipboard.ts.
 - **Block menu: turn into, duplicate, move up and down, delete**: generic; done, block-editor.test.tsx; plugins/BlockHandle.tsx, blocks.ts.
 - **Block menu: callout tone, column layout**: generic; done, callout.test.tsx, containers.test.tsx; plugins/BlockHandle.tsx.
-- **Turn into callout and toggle, unwrapping first**: generic; pending, phase 2 (slash on a line of words wraps it, done in callout.test.tsx and containers.test.tsx); blocks.ts.
-- **Duplicate Mod+D, move Alt+Shift+arrows**: generic; pending, phase 2 (arc moves with Mod+Shift+arrows, done in block-editor.test.tsx); extensions.ts.
-- **Placement rules: cells take text only, some blocks only at the top level, no callout in a callout**: generic; done for containers (containers.tsx `$placeContainer`, callout.test.tsx), pending a rule per block for cells in phase 2; blocks.ts.
+- **Turn into callout and toggle, unwrapping first**: generic; done, block-shell.test.tsx, floating.test.tsx, through each extension's `turnInto`; blocks.ts.
+- **Duplicate Mod+D, move Alt+Shift+arrows**: generic; done, block-shell.test.tsx (Mod+Shift with the arrows moves as well, block-editor.test.tsx); extensions.ts.
+- **Placement rules: cells take text only, some blocks only at the top level, no callout in a callout**: generic; done, callout.test.tsx, block-shell.test.tsx (a block chosen in a cell goes after its table); blocks.ts.
 - **A line always follows a block that ends the document**: generic; done, containers.test.tsx; blocks.ts.
-- **Typing with a block selected starts a line after it**: generic; pending, phase 2; extensions.ts.
+- **Typing with a block selected starts a line after it**: generic; done, block-shell.test.tsx; extensions.ts.
 - **Stable block ids on every block, re-made when shared**: generic; pending, phase 11 (comments anchor on them); extensions.ts, format.ts.
 - **Arrow keys leave a container at its edges**: generic; done, callout.test.tsx (shared by callouts, columns and toggles through `registerContainerKeys`); extensions.ts.
 - **Placeholders: empty document, empty heading, list item, quote, the caret's line**: generic; done, block-editor.test.tsx; plugins/Placeholder.tsx.
-- **Placeholders in a toggle's title, a panel's title, a one-line callout**: generic; pending, phase 2; plugins/Placeholder.tsx.
-- **Divider before the line, caret kept**: generic; pending, phase 2 (arc's divider takes an empty line's place or goes after the block); blocks.ts.
+- **Placeholders in a toggle's title, a panel's title, a one-line callout**: generic; done for a toggle's title and a one-line callout (block-shell.test.tsx, through each extension's `placeholder`), pending a panel's title with panels in phase 3; plugins/Placeholder.tsx.
+- **Divider before the line, caret kept**: generic; done, block-shell.test.tsx; blocks.ts.
 
 ## Callouts, columns, toggles, panels, page breaks
 
@@ -181,11 +181,11 @@ Borderline calls are justified where they are made.
 
 - **Table inserted from a size grid chosen by pointer or arrows, with a header row**: generic; done, rich-text-extras.test.tsx; plugins/table-size.tsx, table-size.spec.tsx.
 - **Column resize by edge and arrows, widths kept**: generic; done, rich-text-extras.test.tsx; plugins/Table.tsx.
-- **Row and column grips: select, drag to move, menus**: generic; pending, phase 2; plugins/Table.tsx.
-- **Insert, move, delete rows and columns; header row and column**: generic; done for insert, delete and header row (rich-text-extras.test.tsx), pending moves and header column in phase 2; plugins/Table.tsx.
-- **Merge and split cells, cell colour, alignment, vertical alignment, stripes**: generic; pending, phase 2; plugins/Table.tsx.
-- **Tab in the last cell adds a row; a line above or below a table**: generic; pending, phase 2; plugins/table-grid.ts.
-- **Code block highlighted, language chosen, copied**: generic; done for highlighting (rich-text-editor.test.tsx, renderer.test.tsx), pending the language menu, gutter and copy in phase 2; plugins/code-block.tsx, code-language.ts.
+- **Row and column grips: select, drag to move, menus**: generic; done, tables.test.tsx (Alt with the arrows moves a line from its grip too); plugins/Table.tsx.
+- **Insert, move, delete rows and columns; header row and column**: generic; done, rich-text-extras.test.tsx, tables.test.tsx; plugins/Table.tsx.
+- **Merge and split cells, cell colour, alignment, vertical alignment, stripes**: generic; done, tables.test.tsx; plugins/Table.tsx.
+- **Tab in the last cell adds a row; a line above or below a table**: generic; done, tables.test.tsx; plugins/table-grid.ts.
+- **Code block highlighted, language chosen, copied**: generic; done, rich-text-editor.test.tsx, renderer.test.tsx, code-tools.test.tsx (the language menu, gutter and copy); plugins/code-block.tsx, code-language.ts.
 - **Runnable code with the runner as a slot**: generic; pending, phase 8; nodes/code-run.ts, view.tsx.
 - **Run or predict, locked until the question above is answered**: domain (prediction ties code to a question); arc gives the runner slot; nodes/code-run.ts, view.tsx.
 - **Scratch scripts drawn as blocks**: domain (a teaching language); arc gives a code-language extension point; scratch-blocks.tsx.
@@ -271,14 +271,14 @@ example in the README and extension.test.tsx is such a block.
 ## Counts
 
 - 196 lines in all: 173 generic, 23 domain.
-- Generic: 87 done, 86 pending; a line done in part counts as pending.
+- Generic: 117 done, 56 pending; a line done in part counts as pending.
 
 ## Phases
 
 Sizes are lines of arc code, tests included, estimated from the source's
 own sizes.
 
-1. **Extension architecture and the first blocks** (this phase): the API,
+1. **Extension architecture and the first blocks**: the API,
    presets, callouts, columns, toggles, footnotes, page breaks, find and
    replace, document status, paste rules and clipboard, HTML and Word
    import, captions. About 8,800 lines with tests, landed.
@@ -289,7 +289,8 @@ own sizes.
    containers, direction and language, `replace`, validity, history cap,
    the markdown dialog, table grips, merge and split, colours, stripes, Tab
    rows and the code block's language menu, gutter and copy, fixtures for
-   performance and coverage.
+   performance and coverage. Landed, a panel's title placeholder left to
+   phase 3 with panels.
 3. **Panels and shared blocks** (about 1,600): tabs, steps, timeline, cards
    and choices with their reader views; shared blocks through a slot.
 4. **Media** (about 5,500): image sizes, credits, labels, focus; gallery

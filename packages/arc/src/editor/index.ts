@@ -27,6 +27,9 @@ export {
   type EditorCommand,
   type EditorExtension,
   type EditorKeyBinding,
+  type BlockConversion,
+  type EditorToolbarButton,
+  type EditorToolbarControl,
   type EditorToolbarItem,
   type Label,
   type NodeRenderer,
@@ -43,6 +46,10 @@ export {
 export { chatPreset, commentPreset, documentPreset } from "./presets.ts";
 export {
   $insertBlock,
+  $turnInto,
+  $turnTextBlock,
+  duplicateBlock,
+  removeBlock,
   MARKS,
   type Mark,
   OPEN_EMBED_DIALOG_COMMAND,
@@ -73,7 +80,30 @@ export {
   isSafeUrl,
   markdownToDocument,
   markdownTransformers,
+  type ReplaceOptions,
+  replaceDocument,
 } from "./document.ts";
+export {
+  $documentDirection,
+  type TextDirection,
+  languageDirection,
+  textDirection,
+  useDocumentDirection,
+} from "./direction.tsx";
+export {
+  $clearFormatting,
+  $selectionStyle,
+  $setHighlight,
+  $setTextColour,
+  $setTextSize,
+  type SelectionStyle,
+  TextColourMenu,
+  type TextColourMenuProps,
+  TextSizeMenu,
+  type TextSizeMenuProps,
+  formatMenuStyles,
+  formattingExtension,
+} from "./formatting.tsx";
 export { MessageEditor, type MessageEditorProps } from "./message-editor.tsx";
 export {
   FloatingFormatToolbar,
@@ -109,6 +139,7 @@ export {
   type Autosave,
   type AutosaveOptions,
   type AutosaveStatus,
+  QUIET_REPLACE_TAG,
   type CharacterCount,
   countCharacters,
   useCharacterCount,
@@ -270,8 +301,16 @@ export {
   isMarkdown,
   pasteAt,
   pasteExtension,
-  sanitiseStyle,
 } from "./paste.ts";
+export {
+  EDITOR_COLOURS,
+  type EditorColour,
+  HIGHLIGHT_COLOURS,
+  TEXT_COLOURS,
+  TEXT_SIZES,
+  type TextSize,
+  sanitiseStyle,
+} from "./text-style.ts";
 export { $blocksApart, $insertHtml, prepareHtml } from "./html-import.ts";
 export {
   IMPORT_WORD_COMMAND,
@@ -284,3 +323,37 @@ export {
   wordToHtml,
 } from "./docx-import.tsx";
 export { ommlToLatex } from "./omml.ts";
+export {
+  MarkdownDialog,
+  type MarkdownDialogProps,
+  OPEN_MARKDOWN_DIALOG_COMMAND,
+  editorMarkdown,
+  markdownDialogExtension,
+  markdownDialogStyles,
+  replaceFromMarkdown,
+} from "./markdown-dialog.tsx";
+export { codeGutter } from "./code-gutter.ts";
+export {
+  CodeBlockTools,
+  type CodeBlockToolsProps,
+  codeLanguageName,
+  codeLanguageOf,
+  codeToolsExtension,
+  codeToolsStyles,
+} from "./code-tools.tsx";
+export {
+  $lineBesideTable,
+  $moveTableLine,
+  $selectTableLine,
+  type TableAction,
+  type TableLine,
+  type VerticalAlignment,
+  registerTableKeys,
+  runTableAction,
+  setCellAlignment,
+  setCellColour,
+  setCellVerticalAlignment,
+  setHeaderColumn,
+  setHeaderRow,
+  setStripedRows,
+} from "./table-controls.tsx";

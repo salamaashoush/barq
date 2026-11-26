@@ -302,7 +302,9 @@ if (await confirm({ title: "Delete the check?", tone: "danger", confirmLabel: "D
   end, in four widths. Its open state is the caller's, its own, or a search
   parameter's, so the detail has a link and closing takes the parameter out.
 - `EmptyState`: a list with nothing in it yet, as an icon, a heading, a line
-  and the actions that fill it, on `@barqjs/ui`'s `Empty`.
+  and the actions that fill it, on `@barqjs/ui`'s `Empty`. A `kind` says why
+  in its own icon and words (see Feedback and states below), and
+  `placement="section"` makes it a quiet line inside a card.
 - `PageHeader`: the page's `<h1>`, a line about it, what sits above it and the
   actions beside it.
 - `StatCard`: one number, what it counts, how it moved in a tone, and an
@@ -310,7 +312,9 @@ if (await confirm({ title: "Delete the check?", tone: "danger", confirmLabel: "D
 - `Status`: a state in a word and a tone, as a dot, a tinted pill or a filled
   one, with an optional pulse that stops under reduced motion.
 - `confirm()`: a promise for the reader's answer, drawn by one `<ConfirmHost />`
-  on the page.
+  on the page; it also asks with a field, a typed name, a check of what
+  depends on the thing, and an action run inside the question (see Feedback
+  and states below).
 - `DataTable`: records as a grid, from TanStack column definitions through
   `@barqjs/table`, read by `@barqjs/aria`'s table. The arrows move a cell at a
   time and a header sorts when pressed. Sorting, selection, column visibility
@@ -542,7 +546,9 @@ and agrees between the server and the hydrating page.
   second under a minute, less often after) until it unmounts. `now` is the
   moment both halves measure from, the request's time; without it they write
   the absolute date and the browser turns it relative after hydrating.
-  `wording="always"` writes "1 day ago" for "yesterday".
+  `wording="always"` writes "1 day ago" for "yesterday". With `exact` it is a
+  button that opens the exact moment and its time zone in a popover, which a
+  keyboard and a finger reach where a title reaches neither.
 - `FormattedDate`: a date, a time or both, from `options`, in `timeZone`.
   Without one, the server and the hydrating page write UTC and the reader's
   own zone follows.
@@ -710,6 +716,95 @@ import { DangerZone, SettingsLayout, SettingsSection } from "@barqjs/arc";
   a strip, takes new cards with `onAddCard`, and with `virtual` draws only
   the cards on screen. A card is any content, a `ListItem` usually; the
   columns scroll sideways, snapping one at a time on a phone.
+
+## Table and list views
+
+A list page keeps its state in the address, so a filtered list has a link,
+survives a reload and comes back with the back button.
+
+```tsx
+const state = useSearchParam("state", { defaultValue: "open", parse: oneOf(STATES) });
+
+<SegmentedControl aria-label="State" param="state" items={STATE_SEGMENTS} />
+<DataToolbar
+  search={{ label: "Search incidents", param: "q" }}
+  filters={[
+    { id: "kind", label: "Kind", param: "kind", options: KINDS },
+    { kind: "toggle", id: "mine", label: "Started by me", param: "mine" },
+    { kind: "date-range", id: "when", label: "Date", param: "when" },
+  ]}
+  actions={<SavedViews param="view" views={views()} onCreate={saveView} />}
+/>
+<DataTable
+  label="Incidents"
+  columns={COLUMNS}
+  data={incidents()}
+  getRowId={(incident) => incident.id}
+  error={failure()}
+  onRetry={refetch}
+  activeKey={openId()}
+  card={{ title: (incident) => incident.title, status: (incident) => <Status … /> }}
+  rowActions={(incident) => [{ label: "Acknowledge", inline: true, onAction: … }]}
+  footer={<DataTableCount shown={incidents().length} hasMore={hasMore()} onLoadMore={more} />}
+/>
+```
+
+- `useSearchParam`: any control's value in one search parameter. The default
+  is left out of the address, a value `parse` refuses falls back to it,
+  writes replace the history entry and keep every other parameter, and
+  `debounce` shows each keystroke at once while the address waits for the
+  typing to pause; a change from elsewhere (Clear, a saved view, Back)
+  replaces what was being typed. `oneOf` is the `parse` for a fixed list.
+- `SegmentedControl` and `MultiSegmentedControl`: one held of a few, or
+  several with at least one, on ui's toggle group. A segment may carry a
+  count and a tone dot, `""` is a segment of its own (a default), the value
+  keeps the items' order whatever order they were pressed in, `param` keeps
+  it in the address, `name` posts it, and a narrow container scrolls it
+  sideways. `SegmentedField` and `MultiSegmentedField` add the label,
+  description and error, standalone or as an arc form's field.
+- `TimeRangePicker`: the last hour, day, week or month as segments, a
+  Custom dialog (a sheet on a phone) of two date and time fields that refuse
+  an end before the start, and Live while a preset is chosen.
+  `resolveTimeRange` turns a range into its two instants; `param` keeps it
+  as `24h` or an ISO interval.
+- `DataToolbar` filters come in three kinds: a facet of options (with icons,
+  counts and groups; past seven options it takes a field to type into), an
+  on-or-off `toggle`, and a `date-range` of presets and two months. `chips`
+  are `key: value` filters carried in from elsewhere, each removable, and
+  `period` holds the dates a list covers, which Clear leaves alone. Below
+  the `md` step the filters fold into one Filters button, counting the ones
+  set, that opens them in a sheet.
+- `SavedViews`: a list's filters, sort and columns under a name, the
+  reader's own or shared, from a menu at the end of the toolbar. With
+  `param` a view is the list's search parameters, a link opens it, the
+  trigger says "(edited)" once the list moves away from it with Update on
+  offer, the reader's default opens when the address names nothing, and
+  Rename, Copy link and Delete (asked first) follow what the reader may do.
+- `DataTable` states: `error` says in place of the rows that the load failed,
+  with the server's words, the request id and Try again while `onRetry`
+  runs; `footer` holds a `DataTableNote` or a `DataTableCount` ("Showing 25
+  of 120", Load more); `activeKey` marks the row whose sheet is open
+  `aria-current`; `density` is the table's own. `card` draws the rows as a
+  card list below `md` (`layout="cards"` at every width), `totals` adds
+  summing rows (as cards on a phone), and `rowActions` puts one action
+  beside the row and the rest in a menu named after it. A selected row a
+  filter or a page takes off the screen leaves the selection.
+- `SelectionBar` actions: `appliesTo` acts only on the selected rows it fits,
+  says how many, and is disabled for none. `onEach` runs one call per row
+  (`concurrency` at once), counts them as they settle, and when some are
+  refused keeps those selected with the first reason and Retry failed.
+- `CellWithNote`: a cell's value with a muted note under it, cut to a line,
+  whole in its title and to a screen reader. `OverflowList`: the first items
+  then "+3", or the sentence "a, b, c and 2 more", the tail a button opening
+  the whole list as a popover, or a sheet under a finger.
+- `List` takes `section` and draws a heading over each run of rows that
+  share one; the keyboard walks across sections and never stops on a
+  heading. `useDateSections` groups by day ("Today", "Yesterday") or month in
+  a time zone, and `loadMore="button"` asks for more with Show more rather
+  than on scroll.
+- `InheritedScopeList`: a scope's own items with a parent's beside them,
+  read-only, each in a section named "From Acme organization" that links to
+  where they are edited, "None." when empty, and a note under them all.
 
 ## Signing in
 
@@ -1103,6 +1198,91 @@ ui's `ToggleGroup` is the toggle button group: single or multiple, on
   remembers in `localStorage` whether a tour was seen and where it was left,
   so it shows once and a reload resumes it.
 
+## Feedback and states
+
+```tsx
+import { ActionMenu, EmptyState, StatusPage, confirm, openModal, useAction } from "@barqjs/arc";
+
+const answer = await confirm({
+  title: "Delete the role?",
+  tone: "danger",
+  confirmLabel: "Delete role",
+  field: { kind: "select", label: "Move its holders to", options: roles },
+  action: (role) => api.deleteRole(id, { moveTo: role }),
+});
+
+<EmptyState kind="filtered" onClearFilters={clear} />;
+
+export const Route = createFileRoute("/checks/$id")({
+  errorComponent: (props) => <ErrorPage error={props.error} reset={props.reset} />,
+  pendingComponent: () => <PageSkeleton template="record" />,
+});
+```
+
+- `confirm()` with `field` resolves `{ value }` or `null`: a checkbox ("Also
+  delete its runners"), a choice ("Move its holders to") or words (`kind:
+  "text"`, the reason for an audited change, required unless `optional`).
+  `typeToConfirm` holds the button until a name is typed, the name set apart
+  in the label wherever the language puts it. `details` draws what is lost.
+  `action` runs inside the dialog: the buttons pend, Escape waits, and a
+  failure stays in the question as the server's words made a sentence.
+  `dependents` loads what depends on the thing as the dialog opens ("Checking
+  what depends on it…"); blockers refuse the action in a list of links with
+  an "and N more" tail, and otherwise the affected and the `fallback` they
+  read are named.
+- `ActionMenu`: the `•••` menu of a row or a record, its regular actions
+  first and its destructive ones after a separator, each of those confirmed
+  naming what it removes and run inside the question. A regular action's
+  failure is a toast; its items are 40px on a phone.
+- `defineModal`, `openModal`, `preloadModal` and `ModalHost`: a modal named
+  once with how its component is fetched, opened by that definition from
+  anywhere, resolving with what it `resolve`s or `undefined` when dismissed.
+  The component draws its own overlay from `modal.isOpen()` and
+  `modal.onOpenChange`. Opening the modal on top again joins it, a slow fetch
+  shows a busy dialog and a failed one a Retry, a change of path dismisses
+  all but `keepOnNavigation` ones, and the host lets one go after its exit.
+  `ArcProvider` renders the host.
+- `ResponsiveOverlay` and `Tearsheet` take `param`, so a link to `?create`
+  opens them, their trigger still opens them, and closing takes the
+  parameter and `clearParams` out of the URL with a replace. `useOpenParam`
+  gives any dialog the same. `Tearsheet size="full"` covers the screen for an
+  editor, its `actions` in a bar across the top whose close button comes
+  first, where focus starts.
+- `useAction` and `ActionError`: a mutation's pending state, its success
+  toast and its failure, a toast or, with `inline`, an alert where it
+  happened. `serverProblem`, `serverMessage`, `serverErrors` (for
+  `setServerErrors`), `serverErrorKind` and `routeError` (a 404 as the
+  router's not-found) read an API's error, whatever shape it threw.
+- `EmptyState` kinds: `filtered` ("No matches", with Clear filters from
+  `onClearFilters`), `restricted` (naming who grants access from
+  `grantedBy`, joined in the locale), `done`, and the plain `empty`.
+- `SuccessState`: the end of a flow that worked, a tick in the success tone,
+  numbered next steps, actions and a help line, announced politely.
+- `StatusPage`, `ErrorPage` and `NotFoundPage`: a whole page for not found,
+  forbidden, gone, signed out, offline, unreachable and failed, with the code,
+  a first heading and the way out the kind allows: home and back, signing
+  in, or Try again. `ErrorPage` reads the kind off the error a route threw,
+  and keeps an unforeseen failure's code and message behind Details.
+- `PageSkeleton`: a list, record, form, dashboard, settings or review page
+  while it loads, a busy status named "Loading".
+- `Value`: a value that may legitimately be absent, the absence in arc's
+  words (`never`, `none`, `notSet`, `noLimit`, `nobody`) or the caller's
+  (`absentText`), "Not recorded" otherwise, and a dash read "Not applicable".
+- `Countdown`: time left to `to`, or elapsed since `from`, a `timer` that
+  tones at `warnAt` and `dangerAt`, tells a screen reader how long is left
+  once a minute and as each threshold passes, says time is up and calls
+  `onExpire` once. `now` lets the server and the hydrating page agree.
+- `SessionExpiryWarning`: within `warnWithin` of the end, a warning with the
+  live countdown and Keep alive (idle) or Extend (at the limit); once ended, a
+  danger alert.
+- `LifecycleNotice` and `RestoreButton`: the strip on an archived or deleted
+  item (who, when, when it is purged, and Restore), and a Restore button
+  named for its row. Archiving and deleting ask through `confirm()`.
+- `useDocumentWorkflow` and `DocumentWorkflowBar`: a document reviewed in
+  stages (draft, in review, completed), Start while there is none, Publish
+  held while anything is unsaved, and completed locking the editor that reads
+  `locked()` until it is set back.
+
 ## Charts
 
 ```tsx
@@ -1263,7 +1443,16 @@ the editor, the renderer and on a server.
   editor takes the box over once the page has hydrated, so the text is
   there from the first paint and nothing moves as it turns editable.
   `ChatComposer` does the same for a message being edited. Each block takes the direction of its own text, so
-  Arabic and English sit in one document each the right way round.
+  Arabic and English sit in one document each the right way round, and the
+  document as a whole reads in its `language`'s direction, or its first
+  letter's: a line of digits or an empty line follows it. `validate` checks
+  each change (a refused one is not handed to `onChange`, and the box says
+  why under it, `onValidityChange` told), `autoFocus` takes the caret,
+  `historyLimit` caps undo (200 steps by default), and `replaceDocument`
+  puts a whole document in as one edit, `quiet` for one the caller already
+  holds. The bar over selected text starts with Turn into, stays away from
+  code and from a selection still being drawn, and over a block chosen
+  whole offers Duplicate and Delete, reached by Tab.
 - `MentionTypeahead`, `SlashCommandMenu` and `EmojiShortcuts`: what `@`, `/`
   and `:` offer, on Lexical's typeahead with arc's menu: people from a list
   or a server's debounced search with their avatars, inserted as a mention
@@ -1279,11 +1468,15 @@ the editor, the renderer and on a server.
   under the pointer or the caret sit a `+` that opens a searchable, grouped
   picker and a grip that drags the block by pointer or by finger and opens
   Turn into, Duplicate, Move up, Move down and Delete; Mod+Shift with the
-  arrows moves a block, each move announced. The gutter is at the start of
+  arrows (or Alt+Shift with them) moves a block, each move announced, Mod+D
+  duplicates it, and a right click on a block or Mod+/ opens its menu, whose
+  Turn into also makes a callout or a toggle and takes one apart. The
+  picker's group chips jump to a group. Typing with a block chosen whole
+  starts a line after it. The gutter is at the start of
   the line, on the right in a right-to-left document. An empty block says
   what it is for, faint: the caret's empty line, and every empty heading,
-  quote, list item and code block; `blockPlaceholders` changes the words
-  or, `false`, turns them off.
+  quote, list item and code block, a toggle's title and a callout of one
+  line; `blockPlaceholders` changes the words or, `false`, turns them off.
 - `defineBlock`: a block of an app's own, built from arc's pieces, which
   the pickers offer and the document stores as `{ type, data }`, passed in
   an editor's `extensions`; its
@@ -1324,6 +1517,18 @@ Each keeps the stored shape a document written elsewhere already has.
   as saved. A press on its arrow or Mod+Enter in the title flips it, said to
   a screen reader; Enter in the title goes into its content. The renderer
   draws `<details>`, and `<details>` in HTML or markdown reads back as one.
+- Formatting past the marks: superscript (Mod+.) and subscript (Mod+,),
+  text colour and highlight from nine colours on arc's `ColorSwatches`,
+  small, large and huge text, a yellow highlight on Mod+Shift+H, clear
+  formatting on Mod+\, all over selected text and kept from pasted HTML.
+- Tables worked on in place: a grip on every row and column to choose it,
+  drag it or move it with Alt and the arrows; rows and columns moved,
+  header row and column, cells merged, split, coloured and aligned both
+  ways, striped rows, a line above or below; Tab in the last cell adds a row.
+- Code blocks with their lines numbered, and, with the caret in one, its
+  language from a menu and a copy button.
+- The document as markdown in a dialog from the toolbar, to copy out or to
+  replace the document from in one edit.
 - Page breaks, where a printed copy turns the page.
 - Footnotes: Mod+Alt+F, or the button over selected words, puts a number in
   the line and opens a popover to write the note. The numbers follow reading
@@ -1424,8 +1629,11 @@ optional beside its `name`:
   and commands that run in every editor holding it, a server's included;
 - `commands`, offered in the `/` menu, the toolbar's Insert menu and the
   block picker (`places` narrows them, `available` asks the editor first);
-  `toolbar` and `floating` buttons; `blockMenu` choices for the block a
-  menu is open on; `keys`, by key or by the key's place, so an Arabic
+  `toolbar` and `floating` buttons, or a `control` of its own such as a
+  menu (`folded` for the More menu); `blockMenu` choices for the block a
+  menu is open on; `turnInto`, kinds of block Turn into offers, taken
+  apart again when turned into another; `placeholder`, what an empty block
+  of its own says; `keys`, by key or by the key's place, so an Arabic
   keyboard reaches them;
 - `paste` rules, higher `priority` first; `markdown` rules (a function is
   handed every rule, for a block that holds markdown of its own) tried by
