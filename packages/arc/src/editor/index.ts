@@ -113,9 +113,19 @@ export {
   floatingStyles,
 } from "./floating.tsx";
 export {
+  $blockForUpload,
+  EditorUploadsProvider,
+  type EditorUploadsProviderProps,
+  UPLOAD_REFUSALS,
+  type UploadRefusal,
+  editorShowing,
+  uploadRefusalWords,
+} from "./uploads.tsx";
+export {
   type EditorMedia,
   type EditorUploads,
   type MediaAddressed,
+  type UnfinishedUpload,
   mediaAddress,
   provideEditorMedia,
   useEditorMedia,

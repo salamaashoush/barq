@@ -1876,6 +1876,38 @@ Each keeps the stored shape a document written elsewhere already has.
   equations turned to LaTeX. `wordToHtml` does the same with no editor, and
   mammoth and fflate load only when a document is first read.
 
+- Pictures at four sizes, at the start, middle or end of the line, with alt
+  text or marked decorative (and a warning while neither), a caption, a
+  credit linked to its licence and source, a focus point a crop keeps in
+  view, and numbered labels a reader opens one at a time. Size and place
+  are in the block menu; the rest in the picture's details. Word's pictures
+  come in at the size they had on the page.
+- Galleries of up to twenty-four pictures, read on `Gallery` and
+  `Lightbox` and reordered by a drag, by Alt and an arrow or by Earlier and
+  Later; and a before and after that slides between two pictures.
+- Files as cards a reader opens in `FileViewer` or downloads, a PDF's pages
+  shown where chosen, and a new version that keeps the first file as
+  `origin`.
+- Video and sound on `MediaPlayer`, their captions, audio description and
+  transcript written beside them in `TextTracksEditor`, and chapters from
+  moments marked where the player stands.
+- Embeds from fourteen sites (`DEFAULT_EMBED_PROVIDERS`, or an app's own
+  `EmbedProvider`s through `embedExtension({ providers })`). A reader's
+  frame loads only once they choose it; YouTube and Vimeo chapters play
+  from their moment.
+
+Media blocks hold a file by its address (`src`) or by the id an app keeps
+it under (`fileId`), whose address comes from `provideEditorMedia({ fileUrl
+})` in the editor and the renderer alike. The same services carry
+`uploadRefusal`, words for an app's own refusal codes (arc words
+`file.too_large`, `file.infected` and the rest), and `unfinished`, uploads
+a reload cut off, which the editor finishes at the document's end. Leaving
+the page while a file is on its way asks first, and `fieldId` hands the
+files on their way to the editor started again for the same field.
+`storedFilesExtension({ scheme })` reads HTML that addresses kept files as
+`<scheme><id>`. Each media extension takes `class`, `classes` and, for a
+picture's caption, `renders`, in the editor and the renderer.
+
 `TextTracksEditor` writes what goes with a recording, beside it: caption
 lines timed from the player and saved as WebVTT, an audio description of
 timed lines, a transcript, and drafts from an app's speech service.
