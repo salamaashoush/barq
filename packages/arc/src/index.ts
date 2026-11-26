@@ -1441,6 +1441,11 @@ export {
   statusBarStyles,
 } from "./components/status-bar.tsx";
 export {
+  ShareDialog,
+  type ShareDialogProps,
+  shareDialogStyles,
+} from "./components/share-dialog.tsx";
+export {
   CHECK_VERDICTS,
   type CheckResult,
   CheckResults,
