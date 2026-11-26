@@ -94,6 +94,16 @@ the toast stack and the host `confirm()` draws in. Every base component of
 installed even with no `theme`), and `confirm` takes the `classes` of the
 dialog `confirm()` draws.
 
+`clock` is how the reader reads times: their own `zone` or `"utc"` (or an
+IANA name), a 12- or 24-hour clock (`hours`) and the first day of a week
+(`weekStart`). It is written into the locale's Unicode extension
+(`en-US-u-fw-mon-hc-h23`), so every date, time and calendar below follows
+it, and `FormattedDate` and `RelativeTime` write in its zone. `localZone` is
+the reader's zone as the server knows it, from a cookie, so the first paint
+is already in it. `provideReaderClock` does the same for a subtree,
+`useReaderClock` reads it, and `serializeReaderClock`/`parseReaderClock`
+keep it in one cookie-safe string.
+
 ### arc's words
 
 ```tsx
@@ -451,7 +461,36 @@ if (await confirm({ title: "Delete the check?", tone: "danger", confirmLabel: "D
   Cancel and Save at the foot. Closing it with unsaved changes, by Cancel,
   Escape or its close button, asks first, and so does leaving the page while
   it is open. It stays open while it submits and closes once a submission
-  succeeds.
+  succeeds; one that fails moves focus to the first field it marked.
+  `status` is a polite line in the foot about the draft ("Draft kept on
+  this device", a `SaveStatus`), and `loading` and `loadError` stand in for
+  the fields while the record it edits is fetched.
+- `FormDialog`: the same form in a `ResponsiveOverlay`, a dialog on a wide
+  screen and a sheet from the bottom on a phone, opened by its `trigger`,
+  `open` or a `param`. With `result` a successful submit shows what it
+  draws in place of the fields, a key shown once or a link to what was
+  made, and Done closes it.
+- `RecordFormPage`: a page that creates or edits one record, its fields in
+  one column, a `FormActionBar` held at the bottom of the screen and a
+  `danger` zone under it. A failed submit on a long form (past
+  `summaryAfter` fields) opens with an `ErrorSummary` that takes focus and
+  links each field; on a short one focus goes to the first field marked. A
+  `secondary` submit ("Save and add another") reaches `onSubmit` as
+  `meta.intent`. Leaving with unsaved changes asks, except while a save
+  that navigates is under way.
+- `FormActionBar`: a form's own sticky bar, reading the form around it:
+  "Unsaved changes" once a field changed, Cancel (`onCancel`) or Discard,
+  an optional second submit, and Save pending while it submits.
+- `ErrorSummary`: what a failed submit has to fix, each problem a link that
+  focuses its control with the label in view.
+- `useAutosave`: saves a draft (`value`) once changes pause, one save at a
+  time, a change made during a save saved after it; Mod+S saves at once;
+  offline it holds the draft and saves it on reconnecting; `blockedBy`
+  holds a draft that cannot be stored yet, with the reason. Leaving the
+  page saves first and asks before dropping a draft whose save failed.
+- `SaveStatus`: where a draft stands: Saving…, Saved, Not saved with the
+  reason and a Retry, Offline, or why it is held. Given `autosave`, it reads
+  the hook; `compact` keeps only the icon on a phone.
 - `UnsavedChangesGuard`: asks through `confirm()` before a page with unsaved
   changes is left by a link or the back button, and has the browser ask
   before the tab closes. It guards while `when` is true and stops when it
@@ -559,6 +598,15 @@ and agrees between the server and the hydrating page.
 - `Bytes`: `2.4 MB`, the same reading an upload list uses.
 - `Duration`: milliseconds as `1 hr, 5 min` in its two largest `units`, or
   `1:05:09` with `length="digital"`, by `Intl.DurationFormat`.
+- `Interval`: how often something runs, "Every 5 minutes", "Hourly",
+  "Daily"; `intervalText` is the same words for an app's own text.
+
+`FormattedDate` writes a date-only value (`"2026-11-26"`) as that calendar
+day in every zone, and `FormattedNumber` with `truncate` cuts rather than
+rounds, so an uptime of 99.996% never reads 100%. All of them follow the
+provider's reader `clock`, and `ClockPreference` is the control that sets
+it: cards for the zone, the hour cycle and the week start, each with an
+example in the reader's locale.
 
 `relativeTimeFormatter` and `relativeUnit` in `@barqjs/aria/i18n` are the same
 reading for an app's own text.
@@ -657,8 +705,40 @@ import { DangerZone, SettingsLayout, SettingsSection } from "@barqjs/arc";
   change, a moment of "Saved" follows a save, and leaving with unsaved
   changes asks through `UnsavedChangesGuard`; without one, `footer` holds
   the bar's actions.
+  `values` is the record as the server has it now: a form with no unsaved
+  change follows it when it is fetched again. `readOnly` disables the
+  fields and puts its reason in Save's place, and `list` holds rows edge to
+  edge under the header. Inside a `SettingsLayout` every section reports its
+  changes to the layout, which asks once before the area is left; with
+  `narrow="row"` the sections run as a row above the open one on a narrow
+  container.
 - `DangerZone`: the actions that cannot be undone, in the danger tone, each
   with a line about it and a button that asks through `confirm()` first.
+- `SettingRow`: one setting, its label and line at the start and its
+  control at the end. The switch applies at once (`onCheckedChange`), held
+  while the save runs and flipped back with the server's reason when it
+  fails; `control` takes any other control, handed the row's label and
+  description ids, with its `status`. `locked` makes it read only with a
+  reason, a plan `badge` and an `action` to lift it.
+- `FeatureToggles`: a workspace's features as setting rows, held as the ids
+  that are on. Turning one on turns on what it `requires`, turning one off
+  turns off what needs it, and a feature whose need is locked off is locked
+  too. It is a field inside `form.AppField`.
+- `PlanGate`: a feature's editor, or an info notice in its place saying
+  which plan has it and how to get it.
+- `PreferenceMatrix`: how a reader hears of each kind of notice, a table of
+  kinds by channels with a checkbox per cell or a choice where a channel has
+  `options`. A group's first row sets every kind in it, mixed while they
+  differ; a channel that is `unavailable` says why and only turns off; a
+  `locked` kind says why it is fixed. Kinds stack on a narrow container.
+- `CalendarFeed`: a private calendar feed to copy and open in Google
+  Calendar, Apple Calendar or Outlook, and `onReset` to make a new one,
+  asking first while an old one exists. `shownOnce` names when the current
+  feed was made and last read instead of its address.
+- `useThemeAccountSync`: keeps the `ThemeToggle` choice on the reader's
+  account too. The cookie paints the first frame, the account's choice wins
+  once it loads, and a choice made here is saved to it; a failed save keeps
+  the choice on this device and says so.
 
 ## Data display
 
