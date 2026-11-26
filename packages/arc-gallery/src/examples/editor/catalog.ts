@@ -84,6 +84,21 @@ export const catalog: GroupCatalog = {
       ],
     },
     {
+      id: "media-blocks",
+      title: "Media blocks",
+      description:
+        "Pictures at four sizes with credits, labels and a focus point, a gallery, a before and after, a video with captions, chapters and an audio description, an embed loaded on a reader's choice, and a file card; each uploaded, dropped or read.",
+      covers: [
+        "imageExtension",
+        "picturesExtension",
+        "recordingExtension",
+        "embedExtension",
+        "fileExtension",
+        "storedFilesExtension",
+        "provideEditorMedia",
+      ],
+    },
+    {
       id: "renderer",
       title: "Rich text renderer",
       description:
