@@ -237,6 +237,69 @@ is refused with a `TypeError` naming it. `render` puts
 another element in the component's place: `render={(part, children) => <ul
 {...part.props} ref={part.ref}>{children}</ul>}`.
 
+### Page and record layouts
+
+```tsx
+import {
+  Chip,
+  PageHeader,
+  RecordLayout,
+  RecordPager,
+  RecordSection,
+  ResponsiveTabs,
+  Status,
+} from "@barqjs/arc";
+
+<PageHeader
+  heading="INV-1043"
+  mark={<Status tone="danger" />}
+  badges={<Chip size="sm">Overdue</Chip>}
+  facts={[{ label: "Customer", value: "Umbrella Labs" }]}
+  alerts={[{ label: "Overdue by 12 days", tone: "danger" }]}
+  actions={<RecordPager position={4} count={32} onPrevious={back} onNext={on} />}
+/>
+<ResponsiveTabs aria-label="Invoice" param="tab" items={tabs}>
+  {(tab) => (
+    <RecordLayout rail={<RecordSection heading="Details">…</RecordSection>}>
+      <RecordSection heading="Lines" onEdit={editLines}>…</RecordSection>
+    </RecordLayout>
+  )}
+</ResponsiveTabs>;
+```
+
+- `PageHeader` is a record's header too: `media` (an avatar) at the start, a
+  `mark` right before the title (a status dot, the kind's icon), `badges`
+  right after it, `facts` in one wrapping row under it as a `<dl>` whose
+  terms only a screen reader hears, and `alerts` as toned chips that wrap a
+  long note inside their own chip. `align="start"` holds the actions beside
+  the title rather than at the foot of the text.
+- `PanelToolbar`: the row that opens a tab panel or a section under the
+  page's header, a heading (an `<h2>`, or what `renders` draws), a line about
+  what it holds and its own filters or actions at the end, wrapping under the
+  text on a narrow screen.
+- `RecordLayout`: the story in a main column and the record's facts in a
+  named rail beside it from `lg`, under it below; `railWidth` is a fixed
+  column or a third, and `stickyRail` keeps a short rail in view below
+  `--arc-sticky-top`.
+- `RecordSection`: one titled part of a record, a `<section>` named by its
+  heading and a query container, so a `DescriptionList` inside lays out by the
+  section's width. `onEdit` adds a ghost Edit named by `editLabel`; `variant`
+  frames it as a card, rules it off from the one above, or draws nothing.
+- `RecordPager`: the previous and next record of a list, as handlers or
+  links, a side with neither disabled, and "4 of 32" as a status. With
+  `shortcuts` K and J step from anywhere but a text field.
+- `ListDetailLayout`: a list beside the record open from it, the edge between
+  them a resizable handle remembered under `storageKey`. Below `breakpoint`
+  one pane fills the space at a time, the record with a Back that returns
+  focus to the list; which one shows is the stylesheet's, so the server draws
+  a phone's page as the phone shows it. With `param` the open record is a
+  search parameter, so it has a link and a phone's Back returns to the list.
+- `MasterDetailList`: a list read beside a viewer. The arrows open each row
+  they reach (`current`, `onCurrentChange`), the open row is the list's
+  selected row, marked at its start edge and kept in view, and `checkboxes`
+  tick rows for a bulk action without moving the open one; `isCheckable`
+  disables a row's box.
+
 ## Customising a component
 
 Every arc component takes the same five things.
@@ -311,6 +374,8 @@ if (await confirm({ title: "Delete the check?", tone: "danger", confirmLabel: "D
 - `DetailSheet`: a record's detail in a sheet from the reading direction's
   end, in four widths. Its open state is the caller's, its own, or a search
   parameter's, so the detail has a link and closing takes the parameter out.
+  Opened from a list, `steps` puts a `RecordPager` beside the heading, K and J
+  step through the rows while it is open, and focus starts on the record.
 - `EmptyState`: a list with nothing in it yet, as an icon, a heading, a line
   and the actions that fill it, on `@barqjs/ui`'s `Empty`. A `kind` says why
   in its own icon and words (see Feedback and states below), and
@@ -536,7 +601,9 @@ if (await confirm({ title: "Delete the check?", tone: "danger", confirmLabel: "D
 import { Heading, Link, Prose, Text, Truncate } from "@barqjs/arc";
 
 <Heading level={2}>Billing</Heading>;
-<Text size="xs" color="muted" numeric>Updated 12:04</Text>;
+<Text size="xs" color="muted" numeric>
+  Updated 12:04
+</Text>;
 <Truncate lines={3}>{comment.body}</Truncate>;
 <Prose html={rendered} />;
 ```
@@ -626,8 +693,14 @@ import { ResponsiveTabs } from "@barqjs/arc";
   that do not fit go into a More menu, the last first, the selected one
   always kept in the row; with `"scroll"` the row scrolls under a finger with
   a button at each end while there is more that way. An item takes an `icon`,
-  a `count`, `isDisabled` and an `href`; `children` draws the selected tab's
-  panel. The server writes every tab; the browser folds after hydrating.
+  a `count`, `isDisabled` and an `href`, and `hidden` leaves out a tab that
+  does not apply; `children` draws the selected tab's panel, and
+  `keepMounted` keeps every panel's state while another shows. The server
+  writes every tab; the browser folds after hydrating. `param` keeps the
+  selected tab in a search parameter, the first tab leaving it out. Under a
+  router, tabs with `href` are routes of their own: the one whose path the
+  page is on is selected, a tab comes back with the search it was left with,
+  and `shared` names the parameters every tab carries on, such as a window.
 - `BottomNavigation`: a phone's tab bar of three to five destinations, a
   navigation landmark along the bottom clear of the home indicator. Each item
   is a router link (`to`, current while the location is under it), a plain
@@ -853,6 +926,8 @@ with `value`, `defaultValue` and `onChange` outside one.
   `meta` at the end and `actions`. `virtual` draws only the rows on screen;
   `onLoadMore` asks for more as the end comes into view, with a loading row
   while `isLoadingMore`, and `empty` is what an empty list shows.
+  `selectionBehavior="replace"` makes selection follow focus, and
+  `disallowEmptySelection` keeps one row chosen.
 - `TreeView`: a hierarchy to browse and choose from, on `@barqjs/aria`'s
   tree: one Tab stop, Up and Down between rows, Right to open or go in and
   Left to close or go out in the reading direction, type-ahead, and a
@@ -970,7 +1045,11 @@ import { AuthLayout, SignInForm } from "@barqjs/arc";
 
 <AuthLayout brand={<Logo />} aside={<Showcase />} footer={<LegalLinks />}>
   <SignInForm
-    providers={<Button variant="outline" onPress={github}>Continue with GitHub</Button>}
+    providers={
+      <Button variant="outline" onPress={github}>
+        Continue with GitHub
+      </Button>
+    }
     forgotHref="/forgot"
     onMagicLink={(email) => api.sendLink(email)}
     onPasskey={() => webauthn.get()}
@@ -1165,7 +1244,9 @@ the slide picker, a button per slide with the current one marked.
 ```tsx
 import { Chip } from "@barqjs/arc";
 
-<Chip selected={remote()} onSelectedChange={setRemote}>Remote</Chip>;
+<Chip selected={remote()} onSelectedChange={setRemote}>
+  Remote
+</Chip>;
 <Chip onRemove={() => drop("design")}>Design</Chip>;
 ```
 
@@ -1228,6 +1309,7 @@ import { Chip } from "@barqjs/arc";
 
   The three fields are `field.ColorPicker`, `field.ColorField` and
   `field.ColorSwatches` in a form.
+
 - `CurrencyField`, `PercentField` and `UnitField`: a number written and read
   in the locale, on `@barqjs/aria`'s number field: `$1,234.50` in a
   `currency`, `25%` held as `0.25`, `12 kg` in a `unit` as
@@ -1353,7 +1435,9 @@ Each is `field.*` inside `form.AppField` and holds its own value with
 ```tsx
 import { ActionBar, IconButton, SplitButton, Toolbar } from "@barqjs/arc";
 
-<IconButton label="Delete" onPress={remove}><Trash2 /></IconButton>;
+<IconButton label="Delete" onPress={remove}>
+  <Trash2 />
+</IconButton>;
 <SplitButton onPress={send} actions={[{ id: "later", label: "Send later", onAction: schedule }]}>
   Send
 </SplitButton>;
@@ -1831,7 +1915,10 @@ const Decision: Block<{ text: string; status: "proposed" | "accepted" }> = defin
   toMarkdown: (data) => `> [!decision ${data.status}] ${data.text}`,
   fromMarkdown: {
     regExp: /^> \[!decision (proposed|accepted)\] (.*)$/,
-    data: (match) => ({ status: match[1] === "accepted" ? "accepted" : "proposed", text: match[2] ?? "" }),
+    data: (match) => ({
+      status: match[1] === "accepted" ? "accepted" : "proposed",
+      text: match[2] ?? "",
+    }),
   },
 });
 
@@ -1845,11 +1932,20 @@ const decisions = defineEditorExtension({
       label: "Status",
       $read: (block) =>
         Decision.$is(block)
-          ? { value: block.getData().status, options: [{ value: "proposed", label: "Proposed" }, { value: "accepted", label: "Accepted" }] }
+          ? {
+              value: block.getData().status,
+              options: [
+                { value: "proposed", label: "Proposed" },
+                { value: "accepted", label: "Accepted" },
+              ],
+            }
           : null,
       $choose: (block, value) => {
         if (Decision.$is(block)) {
-          block.setData({ ...block.getData(), status: value === "accepted" ? "accepted" : "proposed" });
+          block.setData({
+            ...block.getData(),
+            status: value === "accepted" ? "accepted" : "proposed",
+          });
         }
       },
     },
@@ -1857,7 +1953,10 @@ const decisions = defineEditorExtension({
 });
 
 <BlockEditor label="Notes" extensions={[decisions]} />;
-<BlockEditor label="Notes" preset={customizeExtensions(documentPreset, { remove: ["arc/table"] })} />;
+<BlockEditor
+  label="Notes"
+  preset={customizeExtensions(documentPreset, { remove: ["arc/table"] })}
+/>;
 ```
 
 An editor is built from editor extensions, and arc's own features are
@@ -1962,6 +2061,13 @@ first opens. Rich message content is drawn by `RichTextRenderer` from
   listed as a `MessageList`, who is typing and a composer. In
   `DockedPanels` it docks beside the conversation and is a sheet on a
   phone.
+- `ConversationLayout`: a conversation's page, its name (an `<h1>`), an
+  `icon` or avatar, a `topic` cut to one line and hidden on a phone, a
+  `subtitle` such as a presence line, and `actions`, over optional `tabs` and
+  a `banner`, the messages filling the height between, and `typing` and the
+  `composer` docked at the foot. Its `panels` are `DockedPanels` that run the
+  full height beside it, and a `DockedPanelToggle` in its `actions` opens
+  one.
 - `EmojiPicker`: every emoji in Unicode's groups and order, searched by
   name and keyword, with the reader's recently used first, a skin tone
   chosen once and remembered, and a row of categories that jumps to each and
@@ -1975,7 +2081,9 @@ first opens. Rich message content is drawn by `RichTextRenderer` from
   ```tsx
   import { arabicEmoji } from "@barqjs/arc/chat";
 
-  <EmojiPicker source={(locale) => import(`emojibase-data/${locale}/compact.json`).then((m) => m.default)} />;
+  <EmojiPicker
+    source={(locale) => import(`emojibase-data/${locale}/compact.json`).then((m) => m.default)}
+  />;
   <EmojiPicker source={arabicEmoji} />;
   ```
 
@@ -1984,6 +2092,7 @@ first opens. Rich message content is drawn by `RichTextRenderer` from
   loaded only when asked for; `tools/arabic-emoji.ts` writes it again for
   a new CLDR release. A search folds the spellings Arabic writers use
   interchangeably, so أهلا and اهلا find the same wave.
+
 - `EmojiButton`: an icon button that opens the `EmojiPicker` (a popover on
   a wide screen, a sheet under a finger) and closes once one is chosen. A
   message's add-reaction button and `ChatComposer`'s emoji button are both
