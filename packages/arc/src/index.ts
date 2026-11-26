@@ -965,11 +965,30 @@ export {
   sparklineStyles,
 } from "./components/sparkline.tsx";
 export {
+  type ChartAnnotation,
+  type ChartBand,
+  type ChartReference,
   ComboChart,
   type ComboChartProps,
   type ComboChartSlots,
+  type LineSeries,
+  type PointStatus,
   comboChartStyles,
 } from "./components/combo-chart.tsx";
+export {
+  type AxisFormat,
+  type AxisTicks,
+  type NiceTicksOptions,
+  niceTicks,
+  useAxisFormat,
+} from "./components/chart-axis.ts";
+export {
+  LegendFilter,
+  type LegendFilterItem,
+  type LegendFilterProps,
+  type LegendFilterSlots,
+  legendFilterStyles,
+} from "./components/legend-filter.tsx";
 export {
   ScatterChart,
   type ScatterChartProps,

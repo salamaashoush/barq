@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { flush, type ParentProps } from "@barqjs/core";
 import { provideLocale } from "@barqjs/aria/i18n";
-import { ariaViolations, render, screen, tick, user } from "@barqjs/testing";
+import { ariaViolations, render, screen, tick, user, within } from "@barqjs/testing";
 
 import { hydrates, wears } from "../test-arc.ts";
 import { ComboChart, comboChartStyles } from "./combo-chart.tsx";
@@ -175,6 +175,192 @@ describe("ComboChart", () => {
       }
     `);
     expect(result.container.querySelector("svg")?.getAttribute("aria-label")).toBe("Runs");
+    result.unmount();
+  });
+});
+
+const LATENCY = [
+  { at: "09:00", p50: 120, p95: 300, outcome: "ok" },
+  { at: "10:00", p50: 140, p95: 900, outcome: "failed" },
+  { at: "11:00", p50: 100, p95: 280, outcome: "ok" },
+];
+
+const PERCENTILES = [
+  { key: "p50", label: "p50" },
+  { key: "p95", label: "p95", dashed: true, status: "outcome" },
+];
+
+const FAILED = { failed: { label: "Failed", tone: "danger" as const } };
+
+function marks(svg: SVGSVGElement, prefix: string): Element[] {
+  return [...svg.querySelectorAll(`[data-ts-key^="${prefix}"]:not(g)`)];
+}
+
+describe("ComboChart's marks", () => {
+  test("a dashed line is dashed on the plot and in the legend", async () => {
+    render(() => <ComboChart label="Latency" data={LATENCY} x="at" lines={PERCENTILES} />);
+    const svg = await drawn();
+    expect(marks(svg, "line-p95")[0]?.getAttribute("stroke-dasharray")).toBe("5 4");
+    expect(marks(svg, "line-p50")[0]?.hasAttribute("stroke-dasharray")).toBe(false);
+    const swatches = [...document.querySelectorAll('[data-slot="chart-legend-swatch"]')];
+    expect(swatches.map((swatch) => swatch.hasAttribute("data-dashed"))).toEqual([false, true]);
+  });
+
+  test("a point's status is a dot in its tone, named in the legend, the tooltip and the table", async () => {
+    render(() => (
+      <ComboChart label="Latency" data={LATENCY} x="at" lines={PERCENTILES} statuses={FAILED} />
+    ));
+    const svg = await drawn();
+    const dots = marks(svg, "status-p95-failed");
+    expect(dots).toHaveLength(1);
+    expect(dots[0]?.getAttribute("fill")).toBe("var(--color-status-failed)");
+    const chart = document.querySelector('[data-slot="chart"]') as HTMLElement;
+    expect(chart.style.getPropertyValue("--color-status-failed")).toBe("var(--danger)");
+    expect(document.querySelector('[data-slot="chart-legend"]')?.textContent).toBe("p50p95Failed");
+    const table = screen.getByRole("table", { name: "Latency" });
+    expect([...table.querySelectorAll("thead th")].map((th) => th.textContent)).toEqual([
+      "at",
+      "p50",
+      "p95",
+      "Status",
+    ]);
+    expect([...table.querySelectorAll("tbody tr")].map((row) => row.textContent)).toEqual([
+      "09:00120300",
+      "10:00140900Failed",
+      "11:00100280",
+    ]);
+    svg.focus();
+    flush();
+    user.keyDown("ArrowRight", { target: svg });
+    flush();
+    const rows = [...document.querySelectorAll('[data-slot="chart-tooltip-row"]')].map(
+      (row) => row.textContent,
+    );
+    expect(rows).toEqual(["p50140", "p95900, Failed"]);
+  });
+
+  test("a reference is a dashed rule and a band a faint range, each named in the legend", async () => {
+    render(() => (
+      <ComboChart
+        label="Latency"
+        data={LATENCY}
+        x="at"
+        lines={PERCENTILES}
+        references={[{ value: 800, label: "Degraded above 800 ms", tone: "warning" }]}
+        bands={[{ from: 0, to: 200, label: "Healthy" }]}
+      />
+    ));
+    const svg = await drawn();
+    const rule = marks(svg, "references-y")[0];
+    expect(rule?.getAttribute("stroke-dasharray")).toBe("4 3");
+    expect(rule?.getAttribute("stroke")).toBe("var(--color-reference-0)");
+    expect(marks(svg, "band-0")[0]?.getAttribute("fill-opacity")).toBe("0.12");
+    const chart = document.querySelector('[data-slot="chart"]') as HTMLElement;
+    expect(chart.style.getPropertyValue("--color-reference-0")).toBe("var(--warning)");
+    expect(chart.style.getPropertyValue("--color-band-0")).toBe("var(--success)");
+    const items = [...document.querySelectorAll('[data-slot="chart-legend-item"]')];
+    expect(items.map((item) => item.textContent)).toEqual([
+      "p50",
+      "p95",
+      "Degraded above 800 ms",
+      "Healthy",
+    ]);
+    expect(items[2]?.querySelector("[data-dashed]")).not.toBeNull();
+  });
+
+  test("annotations are numbered on the plot and listed under it", async () => {
+    render(() => (
+      <ComboChart
+        label="Latency"
+        data={LATENCY}
+        x="at"
+        lines={PERCENTILES}
+        annotations={[
+          { x: "10:00", label: "Deploy", series: "p95" },
+          { x: "11:00", label: "Rolled back" },
+        ]}
+      />
+    ));
+    const svg = await drawn();
+    expect(marks(svg, "note-marks").map((mark) => mark.textContent)).toEqual(["1"]);
+    expect(marks(svg, "note-rule-marks").map((mark) => mark.textContent)).toEqual(["2"]);
+    expect(marks(svg, "note-rules")).toHaveLength(1);
+    const notes = screen.getByRole("list", { name: "Notes on the chart" });
+    expect(
+      [...notes.querySelectorAll('[data-slot="combo-chart-note"]')].map((note) => note.textContent),
+    ).toEqual(["110:00Deploy", "211:00Rolled back"]);
+    expect(await ariaViolations(document.body)).toEqual([]);
+  });
+
+  test("round ticks from zero in the axis's own format", async () => {
+    render(() => (
+      <ComboChart
+        label="Latency"
+        data={LATENCY}
+        x="at"
+        lines={PERCENTILES}
+        yTicks="nice"
+        yFormat="duration"
+      />
+    ));
+    const svg = await drawn();
+    expect(marks(svg, "y-tick-label").map((label) => label.textContent)).toEqual([
+      "0",
+      "0.25 sec",
+      "0.50 sec",
+      "0.75 sec",
+      "1.00 sec",
+    ]);
+  });
+
+  test("its legend filters: a chip per series hides it, and the caller may hold what is hidden", async () => {
+    const changes: (readonly string[])[] = [];
+    render(() => (
+      <ComboChart
+        label="Latency"
+        data={LATENCY}
+        x="at"
+        lines={PERCENTILES}
+        legend="filter"
+        defaultHidden={["p50"]}
+        onHiddenChange={(next) => changes.push(next)}
+      />
+    ));
+    const svg = await drawn();
+    expect(marks(svg, "line-p50")).toHaveLength(0);
+    expect(marks(svg, "line-p95")).toHaveLength(1);
+    const chips = screen.getByRole("group", { name: "Series" });
+    const p50 = within(chips).getByRole("button", { name: "p50" });
+    expect(p50.getAttribute("aria-pressed")).toBe("false");
+    user.click(p50);
+    await drawn();
+    expect(changes).toEqual([[]]);
+    expect(marks(await drawn(), "line-p50")).toHaveLength(1);
+    expect(
+      screen.getByRole("table", { name: "Latency" }).querySelectorAll("thead th"),
+    ).toHaveLength(3);
+  });
+
+  test("hydrates its marks as the server wrote them", async () => {
+    const result = await hydrates(`
+      import { ComboChart } from "<arc>";
+      export function Page() {
+        return (
+          <ComboChart
+            label="Latency"
+            data={[{ at: "a", p95: 3, outcome: "failed" }, { at: "b", p95: 1, outcome: "ok" }]}
+            x="at"
+            lines={[{ key: "p95", label: "p95", dashed: true, status: "outcome" }]}
+            statuses={{ failed: { label: "Failed", tone: "danger" } }}
+            references={[{ value: 2, label: "Budget" }]}
+            annotations={[{ x: "b", label: "Deploy" }]}
+            legend="filter"
+            yTicks="nice"
+          />
+        );
+      }
+    `);
+    expect(result.container.querySelector('[data-slot="combo-chart-notes"]')).not.toBeNull();
     result.unmount();
   });
 });

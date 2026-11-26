@@ -27,6 +27,8 @@ export interface TonedSeries {
   tone?: Tone;
   /** Any colour, which wins over `tone`. @default the theme's `--chart-N` */
   color?: string;
+  /** Drawn dashed where the chart draws it as a line, and dashed in the legend: a percentile, a forecast. */
+  dashed?: boolean;
 }
 
 /**
@@ -63,6 +65,7 @@ export function seriesConfig(series: readonly TonedSeries[]): ChartConfig {
     key: one.key,
     label: one.label,
     color: seriesColour(one, at),
+    ...(one.dashed === true ? { dashed: true } : {}),
   }));
 }
 

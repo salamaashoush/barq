@@ -1082,6 +1082,11 @@ export interface ArcMessages {
   uptimeNone: string;
   uptimeShare: (share: string) => string;
   stageDone: string;
+  legendShown: (label: string, shown: string, total: string) => string;
+  showEvery: string;
+  chartSeries: string;
+  chartNotes: string;
+  pointStatus: string;
 }
 
 export const ENGLISH: ArcMessages = {
@@ -2287,6 +2292,11 @@ export const ENGLISH: ArcMessages = {
   uptimeNone: "No data",
   uptimeShare: (share) => `${share} uptime`,
   stageDone: ", completed",
+  legendShown: (label, shown, total) => `${label}: ${shown} of ${total}`,
+  showEvery: "Show all",
+  chartSeries: "Series",
+  chartNotes: "Notes on the chart",
+  pointStatus: "Status",
 };
 
 const MessagesContext = createContext<ArcMessages>(ENGLISH, "ArcMessages");
