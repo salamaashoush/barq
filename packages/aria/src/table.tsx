@@ -2666,6 +2666,8 @@ export function TableFooter<R>(props: TableFooterComponentProps<R>) {
 export interface RowComponentProps<C> extends StyleProps {
   /** How one cell of this row renders. Return a `<Cell>`. */
   children: (column: C) => Child;
+  /** The row that is current among the rows: the one whose detail is open beside the table. */
+  "aria-current"?: boolean | "true" | "false" | "page" | "step" | "location" | "date" | "time";
   ref?: RefTarget<HTMLDivElement>;
 }
 
@@ -2733,6 +2735,14 @@ export function Row<C>(props: RowComponentProps<C>) {
       "data-dragging": () => dnd?.collection.dragState?.isDragging(row.key) === true,
       "data-drop-target": () => dnd?.on?.indicator.isDropTarget() === true,
       "data-testid": () => props["data-testid"],
+      "aria-current": () => {
+        const current = props["aria-current"];
+        return current === undefined || current === false || current === "false"
+          ? undefined
+          : current === true
+            ? "true"
+            : current;
+      },
       // Positioned by the LAYOUT: the rows above it are not rendered, so
       // document flow has nothing to place it against.
       style: () => {

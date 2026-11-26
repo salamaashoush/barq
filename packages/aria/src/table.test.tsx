@@ -158,6 +158,27 @@ describe("Table", () => {
     expect(screen.getAllByRole("rowgroup")).toHaveLength(2);
   });
 
+  test("a row can be the current one, and stops being it", () => {
+    const [current, setCurrent] = createSignal("budget");
+    render(() => (
+      <Table aria-label="Files" columns={COLUMNS} items={FILES}>
+        <TableHeader>{(column: Column_) => <Column>{column.name}</Column>}</TableHeader>
+        <TableBody>
+          {(file: File_) => (
+            <Row aria-current={current() === file.id}>
+              {(column: Column_) => <Cell>{String(file[column.id])}</Cell>}
+            </Row>
+          )}
+        </TableBody>
+      </Table>
+    ));
+    const rows = screen.getAllByRole("row").slice(1);
+    expect(rows.map((row) => row.getAttribute("aria-current"))).toEqual([null, "true", null, null]);
+    setCurrent("photos");
+    flush();
+    expect(rows.map((row) => row.getAttribute("aria-current"))).toEqual([null, null, null, "true"]);
+  });
+
   test("the row header column identifies its row", () => {
     render(() => <Files />);
 
