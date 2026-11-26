@@ -1572,6 +1572,12 @@ export interface ComboboxRootProps<V> {
   itemToStringValue?: (item: V) => string;
   /** @default a locale-aware `contains` on the label; `null` keeps everything */
   filter?: ComboboxFilter<V> | null;
+  /**
+   * The typed text is a value of its own, for a field the items only suggest
+   * to: it stays when the list closes or the field is left, and Escape does
+   * not empty it. @default false
+   */
+  allowsCustomValue?: boolean;
 }
 
 type ItemRender = (item: unknown, index: number) => Child;
@@ -1873,6 +1879,11 @@ function createComboboxRoot<V>(props: Incoming<ComboboxRootProps<V>>): ComboboxR
     const item = key === undefined ? undefined : itemFor(key);
     if (key === undefined || item === undefined) return;
     if (!held.has(key)) setRaw(item);
+    // Typed text that outlives a close has to become the choice's here.
+    if (untrack(allowsCustomValue)) {
+      setIsQuery(false);
+      writeInput(untrack(() => labelOf(item)));
+    }
     setOpen(false);
   }
 
@@ -1906,10 +1917,17 @@ function createComboboxRoot<V>(props: Incoming<ComboboxRootProps<V>>): ComboboxR
     shouldFocusWrap: true,
   });
 
-  /** Back to rest: nothing typed, and the field showing what the value reads as. */
+  function allowsCustomValue(): boolean {
+    return props.allowsCustomValue?.() === true;
+  }
+
+  /**
+   * Back to rest: nothing typed, and the field showing what the value reads
+   * as. Typed text that is a value of its own stays, no longer a query.
+   */
   function settleInput(): void {
     setIsQuery(false);
-    writeInput(null);
+    if (!untrack(allowsCustomValue)) writeInput(null);
   }
 
   function setOpen(next: boolean): void {
@@ -2055,6 +2073,10 @@ function createComboboxRoot<V>(props: Incoming<ComboboxRootProps<V>>): ComboboxR
           return;
         }
         if (inputValue() === "" && values().length === 0) return;
+        if (allowsCustomValue()) {
+          setIsQuery(false);
+          return;
+        }
         event.preventDefault();
         if (!isMultiple() && values().length > 0) setRaw(null);
         setIsQuery(false);

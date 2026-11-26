@@ -397,12 +397,14 @@ interface InlineProps {
   onValueChange?: (value: string | null) => void;
   onInputValueChange?: (value: string) => void;
   onOpenChange?: (open: boolean) => void;
+  allowsCustomValue?: boolean;
 }
 
 function Inline(props: InlineProps) {
   return (
     <ComboboxRoot
       items={FRAMEWORKS}
+      allowsCustomValue={props.allowsCustomValue}
       defaultValue={props.defaultValue}
       value={props.value}
       autoHighlight={props.autoHighlight}
@@ -1161,6 +1163,43 @@ function Popup(props: PopupProps) {
     </ComboboxRoot>
   );
 }
+
+describe("a combobox whose items only suggest", () => {
+  test("keeps typed text through a close, a blur and Escape", async () => {
+    const typed: string[] = [];
+    render(() => <Inline allowsCustomValue onInputValueChange={(value) => typed.push(value)} />);
+    user.focus(field());
+    await user.type(field(), "Qwik");
+    await settle();
+    user.keyDown("Escape");
+    await settle();
+    expect(field().getAttribute("aria-expanded")).toBe("false");
+    user.keyDown("Escape");
+    await settle();
+    expect(field().value).toBe("Qwik");
+    field().blur();
+    await settle();
+    expect(field().value).toBe("Qwik");
+    expect(typed.at(-1)).toBe("Qwik");
+  });
+
+  test("a chosen suggestion becomes the text, and the next query starts from it", async () => {
+    const chosen: (string | null)[] = [];
+    render(() => <Inline allowsCustomValue onValueChange={(value) => chosen.push(value)} />);
+    user.focus(field());
+    await user.type(field(), "rem");
+    await settle();
+    user.keyDown("ArrowDown");
+    user.keyDown("Enter");
+    await settle();
+    expect(chosen).toEqual(["Remix"]);
+    expect(field().value).toBe("Remix");
+    await user.type(field(), "!");
+    field().blur();
+    await settle();
+    expect(field().value).toBe("Remix!");
+  });
+});
 
 describe("a combobox whose input is inside its popup", () => {
   test("the trigger is a button showing the value's label, and is the Tab stop", () => {
