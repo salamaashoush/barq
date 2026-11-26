@@ -1,4 +1,4 @@
-import { createEffect, createSignal } from "@barqjs/core";
+import { Show, createEffect, createSignal } from "@barqjs/core";
 import { variants } from "@barqjs/css";
 import {
   dateFormatter,
@@ -7,15 +7,27 @@ import {
   relativeUnit,
   useLocale,
 } from "@barqjs/aria/i18n";
+import { Popover, PopoverContent, PopoverTrigger } from "@barqjs/ui/popover";
+import type { TriggerRender } from "@barqjs/ui/trigger";
 import { isServer } from "@barqjs/web";
 
 import { arcLayer as arc } from "../layer.ts";
 import { type Customisable, parts } from "../lib/parts.ts";
-import { type } from "../style/index.ts";
+import { control, fg, focus, gap, layout, rounded, type } from "../style/index.ts";
 import { formatBytes } from "./file-upload.tsx";
 
 export const formattedStyles = variants({
-  slots: { root: arc({ whiteSpace: "nowrap" }) },
+  slots: {
+    root: arc({ whiteSpace: "nowrap" }),
+    trigger: arc(control.bare, focus.visible, rounded.sm, {
+      cursor: "help",
+      textDecorationLine: "underline",
+      textDecorationStyle: "dotted",
+      textUnderlineOffset: "3px",
+    }),
+    exact: arc(layout.column, gap[1], type.sm),
+    zone: arc(type.xs, fg.muted),
+  },
   variants: { numeric: { true: { root: type.numeric }, false: {} } },
   defaults: { numeric: true },
 });
@@ -31,7 +43,7 @@ interface FormattedProps extends Customisable<Slots> {
 /** A moment as a `Date`, from a `Date`, epoch milliseconds or an ISO string. */
 export type Moment = Date | number | string;
 
-function toDate(moment: Moment): Date {
+export function toDate(moment: Moment): Date {
   return moment instanceof Date ? moment : new Date(moment);
 }
 
@@ -50,7 +62,7 @@ export function dayKey(moment: Moment, timeZone: string | undefined): string {
  * zone may be read. The server and the hydrating page answer false, so they
  * write the same thing.
  */
-function hydrated(): () => boolean {
+export function hydrated(): () => boolean {
   const [done, setDone] = createSignal(false, { ownedWrite: true });
   if (!isServer) {
     createEffect(
@@ -128,6 +140,11 @@ export interface RelativeTimeProps extends FormattedProps {
   /** The absolute moment in the title. @default `{ dateStyle: "long", timeStyle: "short" }` */
   titleOptions?: Omit<Intl.DateTimeFormatOptions, "timeZone">;
   timeZone?: string;
+  /**
+   * A button that opens the exact moment and its time zone in a popover,
+   * which a keyboard and a finger reach where a title reaches neither.
+   */
+  exact?: boolean;
 }
 
 /** How long until a relative time could read differently. */
@@ -150,7 +167,8 @@ function refreshAfter(milliseconds: number): number {
  * A `<time>` with the ISO moment in `datetime` and the absolute date and time
  * in its title, written by `Intl.RelativeTimeFormat` in the locale. It keeps
  * itself current, every second while under a minute and less often after,
- * and stops when it unmounts. Server and browser agree: on `now` when given,
+ * and stops when it unmounts. With `exact` it is a button that opens the
+ * exact moment and its zone, for a keyboard and a finger. Server and browser agree: on `now` when given,
  * otherwise on the absolute date, which the browser turns relative once it
  * has hydrated.
  */
@@ -203,16 +221,56 @@ export function RelativeTime(props: RelativeTimeProps) {
   function cls(): Slots {
     return parts(formattedStyles({ numeric: props.numeric === true }), props.classes);
   }
+  function zoneName(): string {
+    return zone() ?? Intl.DateTimeFormat(locale().locale).resolvedOptions().timeZone;
+  }
+  function exactText(): string {
+    return dateFormatter(
+      { dateStyle: "full", timeStyle: "long", timeZone: zone() },
+      locale,
+    )().format(moment());
+  }
+  function Time() {
+    return (
+      <time
+        class={arc(
+          cls().root,
+          props.exact === true ? undefined : props.class,
+          props.exact === true ? undefined : props.className,
+        )}
+        id={props.exact === true ? undefined : props.id}
+        data-slot="relative-time"
+        datetime={moment().toISOString()}
+        title={props.exact === true ? undefined : absolute()}
+      >
+        {relative()}
+      </time>
+    );
+  }
   return (
-    <time
-      class={arc(cls().root, props.class, props.className)}
-      id={props.id}
-      data-slot="relative-time"
-      datetime={moment().toISOString()}
-      title={absolute()}
-    >
-      {relative()}
-    </time>
+    <Show when={props.exact === true} fallback={<Time />}>
+      <Popover>
+        <PopoverTrigger
+          render={(trigger: TriggerRender) => (
+            <button
+              {...trigger.props}
+              ref={trigger.ref}
+              class={arc(cls().trigger, props.class, props.className)}
+              id={props.id}
+              data-slot="relative-time-trigger"
+            >
+              <Time />
+            </button>
+          )}
+        />
+        <PopoverContent data-slot="relative-time-exact" class={cls().exact}>
+          <span>{exactText()}</span>
+          <span class={cls().zone} translate="no">
+            {zoneName()}
+          </span>
+        </PopoverContent>
+      </Popover>
+    </Show>
   );
 }
 

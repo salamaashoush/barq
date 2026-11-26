@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { type Child, DEV, createSignal } from "@barqjs/core";
 import { provideLocale } from "@barqjs/aria/i18n";
-import { ariaViolations, render } from "@barqjs/testing";
+import { ariaViolations, render, screen, user } from "@barqjs/testing";
 
 import { hydrates, settle, wears } from "../test-arc.ts";
 import {
@@ -129,6 +129,45 @@ describe("RelativeTime", () => {
     ] as HTMLElement[];
     expect(shared?.getAttribute("datetime")).toBe(MOMENT);
     expect(plain?.getAttribute("datetime")).toBe(MOMENT);
+    result.unmount();
+  });
+});
+
+describe("RelativeTime with the exact moment", () => {
+  const realNow = Date.now;
+  afterEach(() => {
+    Date.now = realNow;
+  });
+
+  test("a button that opens the exact moment and its zone, from the keyboard or a tap", async () => {
+    Date.now = () => new Date(MOMENT).getTime() + 3 * 60_000;
+    render(() => <RelativeTime value={MOMENT} timeZone="Africa/Cairo" exact />);
+    await settle();
+    const trigger = screen.getByRole("button", { name: "3 minutes ago" });
+    expect(trigger.getAttribute("title")).toBeNull();
+    expect(trigger.querySelector("time")?.getAttribute("datetime")).toBe(MOMENT);
+    trigger.focus();
+    await user.keyboard("{Enter}");
+    await settle();
+    const exact = document.querySelector('[data-slot="relative-time-exact"]') as HTMLElement;
+    expect(exact.textContent).toContain("Sunday, March 1, 2026 at 12:00:00 PM");
+    expect(exact.textContent).toContain("Africa/Cairo");
+    expect(await ariaViolations(document.body)).toEqual([]);
+    await user.keyboard("{Escape}");
+    await settle();
+    user.tap(trigger);
+    await settle();
+    expect(document.querySelector('[data-slot="relative-time-exact"]')).not.toBeNull();
+  });
+
+  test("a server's exact time is hydrated in place", async () => {
+    const result = await hydrates(`
+      import { RelativeTime } from "<arc>";
+      export function Page() {
+        return <RelativeTime value="2026-03-01T10:00:00.000Z" exact />;
+      }
+    `);
+    expect(result.container.querySelector('[data-slot="relative-time-trigger"]')).not.toBeNull();
     result.unmount();
   });
 });
