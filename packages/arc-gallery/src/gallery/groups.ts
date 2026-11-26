@@ -10,9 +10,11 @@ import { House } from "@barqjs/lucide/icons/house";
 import { Image } from "@barqjs/lucide/icons/image";
 import { Layers } from "@barqjs/lucide/icons/layers";
 import { LayoutDashboard } from "@barqjs/lucide/icons/layout-dashboard";
+import { ListFilter } from "@barqjs/lucide/icons/list-filter";
 import { LockKeyhole } from "@barqjs/lucide/icons/lock-keyhole";
 import { MessageSquareMore } from "@barqjs/lucide/icons/message-square-more";
 import { MessagesSquare } from "@barqjs/lucide/icons/messages-square";
+import { MessageSquareWarning } from "@barqjs/lucide/icons/message-square-warning";
 import { MousePointerClick } from "@barqjs/lucide/icons/mouse-pointer-click";
 import { Palette } from "@barqjs/lucide/icons/palette";
 import { Settings } from "@barqjs/lucide/icons/settings";
@@ -29,6 +31,7 @@ import { catalog as collaboration } from "../examples/collaboration/catalog.ts";
 import { catalog as data } from "../examples/data/catalog.ts";
 import { catalog as diagram } from "../examples/diagram/catalog.ts";
 import { catalog as editor } from "../examples/editor/catalog.ts";
+import { catalog as feedback } from "../examples/feedback/catalog.ts";
 import { catalog as exampleApp } from "../examples/example-app/catalog.ts";
 import { catalog as formatting } from "../examples/formatting/catalog.ts";
 import { catalog as forms } from "../examples/forms/catalog.ts";
@@ -39,6 +42,7 @@ import { catalog as navigation } from "../examples/navigation/catalog.ts";
 import { catalog as notifications } from "../examples/notifications/catalog.ts";
 import { catalog as overlays } from "../examples/overlays/catalog.ts";
 import { catalog as settings } from "../examples/settings/catalog.ts";
+import { catalog as views } from "../examples/views/catalog.ts";
 import type { GroupCatalog } from "./types.ts";
 
 export interface Group {
@@ -65,8 +69,10 @@ export const SECTIONS: readonly Section[] = [
       { catalog: inputs, icon: TextCursorInput },
       { catalog: actions, icon: MousePointerClick },
       { catalog: overlays, icon: Layers },
+      { catalog: feedback, icon: MessageSquareWarning },
       { catalog: navigation, icon: Compass },
       { catalog: data, icon: Table2 },
+      { catalog: views, icon: ListFilter },
       { catalog: media, icon: Image },
       { catalog: charts, icon: ChartColumn },
     ],
