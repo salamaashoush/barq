@@ -127,6 +127,13 @@ export interface ListProps<T> extends Customisable<Slots> {
   "aria-label": string;
   /** @default "none" */
   selectionMode?: "none" | "single" | "multiple";
+  /**
+   * `replace` makes a press or an arrow key choose the row, so selection
+   * follows focus; `toggle` adds and removes. @default "toggle"
+   */
+  selectionBehavior?: "toggle" | "replace";
+  /** Never leave nothing selected: Escape and a press on the chosen row keep it. */
+  disallowEmptySelection?: boolean;
   selectedKeys?: "all" | Iterable<Key>;
   defaultSelectedKeys?: "all" | Iterable<Key>;
   onSelectionChange?: (keys: "all" | Set<Key>) => void;
@@ -243,6 +250,8 @@ export function List<T>(props: ListProps<T>) {
           item === LOADER ? "loader" : isGroup(item) ? "section" : "item"
         }
         selectionMode={props.selectionMode}
+        selectionBehavior={props.selectionBehavior ?? "toggle"}
+        disallowEmptySelection={props.disallowEmptySelection === true}
         selectedKeys={props.selectedKeys}
         defaultSelectedKeys={props.defaultSelectedKeys}
         onSelectionChange={(keys: "all" | Set<Key>) => props.onSelectionChange?.(keys)}
