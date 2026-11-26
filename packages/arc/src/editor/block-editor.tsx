@@ -65,6 +65,7 @@ import { $rootBlockOf } from "./containers.tsx";
 import { $clipboardTarget, copyTarget, cutTarget, pasteAt } from "./paste.ts";
 import {
   type BlockConversion,
+  type BlockMenuAction,
   type BlockMenuChoice,
   type Label,
   editorExtensions,
@@ -118,6 +119,13 @@ interface ActiveBlock {
   kind: string | null;
   /** What the extensions' block menus offer this block, each with what it has now. */
   choices: readonly OfferedChoice[];
+  /** What the extensions' block menus do to this block, each with what it is called here. */
+  actions: readonly OfferedAction[];
+}
+
+interface OfferedAction {
+  action: BlockMenuAction;
+  label: Label;
 }
 
 interface OfferedOption {
@@ -356,6 +364,9 @@ function BlockHandles(props: BlockHandlesProps) {
   let pinned = false;
 
   const blockMenu = editorExtensions(editor).flatMap((extension) => extension.blockMenu ?? []);
+  const blockActions = editorExtensions(editor).flatMap(
+    (extension) => extension.blockActions ?? [],
+  );
   const conversions = editorConversions(editorExtensions(editor));
   function measure(key: NodeKey): ActiveBlock | null {
     const element = editor.getElementByKey(key);
@@ -374,6 +385,10 @@ function BlockHandles(props: BlockHandlesProps) {
         choices: blockMenu.flatMap((choice) => {
           const offered = choice.$read(node);
           return offered === null ? [] : [{ choice, ...offered }];
+        }),
+        actions: blockActions.flatMap((action) => {
+          const label = action.$label(node);
+          return label === null ? [] : [{ action, label }];
         }),
       };
     });
@@ -760,6 +775,18 @@ function BlockHandles(props: BlockHandlesProps) {
                           </>
                         )}
                       </For>
+                      <Show when={current().actions.length > 0}>
+                        <For each={current().actions}>
+                          {(offered: OfferedAction) => (
+                            <DropdownMenuItem
+                              onSelect={() => offered.action.run(editor, current().key)}
+                            >
+                              {labelOf(offered.label, messages())}
+                            </DropdownMenuItem>
+                          )}
+                        </For>
+                        <DropdownMenuSeparator />
+                      </Show>
                       <DropdownMenuItem
                         onSelect={() =>
                           void cutTarget(

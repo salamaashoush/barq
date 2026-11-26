@@ -8,6 +8,7 @@ import type {
   Klass,
   LexicalEditor,
   LexicalNode,
+  NodeKey,
   RangeSelection,
 } from "lexical";
 
@@ -111,6 +112,15 @@ export interface BlockMenuChoice {
   $choose: (block: LexicalNode, value: string) => void;
 }
 
+/** Something a block's menu does to the block it is open on: a part added, the block kept elsewhere. */
+export interface BlockMenuAction {
+  id: string;
+  /** Read for the block the menu is open on: what the action is called there, or `null` where it is not offered. */
+  $label: (block: LexicalNode) => Label | null;
+  /** Runs outside any update, with the block's key. */
+  run: (editor: LexicalEditor, key: NodeKey) => void;
+}
+
 /** A key an extension answers, by key or, for digits and punctuation, by the key's place. */
 export interface EditorKeyBinding {
   /** `"Mod+Alt+F"`, `"Mod+Shift+\\"`: Mod is Command on a Mac, Control elsewhere. */
@@ -198,6 +208,8 @@ export interface EditorExtension {
   readonly keys?: readonly EditorKeyBinding[];
   /** In a block's menu, for the blocks each applies to. */
   readonly blockMenu?: readonly BlockMenuChoice[];
+  /** In a block's menu after the choices, for the blocks each is offered on. */
+  readonly blockActions?: readonly BlockMenuAction[];
   /** Kinds of block Turn into offers, in a block's menu and over selected text. */
   readonly turnInto?: readonly BlockConversion[];
   /** What an empty block says it is for, faint, where it has a word of the extension's: a toggle's title. */
