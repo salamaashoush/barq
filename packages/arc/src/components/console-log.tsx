@@ -134,9 +134,7 @@ const WHOLE = 300;
 
 export const consoleLogStyles = variants({
   slots: {
-    root: arc(layout.column, layout.minZero, surface.bordered, surface.sunken, {
-      overflow: "hidden",
-    }),
+    root: arc(layout.column, layout.minZero, layout.clip, surface.bordered, surface.sunken),
     toolbar: arc(layout.row, layout.wrap, gap[2], edge.bottom, {
       padding: space.x2,
     }),
@@ -148,7 +146,6 @@ export const consoleLogStyles = variants({
     copy: arc(layout.pushEnd),
     viewport: arc(codeSurface, focus.outline, {
       overflow: "auto",
-      height: "var(--log-height, 24rem)",
       maxHeight: "var(--log-max-height, none)",
       overscrollBehavior: "contain",
       lineHeight: "20px",
@@ -195,7 +192,7 @@ export const consoleLogStyles = variants({
       },
     ),
     json: arc(type.written, { paddingBlock: space.x1 }),
-    empty: arc({ padding: space.x6 }),
+    empty: arc(layout.grow, { padding: space.x6 }),
     jump: arc(
       layout.inlineRow,
       gap[1],
@@ -208,9 +205,19 @@ export const consoleLogStyles = variants({
       place.paddedStrip,
       { position: "absolute" },
     ),
-    frame: arc(layout.relative, layout.minZero, layout.grow, layout.minZeroBlock),
+    frame: arc(layout.relative, layout.column, layout.minZero, layout.grow, layout.minZeroBlock),
     ansiBold: arc({ fontWeight: "var(--font-weight-semibold)" }),
   },
+  variants: {
+    sized: {
+      true: {
+        root: arc({ height: "var(--log-height)" }),
+        viewport: arc(layout.grow, layout.minZeroBlock, { flexBasis: "0px" }),
+      },
+      false: { viewport: arc({ height: "24rem" }) },
+    },
+  },
+  defaults: { sized: false },
 });
 
 type Slots = ReturnType<typeof consoleLogStyles>;
@@ -239,7 +246,11 @@ export interface ConsoleLogViewProps extends Customisable<Slots> {
   toolbar?: boolean;
   /** What a redaction looks like in a line, its first group the secret's name. @default `RedactedText`'s, `[redacted: NAME]` */
   redaction?: RegExp;
-  /** A CSS length, or pixels. @default 24rem */
+  /**
+   * The whole log's height, its toolbar included, the lines taking what is
+   * left: a CSS length, pixels, or `100%` to fill a container that has a
+   * height, a resizable panel's. @default the lines are 24rem tall
+   */
   height?: string | number;
   /** Still fetching the log. */
   isLoading?: boolean;
@@ -435,7 +446,7 @@ function Line(props: LineProps) {
 export function ConsoleLogView(props: ConsoleLogViewProps) {
   const messages = useArcMessages();
   function cls(): Slots {
-    return parts(consoleLogStyles(), props.classes);
+    return parts(consoleLogStyles({ sized: props.height !== undefined }), props.classes);
   }
   const [levels, setLevels] = controllable<readonly LogLevel[]>(
     () => props.levels,

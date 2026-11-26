@@ -48,7 +48,7 @@ export const emptyStateVariants = variants({
   },
   variants: {
     variant: {
-      plain: {},
+      plain: { root: edge.none },
       outline: { root: arc(edge.frame) },
     },
     kind: {

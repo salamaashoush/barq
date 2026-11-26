@@ -3,8 +3,12 @@ import { type ParentProps } from "@barqjs/core";
 import { collectCss } from "@barqjs/css";
 import { provideLocale } from "@barqjs/aria/i18n";
 import { ariaViolations, render, screen } from "@barqjs/testing";
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@barqjs/ui/resizable";
 
-import { hydrates, wears } from "../test-arc.ts";
+import { edge } from "../style/index.ts";
+import { hydrates, settle, wears } from "../test-arc.ts";
+import { consoleLogStyles, ConsoleLogView } from "./console-log.tsx";
+import { emptyStateVariants } from "./empty-state.tsx";
 import { StatusBar } from "./status-bar.tsx";
 import { Workbench, workbenchStyles } from "./workbench.tsx";
 
@@ -83,6 +87,51 @@ describe("Workbench", () => {
     expect(slot("workbench-main")?.tagName).toBe("DIV");
     expect(slot("workbench-main")?.classList.contains("m")).toBe(true);
     expect(slot("workbench-status")?.classList.contains("s")).toBe(true);
+  });
+});
+
+describe("a console log in a workbench's panel", () => {
+  test("height 100% sizes the whole log from its panel, the lines taking what the toolbar leaves", async () => {
+    render(() => (
+      <div style={{ height: "30rem" }}>
+        <Workbench fill="parent">
+          <ResizablePanelGroup orientation="vertical">
+            <ResizablePanel id="top" defaultSize={50}>
+              <p>Editor</p>
+            </ResizablePanel>
+            <ResizableHandle />
+            <ResizablePanel id="log" defaultSize={50}>
+              <ConsoleLogView entries={[{ text: "ready" }]} height="100%" aria-label="Output" />
+            </ResizablePanel>
+          </ResizablePanelGroup>
+        </Workbench>
+      </div>
+    ));
+    await settle();
+    const sized = consoleLogStyles({ sized: true });
+    const log = slot("console-log") as HTMLElement;
+    expect(log.style.getPropertyValue("--log-height")).toBe("100%");
+    expect(wears(log, sized.root)).toBe(true);
+    expect(wears(slot("console-log-viewport"), sized.viewport)).toBe(true);
+    expect(wears(slot("console-log-viewport"), consoleLogStyles({ sized: false }).viewport)).toBe(
+      false,
+    );
+    expect(wears(slot("console-log-viewport")?.parentElement, sized.frame)).toBe(true);
+    expect(wears(slot("workbench-main"), workbenchStyles().main)).toBe(true);
+    const css = collectCss();
+    expect(css).toContain("height:var(--log-height)");
+    expect(css).toContain("flex-basis:0px");
+  });
+
+  test("with no height the lines keep their 24rem, and an empty log is a quiet empty state", async () => {
+    render(() => <ConsoleLogView entries={[]} aria-label="Output" />);
+    await settle();
+    expect(wears(slot("console-log"), consoleLogStyles({ sized: true }).root)).toBe(false);
+    const empty = slot("empty-state");
+    expect(empty?.getAttribute("data-variant")).toBe("plain");
+    expect(wears(empty, emptyStateVariants({ variant: "plain" }).root)).toBe(true);
+    expect(wears(empty, edge.none)).toBe(true);
+    expect(collectCss()).toContain("height:24rem");
   });
 });
 
