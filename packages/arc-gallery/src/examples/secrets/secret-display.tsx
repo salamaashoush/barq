@@ -35,11 +35,7 @@ export default function SecretDisplay() {
         </p>
         <p>
           Token:{" "}
-          <MaskedValue
-            label="the token"
-            value="acme_demo_4ec39hqlyjwdarjt"
-            hideAfter={10_000}
-          />
+          <MaskedValue label="the token" value="acme_demo_4ec39hqlyjwdarjt" hideAfter={10_000} />
         </p>
         <p>
           National ID:{" "}
