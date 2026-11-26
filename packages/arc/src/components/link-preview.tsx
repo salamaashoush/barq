@@ -59,7 +59,7 @@ export const linkPreviewStyles = variants({
       stacked: {
         root: arc({ flexDirection: "column" }),
         media: arc({ aspectRatio: "1.91 / 1", inlineSize: "100%" }),
-        end: arc({ position: "absolute", insetBlockStart: space.x1, insetInlineEnd: space.x1 }),
+        end: place.topEnd,
       },
     },
   },

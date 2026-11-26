@@ -5,7 +5,18 @@ import { CopyButton } from "../components/copy-button.tsx";
 import { arcLayer as arc } from "../layer.ts";
 import { useArcMessages } from "../components/messages.ts";
 import { type Customisable, parts } from "../lib/parts.ts";
-import { bg, edge, focus, gap, layout, rounded, space, truncate, type } from "../style/index.ts";
+import {
+  bg,
+  edge,
+  focus,
+  gap,
+  layout,
+  place,
+  rounded,
+  space,
+  truncate,
+  type,
+} from "../style/index.ts";
 import type { CodeLanguage } from "./languages.ts";
 import { type CodeLineMark, type CodeLineRenderer, type CodeRange, sliceLines } from "./lines.ts";
 import { codeVars } from "./options.ts";
@@ -32,12 +43,7 @@ export const codeBlockStyles = variants({
       paddingInlineEnd: space.x1,
     }),
     title: arc(layout.growAuto, layout.minZero, truncate),
-    copy: arc({
-      position: "absolute",
-      insetBlockStart: space.x1,
-      insetInlineEnd: space.x1,
-      zIndex: "1",
-    }),
+    copy: arc(place.topEnd, { zIndex: "1" }),
     body: arc(focus.outline),
   },
 });
