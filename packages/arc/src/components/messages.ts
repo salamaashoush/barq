@@ -1197,6 +1197,66 @@ export interface ArcMessages {
   clearIn4Hours: string;
   clearToday: string;
   clearThisWeek: string;
+  problems: string;
+  problemSeverities: string;
+  problemsSearch: string;
+  problemsLoading: string;
+  problemsEmpty: string;
+  problemsNoMatches: string;
+  problemsMatch: (count: number) => string;
+  problemCount: (count: number) => string;
+  severityError: string;
+  severityWarning: string;
+  severityInfo: string;
+  severityHint: string;
+  statusBar: string;
+  problemsSummary: (errors: number, warnings: number) => string;
+  showProblems: (summary: string) => string;
+  cursorPosition: (line: number, column: number) => string;
+  cursorSelected: (count: number) => string;
+  changeLanguage: (language: string) => string;
+  testResults: string;
+  testResult: string;
+  testStatuses: string;
+  testPassed: string;
+  testFailed: string;
+  testSkipped: string;
+  testRunning: string;
+  testQueued: string;
+  runAllTests: string;
+  rerunFailedTests: string;
+  stopTests: string;
+  runTest: (name: string) => string;
+  rerunTest: (name: string) => string;
+  testsTook: (duration: string) => string;
+  testsLoading: string;
+  testsEmpty: string;
+  testsNoMatches: string;
+  testChoose: string;
+  testExpected: string;
+  testActual: string;
+  goToSource: string;
+  share: string;
+  shareDescription: string;
+  shareFailed: string;
+  sharePreparing: string;
+  shareLink: string;
+  shareSize: (characters: string, original: string, compressed: string) => string;
+  shareTooLong: string;
+  checks: string;
+  checkVerdicts: string;
+  checksSearch: string;
+  checksLoading: string;
+  checksEmpty: string;
+  checksNoMatches: string;
+  checksMatch: (count: number) => string;
+  verdictProved: string;
+  verdictFalsified: string;
+  verdictUnknown: string;
+  verdictError: string;
+  verdictTimeout: string;
+  counterexample: string;
+  counterexampleOf: (name: string) => string;
 }
 
 export const ENGLISH: ArcMessages = {
@@ -2521,6 +2581,70 @@ export const ENGLISH: ArcMessages = {
   clearIn4Hours: "4 hours",
   clearToday: "Today",
   clearThisWeek: "This week",
+  problems: "Problems",
+  problemSeverities: "Severities",
+  problemsSearch: "Filter problems",
+  problemsLoading: "Checking...",
+  problemsEmpty: "No problems",
+  problemsNoMatches: "No problems match",
+  problemsMatch: (count) => (count === 1 ? "1 problem matches" : `${String(count)} problems match`),
+  problemCount: (count) => (count === 1 ? "1 problem" : `${String(count)} problems`),
+  severityError: "Error",
+  severityWarning: "Warning",
+  severityInfo: "Info",
+  severityHint: "Hint",
+  statusBar: "Status bar",
+  problemsSummary: (errors, warnings) =>
+    `${errors === 1 ? "1 error" : `${String(errors)} errors`}, ${
+      warnings === 1 ? "1 warning" : `${String(warnings)} warnings`
+    }`,
+  showProblems: (summary) => `${summary}. Show problems`,
+  cursorPosition: (line, column) => `Ln ${String(line)}, Col ${String(column)}`,
+  cursorSelected: (count) => `(${String(count)} selected)`,
+  changeLanguage: (language) => `${language}. Change language`,
+  testResults: "Test results",
+  testResult: "Test result",
+  testStatuses: "Statuses",
+  testPassed: "Passed",
+  testFailed: "Failed",
+  testSkipped: "Skipped",
+  testRunning: "Running",
+  testQueued: "Queued",
+  runAllTests: "Run all",
+  rerunFailedTests: "Rerun failed",
+  stopTests: "Stop",
+  runTest: (name) => `Run ${name}`,
+  rerunTest: (name) => `Rerun ${name}`,
+  testsTook: (duration) => `Took ${duration}`,
+  testsLoading: "Finding tests...",
+  testsEmpty: "No tests yet",
+  testsNoMatches: "No tests match",
+  testChoose: "Choose a test to see its result.",
+  testExpected: "Expected",
+  testActual: "Received",
+  goToSource: "Go to source",
+  share: "Share",
+  shareDescription: "Anyone with the link opens this as it is now.",
+  shareFailed: "This could not be put in a link.",
+  sharePreparing: "Making the link...",
+  shareLink: "Link",
+  shareSize: (characters, original, compressed) =>
+    `${characters} characters: ${original} of state, compressed to ${compressed}`,
+  shareTooLong: "A link this long may be cut short by some chats and mail apps.",
+  checks: "Checks",
+  checkVerdicts: "Verdicts",
+  checksSearch: "Filter checks",
+  checksLoading: "Checking...",
+  checksEmpty: "No checks yet",
+  checksNoMatches: "No checks match",
+  checksMatch: (count) => (count === 1 ? "1 check matches" : `${String(count)} checks match`),
+  verdictProved: "Proved",
+  verdictFalsified: "Falsified",
+  verdictUnknown: "Unknown",
+  verdictError: "Error",
+  verdictTimeout: "Timed out",
+  counterexample: "Counterexample",
+  counterexampleOf: (name) => `Counterexample to ${name}`,
 };
 
 const MessagesContext = createContext<ArcMessages>(ENGLISH, "ArcMessages");

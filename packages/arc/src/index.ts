@@ -1399,6 +1399,41 @@ export {
   stripAnsi,
 } from "./components/console-log.tsx";
 export {
+  type SourceLocation,
+  type SourcePosition,
+  documentFolder,
+  documentName,
+  positionText,
+} from "./lib/source-location.ts";
+export {
+  PROBLEM_SEVERITIES,
+  type Problem,
+  type ProblemCounts,
+  type ProblemRelated,
+  type ProblemSeverity,
+  ProblemsPanel,
+  type ProblemsPanelProps,
+  SeverityIcon,
+  problemCounts,
+  problemsPanelStyles,
+  severityName,
+} from "./components/problems-panel.tsx";
+export {
+  StatusBar,
+  StatusBarItem,
+  type StatusBarItemProps,
+  type StatusBarProps,
+  type StatusCursor,
+  type StatusTask,
+  statusBarStyles,
+} from "./components/status-bar.tsx";
+export {
+  Workbench,
+  type WorkbenchFill,
+  type WorkbenchProps,
+  workbenchStyles,
+} from "./components/workbench.tsx";
+export {
   type JsonSchema,
   type JsonSchemaDefs,
   JsonSchemaFields,

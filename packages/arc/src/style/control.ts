@@ -1,3 +1,4 @@
+import { inputVariants } from "@barqjs/ui/input";
 import { when } from "@barqjs/ui/shared-when";
 import { tokens } from "@barqjs/ui/theme/tokens";
 
@@ -74,6 +75,8 @@ export const control = {
     paddingInline: space.x1_5,
   }),
   boxedButton,
+  /** A panel toolbar's search box: ui's input at a short row's height, taking the room the row has left. */
+  filter: arc(inputVariants(), { flex: "1 1 12rem", minWidth: "0px", height: space.x8 }),
   /**
    * A value that edits where it is read: drawn as its text, filled under the
    * pointer, lined up with the text around it however much room it takes.

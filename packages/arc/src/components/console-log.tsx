@@ -6,7 +6,6 @@ import { ChevronRight } from "@barqjs/lucide/icons/chevron-right";
 import { ArrowDownToLine } from "@barqjs/lucide/icons/arrow-down-to-line";
 import { ref as makeRef } from "@barqjs/primitives/refs";
 import { virtual } from "@barqjs/primitives/virtual";
-import { inputVariants } from "@barqjs/ui/input";
 import { srOnly } from "@barqjs/ui/sr-only";
 import { Toggle } from "@barqjs/ui/toggle";
 import { ToggleGroup, ToggleGroupItem } from "@barqjs/ui/toggle-group";
@@ -144,7 +143,7 @@ export const consoleLogStyles = variants({
     levels: arc(layout.minZero, layout.scrollInline),
     level: arc({}),
     count: arc(type.numeric, fg.muted, { marginInlineStart: space.x1 }),
-    search: arc(inputVariants(), { flex: "1 1 12rem", minWidth: "0px", height: space.x8 }),
+    search: control.filter,
     follow: arc(glyph.sm, gap[1]),
     copy: arc(layout.pushEnd),
     viewport: arc(codeSurface, focus.outline, {
@@ -209,7 +208,7 @@ export const consoleLogStyles = variants({
       place.paddedStrip,
       { position: "absolute" },
     ),
-    frame: arc(layout.relative, layout.minZero),
+    frame: arc(layout.relative, layout.minZero, layout.grow, layout.minZeroBlock),
     ansiBold: arc({ fontWeight: "var(--font-weight-semibold)" }),
   },
 });
