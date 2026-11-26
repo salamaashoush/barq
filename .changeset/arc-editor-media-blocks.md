@@ -1,0 +1,7 @@
+---
+"@barqjs/arc": minor
+---
+
+`@barqjs/arc/editor` gains its media blocks. Pictures take four sizes, a place at the start, middle or end, alt text or a decorative mark with a warning while neither, a caption, a credit with its licence, a focus point and numbered labels; Word's pictures come in at their size on the page. Galleries of up to twenty-four pictures read on `Gallery` and `Lightbox`, a before and after slides between two, files read as cards with a viewer and a PDF's pages and keep their first version as `origin`, video and sound play on `MediaPlayer` with captions, an audio description, a transcript and chapters marked at the player's time, and embeds come from fourteen sites, a reader's frame loading only once chosen. `provideEditorMedia` lends the blocks an app's `fileUrl`, its media `library` and picture search, words for its upload refusals and uploads a reload cut off; `fieldId` hands files on their way to an editor started again, leaving mid-upload asks first, `storedFilesExtension` reads kept files addressed by a scheme, and a Commons link pastes as a credited picture.
+
+A block made with `defineBlock` is now stored as its data's fields beside the node's own `type`, `version` and `format`, not under `data`, and its readers and writers carry `format`. `EmbedProvider` names an `id`, `parse` and `src` in place of `match`, and an embed stores `provider` and `embedId`. `MediaPlayer` reads a `descriptions` prop or `descriptions` track aloud behind an Audio description button.
