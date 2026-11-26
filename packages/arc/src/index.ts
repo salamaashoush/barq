@@ -1379,6 +1379,25 @@ export {
   treeViewStyles,
 } from "./components/tree-view.tsx";
 export {
+  type VirtualFs,
+  type VirtualFsChange,
+  type VirtualFsEntry,
+  type VirtualFsEntryKind,
+  VirtualFsError,
+  type VirtualFsErrorCode,
+  type VirtualFsTree,
+  isValidName,
+  joinPath,
+  nameOf,
+  parentOf,
+  virtualFs,
+} from "./components/virtual-fs.ts";
+export {
+  FileExplorer,
+  type FileExplorerProps,
+  fileExplorerStyles,
+} from "./components/file-explorer.tsx";
+export {
   Gallery,
   type GalleryImage,
   type GalleryProps,
