@@ -6,6 +6,7 @@ import { createRoot } from "react-dom/client";
 import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 
 import { dragSelection, makeScene } from "../scene.ts";
+import { canvasAtFullSize } from "../drawn.ts";
 
 declare global {
   interface Window {
@@ -41,7 +42,9 @@ window.__mount = async (count) => {
   function loaded() {
     return api !== undefined && api.getSceneElements().length > 0;
   }
-  while (!loaded()) await frame();
+  const app = document.getElementById("app")!;
+  while (!loaded() || !canvasAtFullSize(app)) await frame();
+  // the frame that draws the scene at full size, and the one after it
   await frame();
   await frame();
   return performance.now() - start;

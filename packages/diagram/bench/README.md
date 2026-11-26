@@ -22,7 +22,11 @@ an arrow from every fifth, a label in every seventh. Each scenario runs on a
 fresh page and the median of the rounds is reported.
 
 - first render: from mounting the editor with the scene to the end of the
-  second frame after the scene is in;
+  frame after the one that draws the scene at full size (`drawn.ts`: the
+  scene is in and a canvas covers the editor at device pixels). Counting
+  from the first frame after the scene is in instead timed barq's draw of a
+  1 by 1 canvas, measured before its container was laid out, and missed
+  the full draw;
 - drag, pan and zoom: Chrome's main-thread task time (`TaskDuration`) per
   input, and its script part (`ScriptDuration`), each input followed by the
   frame it causes; the drag moves 100
@@ -33,38 +37,41 @@ fresh page and the median of the rounds is reported.
 
 ## Results
 
-Apple M-series laptop, Chrome stable, five rounds. The load average was
-between 2 and 3 through the run, other agents' builds still running, so a
-round now and then lands on a burst (Excalidraw's 1k pan and zoom here);
-both runs since the changes below put barq ahead on every total.
+Apple M-series laptop, Chrome stable, five rounds, the load average between
+3 and 6 through the run (another project's build ran alongside), so single
+cells move by several milliseconds between runs: a 5k-only rerun put barq's
+first render at 76 ms against Excalidraw's 79.
 Each frame column gives the main-thread time and, in parentheses, the
 script part of it. `barq-canvas` is the same editor with `ui={false}`: the
 row beside `barq` says what the UI costs.
 
 | scene | editor      | first render (ms) | drag 100 (ms/frame) | pan (ms/frame) | zoom (ms/frame) | JS heap (MB) |
 | ----- | ----------- | ----------------- | ------------------- | -------------- | --------------- | ------------ |
-| 1000  | barq        | 46                | 1.7 (0.8)           | 1.6 (0.5)      | 1.6 (0.4)       | 9.0          |
-| 1000  | barq-canvas | 32                | 1.8 (0.9)           | 1.7 (0.6)      | 1.5 (0.5)       | 7.8          |
-| 1000  | excalidraw  | 60                | 2.6 (1.5)           | 3.6 (1.5)      | 4.4 (1.5)       | 8.4          |
-| 5000  | barq        | 66                | 2.8 (1.6)           | 1.8 (0.6)      | 1.6 (0.4)       | 17.3         |
-| 5000  | barq-canvas | 50                | 2.4 (1.4)           | 1.7 (0.6)      | 1.8 (0.5)       | 16.1         |
-| 5000  | excalidraw  | 79                | 5.2 (3.8)           | 4.4 (2.3)      | 5.5 (2.5)       | 16.2         |
-| 10000 | barq        | 87                | 4.2 (2.7)           | 3.4 (1.3)      | 3.1 (1.0)       | 27.4         |
-| 10000 | barq-canvas | 68                | 3.9 (2.6)           | 3.6 (1.3)      | 3.2 (1.1)       | 26.2         |
-| 10000 | excalidraw  | 97                | 7.4 (6.1)           | 5.5 (3.3)      | 6.2 (3.6)       | 25.7         |
+| 1000  | barq        | 59                | 1.8 (0.9)           | 1.8 (0.6)      | 2.1 (0.6)       | 8.9          |
+| 1000  | barq-canvas | 45                | 2.0 (1.0)           | 3.3 (1.2)      | 2.8 (0.8)       | 7.5          |
+| 1000  | excalidraw  | 62                | 2.4 (1.4)           | 1.9 (0.7)      | 2.1 (0.7)       | 8.4          |
+| 5000  | barq        | 88                | 2.1 (1.2)           | 1.7 (0.6)      | 1.4 (0.4)       | 17.2         |
+| 5000  | barq-canvas | 73                | 2.3 (1.4)           | 1.7 (0.6)      | 1.7 (0.5)       | 15.9         |
+| 5000  | excalidraw  | 81                | 3.6 (2.7)           | 2.4 (1.2)      | 2.6 (1.2)       | 16.2         |
+| 10000 | barq        | 108               | 2.6 (1.7)           | 1.9 (0.7)      | 1.5 (0.5)       | 27.3         |
+| 10000 | barq-canvas | 91                | 2.7 (1.8)           | 1.9 (0.7)      | 1.6 (0.5)       | 25.9         |
+| 10000 | excalidraw  | 102               | 5.5 (4.6)           | 3.0 (1.7)      | 3.2 (1.8)       | 25.7         |
 
 | bundle     | minified (KB) | gzip (KB) |
 | ---------- | ------------- | --------- |
-| barq       | 2580          | 884       |
+| barq       | 2593          | 886       |
 | excalidraw | 6448          | 2352      |
 
-barq is ahead on every total at every size: the first render by 10 to
-14 ms, and each frame by a third or more. Its script is under half of
-Excalidraw's on every frame. Excalidraw's script column includes its canvas
-flush, which runs at the end of React's task, where barq's runs outside its
-script, so the totals are the fairer comparison.
+Every frame is ahead at every size, and by about half at 10k; barq's script
+is under half of Excalidraw's on every frame. Excalidraw's script column
+includes its canvas flush, which runs at the end of React's task, where
+barq's runs outside its script, so the totals are the fairer comparison.
 
-Before this run barq was behind at 1k in total (a drag at 2.5 ms a frame
+The first render, counted to the full draw, is level: ahead at 1k, behind
+by 6 or 7 ms at 5k and 10k, inside this run's noise at 5k. The UI costs 14
+to 17 ms of it at every size, which is where a first render has room left.
+
+Before the changes below barq was behind at 1k in total (a drag at 2.5 ms a frame
 against Excalidraw's 2.2) though ahead in script. What closed it, found with
 `BENCH_TRACE` and `BENCH_PROFILE`:
 
