@@ -9,6 +9,7 @@ import {
   ColorSwatch,
 } from "@barqjs/aria/colorpicker";
 import { ColorSwatchPicker, ColorSwatchPickerItem } from "@barqjs/aria/colorswatchpicker";
+import { numberFormatter } from "@barqjs/aria/i18n";
 import { Pipette } from "@barqjs/lucide/icons/pipette";
 import { Button } from "@barqjs/ui/button";
 import { inputVariants } from "@barqjs/ui/input";
@@ -38,6 +39,7 @@ import {
   space,
   square,
   target,
+  tone,
   truncate,
   type,
 } from "../style/index.ts";
@@ -56,6 +58,70 @@ export function readColor(value: string | null | undefined): Color | null {
   } catch {
     return null;
   }
+}
+
+/** A colour's relative luminance, as WCAG defines it, from its sRGB channels. */
+function luminance(color: Color): number {
+  const rgb = color.toFormat("rgb");
+  function linear(channel: "red" | "green" | "blue"): number {
+    const value = rgb.getChannelValue(channel) / 255;
+    return value <= 0.039_28 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  }
+  return 0.2126 * linear("red") + 0.7152 * linear("green") + 0.0722 * linear("blue");
+}
+
+/**
+ * How far apart two colours read, as WCAG's contrast ratio from 1 to 21:
+ * 4.5 is the least for body text, 3 for large text and for a control's edge.
+ * `null` when either names no colour.
+ */
+export function contrastRatio(one: string, other: string): number | null {
+  const a = readColor(one);
+  const b = readColor(other);
+  if (a === null || b === null) return null;
+  const [light, dark] = [luminance(a), luminance(b)].toSorted((x, y) => y - x);
+  return ((light ?? 0) + 0.05) / ((dark ?? 0) + 0.05);
+}
+
+/** A colour the chosen one is read against: the text drawn on it, the page behind it. */
+export interface ContrastTarget {
+  color: string;
+  /** What it is, in the warning: "white text", "the page". */
+  label: string;
+  /** The least ratio that passes. @default 4.5 */
+  minimum?: number;
+}
+
+interface ContrastWarningProps {
+  color: string | null;
+  against: readonly ContrastTarget[] | undefined;
+  class?: string;
+}
+
+/** What the chosen colour fails against, said under the field. */
+function ContrastWarning(props: ContrastWarningProps) {
+  const messages = useArcMessages();
+  const format = numberFormatter({ maximumFractionDigits: 1 });
+  const failures = createMemo((): string[] => {
+    const color = props.color;
+    if (color === null) return [];
+    const found: string[] = [];
+    for (const other of props.against ?? []) {
+      const ratio = contrastRatio(color, other.color);
+      const minimum = other.minimum ?? 4.5;
+      if (ratio !== null && ratio < minimum) {
+        found.push(
+          messages().lowContrast(other.label, format().format(ratio), format().format(minimum)),
+        );
+      }
+    }
+    return found;
+  });
+  return (
+    <p class={props.class} data-slot="color-contrast" role="status">
+      <For each={failures()}>{(failure: string) => <span>{failure} </span>}</For>
+    </p>
+  );
 }
 
 /** A drawn colour's edge, so white shows on white and black on black. */
@@ -514,6 +580,7 @@ export const colorFieldStyles = variants({
     trigger: arc(layout.row, gap[2], { justifyContent: "flex-start", minWidth: "10rem" }),
     value: arc(truncate, type.mono),
     content: arc({ width: "auto", padding: space.x3 }),
+    contrast: arc(type.meta, tone.warning, fg.tone),
   },
 });
 
@@ -523,7 +590,13 @@ export interface ColorFieldProps
   extends
     Omit<ArcFieldProps, "classes">,
     FieldValueProps<string | null>,
-    Customisable<FieldColorSlots> {}
+    Customisable<FieldColorSlots> {
+  /**
+   * Colours the chosen one must read against, each said under the field when
+   * it falls short: the text drawn on a brand colour, the page behind it.
+   */
+  contrastWith?: readonly ContrastTarget[];
+}
 
 /**
  * A colour typed as hex, with a swatch of it at the start of the field.
@@ -562,6 +635,9 @@ export function ColorField(props: ColorFieldProps) {
           onBlur={of.blur}
         />
       </div>
+      <Show when={props.contrastWith !== undefined}>
+        <ContrastWarning class={cls().contrast} color={of.value()} against={props.contrastWith} />
+      </Show>
     </Frame>
   );
 }
@@ -649,6 +725,9 @@ export function ColorPicker(props: ColorPickerProps) {
           />
         </PopoverContent>
       </Popover>
+      <Show when={props.contrastWith !== undefined}>
+        <ContrastWarning class={cls().contrast} color={of.value()} against={props.contrastWith} />
+      </Show>
       <Show when={of.name() !== undefined}>
         <input type="hidden" name={of.name()} value={of.value() ?? ""} />
       </Show>

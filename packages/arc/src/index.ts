@@ -86,6 +86,8 @@ export {
   colorStyles,
   colorSwatchesStyles,
   colorValue,
+  type ContrastTarget,
+  contrastRatio,
   readColor,
 } from "./components/color.tsx";
 export {
@@ -98,6 +100,15 @@ export {
   type UnitFieldProps,
   numberFieldStyles,
 } from "./components/number-fields.tsx";
+export {
+  type NumberPair,
+  OptionalLimitField,
+  type OptionalLimitFieldProps,
+  PairedNumberField,
+  type PairedNumberFieldProps,
+  optionalLimitFieldStyles,
+  pairedNumberFieldStyles,
+} from "./components/limit-fields.tsx";
 export {
   CALLING_CODES,
   PhoneField,

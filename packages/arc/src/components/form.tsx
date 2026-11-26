@@ -43,6 +43,7 @@ import { ColorField, ColorPicker, ColorSwatches } from "./color.tsx";
 import { DateRangeField } from "./date-range-field.tsx";
 import { MultiSegmentedField, SegmentedField } from "./segmented-control.tsx";
 import { CurrencyField, PercentField, UnitField } from "./number-fields.tsx";
+import { OptionalLimitField, PairedNumberField } from "./limit-fields.tsx";
 import { PhoneField } from "./phone-field.tsx";
 import { RangeSlider } from "./range-slider.tsx";
 import { Rating } from "./rating.tsx";
@@ -775,6 +776,8 @@ const arcFieldComponents = {
   CheckboxGroupField,
   RadioGroupField,
   ChecklistField,
+  OptionalLimitField,
+  PairedNumberField,
 };
 
 const arcFormComponents = { SubmitButton, FormError };
