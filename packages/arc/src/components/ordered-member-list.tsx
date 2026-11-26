@@ -24,7 +24,8 @@ import type { RemotePage, RemoteSearchFn } from "./remote-search.ts";
 
 export const orderedMemberListStyles = variants({
   slots: {
-    members: arc(edge.all, rounded.md, layout.minZero, { overflow: "hidden" }),
+    body: arc(layout.column, gap[3]),
+    members: arc(edge.all, rounded.md, layout.minZero, layout.container, { overflow: "hidden" }),
     member: arc(layout.row, gap[2], { minBlockSize: space.x10 }),
     position: arc(type.meta, type.numeric, layout.noShrink, {
       minInlineSize: space.x5,
@@ -32,7 +33,7 @@ export const orderedMemberListStyles = variants({
     }),
     name: arc(type.sm, layout.grow, layout.minZero, layout.clip, layout.nowrap),
     left: arc(fg.muted, { fontStyle: "italic" }),
-    detail: arc(type.meta, layout.noShrink),
+    detail: arc(type.meta, layout.noShrink, layout.fromCqSm),
     remove: arc(layout.noShrink),
     empty: arc(type.meta, { padding: space.x3 }),
     add: arc({}),
@@ -143,6 +144,8 @@ export function OrderedMemberList(props: OrderedMemberListProps) {
       slot="ordered-member-list"
     >
       <div
+        class={cls().body}
+        data-slot="ordered-member-list-body"
         ref={(element: HTMLElement) => {
           root = element;
         }}

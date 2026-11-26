@@ -1,3 +1,5 @@
+import { on } from "@barqjs/ui/conditions";
+
 import { arcLayer as arc } from "../layer.ts";
 import { space, zIndex } from "./tokens.ts";
 
@@ -46,6 +48,8 @@ export const layout = {
   track: arc({ display: "grid", gridTemplateColumns: "minmax(0, 1fr)" }),
   /** A query container, for what is laid out by `on.cq*`. */
   container: arc({ containerType: "inline-size" }),
+  /** Left out until its query container reaches the `sm` step: a row's secondary detail. */
+  fromCqSm: arc({ display: "none", [on.cqSm]: { display: "block" } }),
   /** Scrolls by itself along the block axis, the page not scrolled past it. */
   scrollBlock: arc({ overflowY: "auto", overscrollBehavior: "contain" }),
   /** Scrolls sideways by itself with no bar drawn: a strip of tabs or stages wider than its box. */

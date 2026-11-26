@@ -10,7 +10,6 @@ import { Plus } from "@barqjs/lucide/icons/plus";
 import { Trash2 } from "@barqjs/lucide/icons/trash-2";
 import { Button } from "@barqjs/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@barqjs/ui/collapsible";
-import { on } from "@barqjs/ui/conditions";
 
 import { arcLayer as arc } from "../layer.ts";
 import {
@@ -64,14 +63,12 @@ export const stepSequenceEditorStyles = variants({
     ),
     label: arc(type.label, layout.clip, layout.nowrap),
     title: arc(layout.grow, layout.minZero),
-    summary: arc(type.meta, layout.clip, layout.nowrap, layout.minZero, {
-      display: "none",
-      [on.cqSm]: { display: "block" },
+    summary: arc(type.meta, layout.clip, layout.nowrap, layout.minZero, layout.fromCqSm, {
       maxWidth: "40%",
     }),
     actions: arc(layout.row, layout.noShrink, gap[0.5], layout.pushEnd),
     body: arc(edge.top, layout.column, gap[4], { padding: space.x4 }),
-    add: arc({ alignSelf: "flex-start" }),
+    add: arc({ alignSelf: "flex-start", width: "auto" }),
     empty: arc(type.body, fg.muted),
   },
 });
