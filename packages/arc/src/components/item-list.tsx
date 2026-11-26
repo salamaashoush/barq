@@ -1,7 +1,14 @@
-import { type Child, Show } from "@barqjs/core";
+import { type Child, Show, createMemo } from "@barqjs/core";
 import { variants } from "@barqjs/css";
 import type { Key, Node } from "@barqjs/aria/collections";
-import { GridList, GridListItem, GridListLoadMoreItem } from "@barqjs/aria/gridlist";
+import {
+  GridList,
+  GridListHeader,
+  GridListItem,
+  GridListLoadMoreItem,
+  GridListSection,
+} from "@barqjs/aria/gridlist";
+import { dateFormatter } from "@barqjs/aria/i18n";
 import { Virtualizer, listLayout } from "@barqjs/aria/virtualizer";
 import {
   Item,
@@ -14,11 +21,24 @@ import {
   type ItemSize,
   type ItemVariant,
 } from "@barqjs/ui/item";
+import { Button } from "@barqjs/ui/button";
 import { Spinner } from "@barqjs/ui/spinner";
 
 import { arcLayer as arc } from "../layer.ts";
 import { type Customisable, parts } from "../lib/parts.ts";
-import { edge, fg, focus, gap, interaction, layout, motion, type } from "../style/index.ts";
+import {
+  edge,
+  fg,
+  focus,
+  gap,
+  interaction,
+  layout,
+  motion,
+  place,
+  space,
+  surface,
+  type,
+} from "../style/index.ts";
 import { useArcMessages } from "./messages.ts";
 
 export const listStyles = variants({
@@ -43,6 +63,20 @@ export const listStyles = variants({
     meta: arc(type.meta, type.numeric, layout.noShrink, layout.nowrap),
     actions: arc({}),
     loader: arc(layout.row, layout.centre, gap[2], type.meta, fg.muted),
+    section: arc(layout.column),
+    heading: arc(
+      layout.sticky,
+      surface.sunken,
+      type.label,
+      fg.muted,
+      edge.bottom,
+      place.paddedStrip,
+      {
+        top: "0px",
+        zIndex: "1",
+      },
+    ),
+    more: arc(layout.row, layout.centre, { paddingBlock: space.x3 }),
   },
   variants: {
     divided: {
@@ -56,6 +90,25 @@ export const listStyles = variants({
 type Slots = ReturnType<typeof listStyles>;
 
 const LOADER = Symbol("loader");
+const GROUP = Symbol("group");
+
+interface Group<T> {
+  [GROUP]: true;
+  section: ListSection;
+  children: T[];
+}
+
+type Row<T> = T | Group<T> | typeof LOADER;
+
+function isGroup<T>(item: Row<T>): item is Group<T> {
+  return typeof item === "object" && item !== null && GROUP in item;
+}
+
+/** The heading a row is listed under: a day, a month, a status. */
+export interface ListSection {
+  id: string;
+  label: Child;
+}
 
 export interface ListVirtual {
   rowHeight: number;
@@ -84,9 +137,20 @@ export interface ListProps<T> extends Customisable<Slots> {
   divided?: boolean;
   /** Draw only the rows on screen, each this many pixels tall, in a box `height` tall. */
   virtual?: ListVirtual;
-  /** Asked for as the end comes into view. */
+  /**
+   * The heading each row is listed under. Rows in a row under the same
+   * heading are one section, named by it; the keyboard walks across sections
+   * as one list and never stops on a heading. `useDateSections` groups by day
+   * or month.
+   */
+  section?: (item: T) => ListSection;
+  /** Asked for as the end comes into view, or with `loadMore="button"` when pressed. */
   onLoadMore?: () => void;
   isLoadingMore?: boolean;
+  /** `button` asks for more with a Show more button under the list. @default "scroll" */
+  loadMore?: "scroll" | "button";
+  /** @default the provider's `showMore`, "Show more" */
+  loadMoreLabel?: string;
   /** Shown when there are no items. */
   empty?: Child;
   id?: string;
@@ -133,29 +197,50 @@ export function List<T>(props: ListProps<T>) {
   function keyOf(item: T): Key {
     return props.getKey?.(item) ?? ((item as MaybeKeyed).id as Key);
   }
-  function rows(): readonly (T | typeof LOADER)[] {
-    return props.onLoadMore === undefined ? props.items : [...props.items, LOADER];
+  function scrolls(): boolean {
+    return props.onLoadMore !== undefined && props.loadMore !== "button";
+  }
+  const sections = createMemo((): Group<T>[] | undefined => {
+    const sectionOf = props.section;
+    if (sectionOf === undefined) return undefined;
+    const groups: Group<T>[] = [];
+    for (const item of props.items) {
+      const section = sectionOf(item);
+      const last = groups.at(-1);
+      if (last !== undefined && last.section.id === section.id) last.children.push(item);
+      else groups.push({ [GROUP]: true, section, children: [item] });
+    }
+    return groups;
+  });
+  function rows(): readonly Row<T>[] {
+    const shown: readonly Row<T>[] = sections() ?? props.items;
+    return scrolls() ? [...shown, LOADER] : shown;
   }
 
   function list() {
     return (
-      <GridList<T | typeof LOADER>
+      <GridList<Row<T>>
         class={arc(cls().root, props.class, props.className)}
         id={props.id}
         data-slot="list"
         aria-label={props["aria-label"]}
         items={rows()}
-        getKey={(item: T | typeof LOADER) => (item === LOADER ? "__loader" : keyOf(item))}
-        getTextValue={(item: T | typeof LOADER) => {
-          if (item === LOADER) return "";
+        getKey={(item: Row<T>) => {
+          if (item === LOADER) return "__loader";
+          if (isGroup(item)) return `__section-${item.section.id}`;
+          return keyOf(item);
+        }}
+        getChildren={(item: Row<T>) => (isGroup(item) ? item.children : undefined)}
+        getTextValue={(item: Row<T>) => {
+          if (item === LOADER || isGroup(item)) return "";
           const own = props.getTextValue?.(item);
           if (own !== undefined) return own;
           const record = item as TextFields;
           const text = record.label ?? record.name ?? record.title;
           return typeof text === "string" ? text : "";
         }}
-        getType={(item: T | typeof LOADER): Node<unknown>["type"] =>
-          item === LOADER ? "loader" : "item"
+        getType={(item: Row<T>): Node<unknown>["type"] =>
+          item === LOADER ? "loader" : isGroup(item) ? "section" : "item"
         }
         selectionMode={props.selectionMode}
         selectedKeys={props.selectedKeys}
@@ -170,8 +255,14 @@ export function List<T>(props: ListProps<T>) {
         }
         renderEmptyState={() => props.empty}
       >
-        {(item: T | typeof LOADER) =>
-          item === LOADER ? (
+        {(item: Row<T>) =>
+          isGroup(item) ? (
+            <GridListSection class={cls().section} data-slot="list-section">
+              <GridListHeader class={cls().heading} data-slot="list-heading">
+                {item.section.label}
+              </GridListHeader>
+            </GridListSection>
+          ) : item === LOADER ? (
             <GridListLoadMoreItem
               class={cls().loader}
               data-slot="list-loader"
@@ -195,12 +286,32 @@ export function List<T>(props: ListProps<T>) {
     );
   }
 
+  function more() {
+    return (
+      <Show when={props.onLoadMore !== undefined && props.loadMore === "button"}>
+        <div class={cls().more} data-slot="list-more">
+          <Button
+            variant="outline"
+            size="sm"
+            isPending={props.isLoadingMore === true}
+            onPress={() => props.onLoadMore?.()}
+          >
+            {props.loadMoreLabel ?? messages().showMore}
+          </Button>
+        </div>
+      </Show>
+    );
+  }
+
   return (
-    <Show when={props.virtual !== undefined} fallback={list()}>
-      <Virtualizer layout={listLayout({ rowHeight: props.virtual?.rowHeight ?? 48 })}>
-        {list()}
-      </Virtualizer>
-    </Show>
+    <>
+      <Show when={props.virtual !== undefined} fallback={list()}>
+        <Virtualizer layout={listLayout({ rowHeight: props.virtual?.rowHeight ?? 48 })}>
+          {list()}
+        </Virtualizer>
+      </Show>
+      {more()}
+    </>
   );
 }
 
@@ -264,4 +375,58 @@ export function ListItem(props: ListItemProps) {
       </Show>
     </Item>
   );
+}
+
+export interface DateSectionOptions {
+  /** @default "day" */
+  by?: "day" | "month";
+  /** The zone whose calendar the days fall in. @default the reader's */
+  timeZone?: string;
+  /** What today is, so the server and the page agree. @default now */
+  now?: Date | string | number;
+}
+
+const KEY_DAY: Intl.DateTimeFormatOptions = { year: "numeric", month: "2-digit", day: "2-digit" };
+
+/**
+ * A `section` for a `List` that groups its rows by day or by month, in a
+ * given zone: "Today", "Yesterday", "Monday 3 March", or "March 2026".
+ *
+ * ```tsx
+ * const byDay = useDateSections({ timeZone: "Europe/Berlin" });
+ * <List aria-label="Work due" items={work()} section={(item) => byDay(item.due)}>…</List>
+ * ```
+ */
+export function useDateSections(
+  options: DateSectionOptions = {},
+): (value: Date | string | number) => ListSection {
+  const messages = useArcMessages();
+  const by = options.by ?? "day";
+  const zone = options.timeZone;
+  const keyFormat = new Intl.DateTimeFormat("en-CA", { ...KEY_DAY, timeZone: zone });
+  const month = dateFormatter({ month: "long", year: "numeric", timeZone: zone });
+  const day = dateFormatter({ weekday: "long", day: "numeric", month: "long", timeZone: zone });
+  const dayWithYear = dateFormatter({
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone: zone,
+  });
+  function keyOf(date: Date): string {
+    const key = keyFormat.format(date);
+    return by === "month" ? key.slice(0, 7) : key;
+  }
+  return (value) => {
+    const date = new Date(value);
+    const key = keyOf(date);
+    if (by === "month") return { id: key, label: month().format(date) };
+    const now = new Date(options.now ?? Date.now());
+    const today = keyFormat.format(now);
+    const yesterday = keyFormat.format(new Date(now.getTime() - 86_400_000));
+    if (key === today) return { id: key, label: messages().today };
+    if (key === yesterday) return { id: key, label: messages().yesterday };
+    const sameYear = key.slice(0, 4) === today.slice(0, 4);
+    return { id: key, label: (sameYear ? day() : dayWithYear()).format(date) };
+  };
 }
