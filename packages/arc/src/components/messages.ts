@@ -1097,6 +1097,28 @@ export interface ArcMessages {
   chartSeries: string;
   chartNotes: string;
   pointStatus: string;
+  personMissing: string;
+  contactDetails: string;
+  localTime: string;
+  timeIn: (time: string, zone: string) => string;
+  about: string;
+  removePreview: string;
+  blankTemplate: string;
+  blankTemplateDescription: string;
+  templateCategories: string;
+  allTemplates: string;
+  noTemplates: string;
+  templatePreview: string;
+  chooseTemplate: string;
+  useTemplate: string;
+  nameTheTemplate: string;
+  saveAsTemplate: string;
+  saveTemplate: string;
+  templateName: string;
+  templateDescription: string;
+  templateCategory: string;
+  noCategory: string;
+  startFrom: string;
 }
 
 export const ENGLISH: ArcMessages = {
@@ -2317,6 +2339,28 @@ export const ENGLISH: ArcMessages = {
   chartSeries: "Series",
   chartNotes: "Notes on the chart",
   pointStatus: "Status",
+  personMissing: "This person could not be found.",
+  contactDetails: "Contact details",
+  localTime: "Local time",
+  timeIn: (time, zone) => `${time}, ${zone}`,
+  about: "About",
+  removePreview: "Remove preview",
+  blankTemplate: "Start blank",
+  blankTemplateDescription: "An empty one, to fill in yourself.",
+  templateCategories: "Categories",
+  allTemplates: "All",
+  noTemplates: "No templates here yet.",
+  templatePreview: "Chosen template",
+  chooseTemplate: "Choose a template to see what it holds.",
+  useTemplate: "Use this template",
+  nameTheTemplate: "Name the template so others can find it.",
+  saveAsTemplate: "Save as a template",
+  saveTemplate: "Save template",
+  templateName: "Name",
+  templateDescription: "What it is for",
+  templateCategory: "Category",
+  noCategory: "No category",
+  startFrom: "Start from",
 };
 
 const MessagesContext = createContext<ArcMessages>(ENGLISH, "ArcMessages");

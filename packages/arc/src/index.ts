@@ -1067,6 +1067,34 @@ export {
   countUpStyles,
 } from "./components/count-up.tsx";
 export {
+  ProfileCard,
+  type ProfileCardProps,
+  type ProfileCardRenders,
+  type ProfileCardSlots,
+  type ProfileContact,
+  profileCardStyles,
+} from "./components/profile-card.tsx";
+export {
+  LinkPreview,
+  type LinkPreviewProps,
+  type LinkPreviewSlots,
+  hostOf,
+  linkPreviewStyles,
+} from "./components/link-preview.tsx";
+export {
+  BLANK_TEMPLATE,
+  type BlankTemplate,
+  SaveTemplateDialog,
+  type SaveTemplateDialogProps,
+  type TemplateCategory,
+  type TemplateDetails,
+  TemplateGallery,
+  type TemplateGalleryProps,
+  type TemplateGallerySlots,
+  type TemplateItem,
+  templateGalleryStyles,
+} from "./components/template-gallery.tsx";
+export {
   type PathOutcome,
   type PathStage,
   StagePath,
