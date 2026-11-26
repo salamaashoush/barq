@@ -926,6 +926,112 @@ export interface ArcMessages {
   addressPostal: (kind: string) => string;
   uploadsPending: string;
   attachedFiles: string;
+  showValue: string;
+  hideValue: string;
+  severalLines: string;
+  typeSecret: string;
+  typeSecretAgain: string;
+  typeItAgain: string;
+  storedSecretPlaceholder: string;
+  storedSecretEnding: (hint: string) => string;
+  storedSecretMoved: string;
+  storedSecretSince: (hint: string, since: string) => string;
+  storedSecretKept: string;
+  forgottenOnSave: string;
+  keepIt: string;
+  forgetIt: string;
+  chooseSecret: string;
+  secretNotFound: (name: string) => string;
+  missingSecret: (name: string) => string;
+  notASecretReference: string;
+  copyOf: (name: string) => string;
+  chooseAFile: string;
+  orPasteIt: string;
+  readFromFile: (name: string, size: string) => string;
+  hiddenValue: string;
+  showNamed: (name: string) => string;
+  hideNamed: (name: string) => string;
+  couldNotReveal: string;
+  newSecretHeading: string;
+  shownOnce: string;
+  copySecret: string;
+  worksUntil: (moment: string) => string;
+  storedItSafely: string;
+  secretWord: string;
+  redacted: string;
+  scopeOutsideRole: string;
+  credentialCapture: string;
+  credentialExisting: string;
+  credentialNew: string;
+  credentialSourceOf: (name: string) => string;
+  credentialSecretOf: (name: string) => string;
+  credentialValueOf: (name: string) => string;
+  credentialScopeOf: (name: string) => string;
+  chooseSecretFor: (name: string) => string;
+  typeValueOf: (name: string) => string;
+  credentialsUnbound: string;
+  everywhere: string;
+  onlyIn: (scope: string) => string;
+  readsSecret: (secret: string) => string;
+  credentialCaptured: string;
+  credentialTyped: string;
+  sessions: string;
+  sessionClient: string;
+  sessionWhere: string;
+  sessionActive: string;
+  thisDevice: string;
+  unknownPlace: string;
+  noSessions: string;
+  signOut: string;
+  signedOut: string;
+  signOutOthers: string;
+  signOutOthersHeading: string;
+  signOutOthersDescription: (count: number) => string;
+  connectedApps: string;
+  noConnectedApps: string;
+  appColumn: string;
+  appState: string;
+  appConnected: string;
+  appBlocked: string;
+  connectedBy: string;
+  appAccess: string;
+  scopesOf: (name: string) => string;
+  lastUsed: string;
+  connectedAt: string;
+  disconnect: string;
+  disconnectHeading: (name: string) => string;
+  disconnectDescription: string;
+  appsMayConnect: string;
+  connectAt: string;
+  copyAddress: string;
+  apiKeys: string;
+  noApiKeys: string;
+  noApiKeysDescription: string;
+  keyName: string;
+  keyColumn: string;
+  keyCount: (count: number) => string;
+  everyScope: string;
+  scopes: string;
+  expired: string;
+  createKey: string;
+  createKeyHeading: string;
+  createKeyDescription: string;
+  copyNewKey: string;
+  copyTheKey: string;
+  defaultKeyName: string;
+  nameTheKey: string;
+  expiresHint: string;
+  neverExpiresHint: string;
+  revokeKey: string;
+  revokeKeyHeading: (name: string) => string;
+  revokeKeyDescription: string;
+  testConnection: string;
+  test: string;
+  probeHint: string;
+  testingConnection: string;
+  connectionWorked: string;
+  connectionFailed: string;
+  connectionTestFailed: string;
 }
 
 export const ENGLISH: ArcMessages = {
@@ -1969,6 +2075,118 @@ export const ENGLISH: ArcMessages = {
     )[kind] ?? "Postal code",
   uploadsPending: "Wait for the files to finish uploading.",
   attachedFiles: "Attached files",
+  showValue: "Show the value",
+  hideValue: "Hide the value",
+  severalLines: "Several lines, such as a private key or a certificate",
+  typeSecret: "Type the secret.",
+  typeSecretAgain: "Type it again. A stored secret goes only where it was given.",
+  typeItAgain: "Type it again",
+  storedSecretPlaceholder: "Stored. Leave blank to keep it.",
+  storedSecretEnding: (hint) => `Stored, ending in ${hint}. Leave blank to keep it.`,
+  storedSecretMoved:
+    "Where it is sent has changed, and a stored secret goes only where it was given: type it again.",
+  storedSecretSince: (hint, since) => `One ending in ${hint} has been in use since ${since}.`,
+  storedSecretKept:
+    "It is stored and never shown. Leave this blank to keep it, or type a new one to replace it.",
+  forgottenOnSave: "It is forgotten once you save.",
+  keepIt: "Keep it",
+  forgetIt: "Forget it",
+  chooseSecret: "Choose a secret",
+  secretNotFound: (name) => `No stored secret is named ${name}.`,
+  missingSecret: (name) => `${name} (not found)`,
+  notASecretReference: "Not a reference to a stored secret",
+  copyOf: (name) => `Copy ${name}`,
+  chooseAFile: "Choose a file",
+  orPasteIt: "Or paste it above, or drop a file on it.",
+  readFromFile: (name, size) => `Read from ${name}, ${size}`,
+  hiddenValue: "Hidden",
+  showNamed: (name) => `Show ${name}`,
+  hideNamed: (name) => `Hide ${name}`,
+  couldNotReveal: "Could not show it. Try again.",
+  newSecretHeading: "Copy your new secret",
+  shownOnce: "Copy it now. It is not shown again.",
+  copySecret: "Copy the secret",
+  worksUntil: (moment) => `It works until ${moment}.`,
+  storedItSafely: "I have stored it somewhere safe",
+  secretWord: "Secret",
+  redacted: "redacted",
+  scopeOutsideRole: "Your role here does not include this.",
+  credentialCapture: "Save the captured value",
+  credentialExisting: "Use a stored secret",
+  credentialNew: "Type a value",
+  credentialSourceOf: (name) => `Where ${name} comes from`,
+  credentialSecretOf: (name) => `The secret ${name} reads`,
+  credentialValueOf: (name) => `The value of ${name}`,
+  credentialScopeOf: (name) => `Where ${name} is saved`,
+  chooseSecretFor: (name) => `Choose the secret ${name} reads.`,
+  typeValueOf: (name) => `Type the value of ${name}.`,
+  credentialsUnbound: "Choose where each secret comes from.",
+  everywhere: "Everywhere",
+  onlyIn: (scope) => `${scope} only`,
+  readsSecret: (secret) => `Reads ${secret}`,
+  credentialCaptured: "Saved from what was captured",
+  credentialTyped: "Typed here",
+  sessions: "Sessions",
+  sessionClient: "Signed in on",
+  sessionWhere: "Where",
+  sessionActive: "Last active",
+  thisDevice: "This device",
+  unknownPlace: "Unknown",
+  noSessions: "Not signed in anywhere",
+  signOut: "Sign out",
+  signedOut: "Signed out",
+  signOutOthers: "Sign out everywhere else",
+  signOutOthersHeading: "Sign out everywhere else?",
+  signOutOthersDescription: (count) =>
+    count === 1
+      ? "The other session ends at once, and whoever is using it signs in again."
+      : `The ${String(count)} other sessions end at once, and whoever is using them signs in again.`,
+  connectedApps: "Connected applications",
+  noConnectedApps: "No applications connected",
+  appColumn: "Application",
+  appState: "Status",
+  appConnected: "Connected",
+  appBlocked: "Blocked",
+  connectedBy: "Connected by",
+  appAccess: "Access",
+  scopesOf: (name) => `What ${name} may do`,
+  lastUsed: "Last used",
+  connectedAt: "Connected",
+  disconnect: "Disconnect",
+  disconnectHeading: (name) => `Disconnect ${name}?`,
+  disconnectDescription: "It stops working at once, and has to ask again to reconnect.",
+  appsMayConnect: "Applications may connect",
+  connectAt: "Connect at",
+  copyAddress: "Copy the address",
+  apiKeys: "API keys",
+  noApiKeys: "No API keys yet",
+  noApiKeysDescription:
+    "A key lets a script, a CI job or an agent call the API with what you give it.",
+  keyName: "Name",
+  keyColumn: "Key",
+  keyCount: (count) => (count === 1 ? "1 key" : `${String(count)} keys`),
+  everyScope: "Every scope",
+  scopes: "Scopes",
+  expired: "Expired",
+  createKey: "Create key",
+  createKeyHeading: "Create an API key",
+  createKeyDescription: "It acts with what you give it until it expires or you revoke it.",
+  copyNewKey: "Copy your new key",
+  copyTheKey: "Copy the key",
+  defaultKeyName: "default",
+  nameTheKey: "Name the key after what uses it.",
+  expiresHint: "Make a new key before then: an expired key stops working.",
+  neverExpiresHint: "It works until revoked. Prefer an expiry for a key kept in CI.",
+  revokeKey: "Revoke key",
+  revokeKeyHeading: (name) => `Revoke ${name}?`,
+  revokeKeyDescription: "Anything using it stops working at once.",
+  testConnection: "Test the connection",
+  test: "Test",
+  probeHint: "Optional: something to read as well as connecting.",
+  testingConnection: "Testing…",
+  connectionWorked: "It worked.",
+  connectionFailed: "It failed.",
+  connectionTestFailed: "Could not run the test. Try again.",
 };
 
 const MessagesContext = createContext<ArcMessages>(ENGLISH, "ArcMessages");

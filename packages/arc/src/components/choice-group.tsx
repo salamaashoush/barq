@@ -15,7 +15,7 @@ import {
   Frame,
   bindField,
   fieldStyles,
-  useArcFormContext,
+  useSubmitted,
   withOwnErrors,
 } from "../lib/field.tsx";
 import { type Customisable, parts } from "../lib/parts.ts";
@@ -168,16 +168,6 @@ function ReadOnly(props: ReadOnlyProps) {
       </ul>
     </Show>
   );
-}
-
-/**
- * Whether the form has been submitted at least once, so a rule the field
- * keeps itself shows on a field nobody touched.
- */
-function useSubmitted(own: Binding<unknown>): () => boolean {
-  if (!("field" in own)) return () => false;
-  const form = useArcFormContext();
-  return form.useSelector((state) => state.submissionAttempts > 0);
 }
 
 export interface CheckboxGroupFieldProps extends GroupCommon, FieldValueProps<readonly string[]> {

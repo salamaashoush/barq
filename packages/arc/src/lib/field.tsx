@@ -210,6 +210,16 @@ export function bindField<T>(props: FieldValueProps<T>, empty: T): Binding<T> {
   };
 }
 
+/**
+ * Whether the form has been submitted at least once, so a rule the field
+ * keeps itself shows on a field nobody touched.
+ */
+export function useSubmitted(own: Binding<unknown>): () => boolean {
+  if (!("field" in own)) return () => false;
+  const form = useArcFormContext();
+  return form.useSelector((state) => state.submissionAttempts > 0);
+}
+
 export interface FrameProps {
   of: Wiring;
   /** The field's own props, for its class and its parts' classes. */

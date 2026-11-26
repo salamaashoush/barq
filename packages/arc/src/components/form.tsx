@@ -52,6 +52,8 @@ import { RangeSlider } from "./range-slider.tsx";
 import { Rating } from "./rating.tsx";
 import { TagInput } from "./tag-input.tsx";
 import { IdentifierField, SlugField, SuggestionField } from "./text-fields.tsx";
+import { FileOrPasteField } from "./file-or-paste-field.tsx";
+import { SecretField, SecretReferenceField, StoredSecretField } from "./secret-fields.tsx";
 import { TimeField, TimePicker } from "./time-field.tsx";
 
 import {
@@ -784,6 +786,10 @@ const arcFieldComponents = {
   RepeaterField,
   AddressFields,
   FileField,
+  SecretField,
+  StoredSecretField,
+  SecretReferenceField,
+  FileOrPasteField,
 };
 
 const arcFormComponents = { SubmitButton, FormError };
