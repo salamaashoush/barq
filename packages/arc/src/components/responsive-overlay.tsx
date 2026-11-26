@@ -48,7 +48,12 @@ export const responsiveOverlayStyles = variants({
   },
   variants: {
     presentation: {
-      dialog: {},
+      dialog: {
+        root: arc({
+          maxBlockSize: "calc(100dvh - 2rem)",
+          gridTemplateRows: "auto minmax(0, 1fr) auto",
+        }),
+      },
       popover: { root: arc(layout.column, gap[3], { width: "min(22rem, calc(100vw - 2rem))" }) },
       sheet: { body: arc({ paddingInline: space.x4 }) },
     },
