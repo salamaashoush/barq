@@ -1,21 +1,8 @@
 import { createContext, getOwner, install, onCleanup, useContext } from "@barqjs/core";
 import { useLexicalEditor } from "@barqjs/lexical";
-import { variants } from "@barqjs/css";
-import { SquarePlay } from "@barqjs/lucide/icons/square-play";
 import type { LexicalEditor } from "lexical";
 
 import type { UploadQueueApi } from "../components/file-upload.tsx";
-import { arcLayer as arc } from "../layer.ts";
-import { gap, layout, rounded } from "../style/index.ts";
-import { type Block, type BlockProps, defineBlock } from "./blocks.tsx";
-import { blockGap } from "./theme.ts";
-
-export const mediaStyles = variants({
-  slots: {
-    figure: arc(layout.column, gap[2], layout.flush, layout.relative, blockGap),
-    embed: arc(rounded.md, { width: "100%", aspectRatio: "16 / 9", border: "0" }),
-  },
-});
 
 /** The upload queue an editor's pictures and files go through. */
 export interface EditorUploads {
@@ -86,106 +73,3 @@ export function mediaAddress(
   if (data.fileId === undefined || data.fileId === "") return "";
   return fileUrl === undefined ? data.fileId : fileUrl(data.fileId);
 }
-
-export interface EmbedData {
-  /** The address the reader gave. */
-  url: string;
-  /** What the frame loads, from the provider that recognised `url`. */
-  src: string;
-  title: string;
-}
-
-/** A site an editor embeds: recognises a pasted address and says what to frame. */
-export interface EmbedProvider {
-  name: string;
-  /** The frame's address for `url`, or `null` when it is not this provider's. */
-  match: (url: URL) => string | null;
-}
-
-/** Video sites whose players are made to be framed, as defaults. */
-export const DEFAULT_EMBED_PROVIDERS: readonly EmbedProvider[] = [
-  {
-    name: "YouTube",
-    match: (url) => {
-      const host = url.hostname.replace(/^www\./, "");
-      const id =
-        host === "youtu.be"
-          ? url.pathname.slice(1)
-          : host === "youtube.com" || host === "m.youtube.com" || host === "youtube-nocookie.com"
-            ? (url.searchParams.get("v") ?? /^\/(?:embed|shorts)\/([\w-]+)/.exec(url.pathname)?.[1])
-            : undefined;
-      return id !== undefined && id !== null && /^[\w-]{6,}$/.test(id)
-        ? `https://www.youtube-nocookie.com/embed/${id}`
-        : null;
-    },
-  },
-  {
-    name: "Vimeo",
-    match: (url) => {
-      const id = /^\/(\d+)/.exec(url.pathname)?.[1];
-      return url.hostname.replace(/^www\./, "") === "vimeo.com" && id !== undefined
-        ? `https://player.vimeo.com/video/${id}`
-        : null;
-    },
-  },
-];
-
-/** The embed a pasted or typed address makes, or `null` when no provider takes it. */
-export function resolveEmbed(
-  address: string,
-  providers: readonly EmbedProvider[] = DEFAULT_EMBED_PROVIDERS,
-): EmbedData | null {
-  let url: URL;
-  try {
-    url = new URL(address.trim());
-  } catch {
-    return null;
-  }
-  if (url.protocol !== "https:" && url.protocol !== "http:") return null;
-  for (const provider of providers) {
-    const src = provider.match(url);
-    if (src !== null) return { url: url.href, src, title: provider.name };
-  }
-  return null;
-}
-
-function EmbedView(props: BlockProps<EmbedData>) {
-  return (
-    <figure class={mediaStyles().figure} data-slot="editor-embed">
-      <iframe
-        class={mediaStyles().embed}
-        src={props.data.src}
-        title={props.data.title}
-        loading="lazy"
-        allow="encrypted-media; picture-in-picture; fullscreen"
-        sandbox="allow-scripts allow-same-origin allow-popups allow-presentation"
-        referrerpolicy="strict-origin-when-cross-origin"
-        // A frame that takes the pointer while the block is being arranged
-        // would swallow the press that selects it.
-        style={{ "pointer-events": props.editable && !props.selected ? "none" : undefined }}
-      />
-    </figure>
-  );
-}
-
-/** A video or other page framed from a provider that recognised its address. */
-export const EmbedBlock: Block<EmbedData> = defineBlock<EmbedData>({
-  type: "embed",
-  label: (messages) => messages.embed,
-  group: (messages) => messages.mediaBlocks,
-  icon: () => <SquarePlay />,
-  keywords: ["video", "youtube", "vimeo", "iframe"],
-  defaultData: () => ({ url: "", src: "", title: "" }),
-  component: EmbedView,
-  insertable: false,
-  toMarkdown: (data) => (data.url === "" ? null : `[${data.title}](${data.url})`),
-  fromHtml: {
-    iframe: (element) => resolveEmbed(element.getAttribute("src") ?? ""),
-  },
-  toHtml: (data) => {
-    const link = document.createElement("a");
-    link.href = data.url;
-    link.textContent = data.title;
-    return link;
-  },
-});

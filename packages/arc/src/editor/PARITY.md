@@ -207,7 +207,7 @@ Borderline calls are justified where they are made.
 - **Captions drafted from speech by a service**: generic; done, text-tracks.test.tsx; captions.tsx.
 - **Chapter markers set at the player's time**: generic; done, recording.test.tsx (marked where the player stands, named, moved by a clock typed in any script's digits or to the player's time; the named ones are the player's chapters); markers.tsx.
 - **Voice and video recorders, screen with camera, trim**: generic; pending, phase 4 (arc's `ClipRecorder` records audio and video); recorder.tsx, video-recorder.tsx.
-- **Embeds: fourteen providers, click to load, chapters for two**: generic; done for YouTube and Vimeo (media.test.tsx), pending the other providers and click-to-load in phase 4; nodes/rich.tsx, plugins/embed.tsx.
+- **Embeds: fourteen providers, click to load, chapters for two**: generic; done, embeds.test.tsx, media.test.tsx (stored as the source's `provider` and `embedId`; an app adds a site as an `EmbedProvider`; a reader's frame loads only once chosen, a writer's at once; YouTube's and Vimeo's named markers are chapters, told to their players by message, and markers are set at the time their players report); nodes/rich.tsx, plugins/embed.tsx.
 - **Upload queue: progress, cancel, retry, resumed after reload, warned on leaving**: generic; done for progress, retry and remove (media.test.tsx), pending resume and the leave warning in phase 4; plugins/media.tsx.
 - **Upload errors mapped to words** (too large, wrong type, infected, quota): generic, the quota words domain; pending, phase 4; plugins/media.tsx.
 - **Media library chooser and keep-in-library**: generic (a media library slot); pending, phase 4; context.tsx, plugins/keep-in-media.tsx.
@@ -274,7 +274,7 @@ example in the README and extension.test.tsx is such a block.
 ## Counts
 
 - 196 lines in all: 173 generic, 23 domain.
-- Generic: 132 done, 41 pending; a line done in part counts as pending.
+- Generic: 133 done, 40 pending; a line done in part counts as pending.
 
 ## Phases
 

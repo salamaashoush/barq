@@ -5,7 +5,7 @@ import { DRAG_DROP_PASTE } from "@lexical/rich-text";
 import { $getRoot } from "lexical";
 
 import { documentToMarkdown } from "./document.ts";
-import { resolveEmbed } from "./media.tsx";
+import { resolveEmbed } from "./embeds.tsx";
 import { RichTextEditor } from "./rich-text-editor.tsx";
 import { capture, settle, typeText } from "./test-editor.ts";
 

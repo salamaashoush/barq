@@ -11,7 +11,7 @@ import {
 } from "lexical";
 
 import { BlockEditor } from "./block-editor.tsx";
-import { embedExtension } from "./core.tsx";
+import { embedExtension } from "./embeds.tsx";
 import { documentToMarkdown, htmlToDocument } from "./document.ts";
 import { clipboardGrid, isMarkdown } from "./paste.ts";
 import { sanitiseStyle } from "./text-style.ts";
@@ -41,8 +41,10 @@ async function paste(editor: LexicalEditor, data: Record<string, string>): Promi
 const EMBEDS = embedExtension({
   providers: [
     {
+      id: "example",
       name: "Example video",
-      match: (url) => (url.hostname === "video.example.com" ? "about:blank" : null),
+      parse: (url: URL) => (url.hostname === "video.example.com" ? url.pathname : null),
+      src: () => "about:blank",
     },
   ],
 });

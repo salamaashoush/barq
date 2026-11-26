@@ -863,6 +863,9 @@ export interface ArcMessages {
   markerNamePlaceholder: string;
   markerToNow: string;
   removeMarker: (time: string) => string;
+  embedLoad: (site: string) => string;
+  embedPrivacy: (site: string) => string;
+  openOn: (site: string) => string;
   cut: string;
   paste: string;
   pasteAsText: string;
@@ -2000,6 +2003,9 @@ export const ENGLISH: ArcMessages = {
   markerNamePlaceholder: "What starts here",
   markerToNow: "Move to where the player is",
   removeMarker: (time) => `Remove the moment at ${time}`,
+  embedLoad: (site) => `Load from ${site}`,
+  embedPrivacy: (site) => `${site} sees that you opened it, and may keep cookies.`,
+  openOn: (site) => `Open on ${site}`,
   cut: "Cut",
   paste: "Paste",
   pasteAsText: "Paste as plain text",

@@ -4,13 +4,13 @@ import { columnsExtension } from "./columns.tsx";
 import {
   autoLinkExtension,
   dividerExtension,
-  embedExtension,
   mentionExtension,
   richTextExtension,
   tableExtension,
 } from "./core.tsx";
 import { documentStatusExtension } from "./document-status.tsx";
 import { wordImportExtension } from "./docx-import.tsx";
+import { embedExtension } from "./embeds.tsx";
 import type { EditorExtension } from "./extension.ts";
 import { fileExtension } from "./file-block.tsx";
 import { findExtension } from "./find-panel.tsx";

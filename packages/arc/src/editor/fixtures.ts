@@ -13,7 +13,7 @@ import {
 
 import { $createColumnNode, $createColumnsNode } from "./columns.tsx";
 import { type DocumentOptions, createDocumentEditor, markdownTransformers } from "./document.ts";
-import { EmbedBlock } from "./media.tsx";
+import { EmbedBlock } from "./embeds.tsx";
 import { PageBreakBlock } from "./page-break.tsx";
 import { HIGHLIGHT_COLOURS, TEXT_COLOURS, TEXT_SIZES } from "./text-style.ts";
 
@@ -70,9 +70,11 @@ export function everyBlock(options: DocumentOptions = {}): SerializedEditorState
           columns,
           PageBreakBlock.$create(),
           EmbedBlock.$create({
-            url: "https://www.youtube.com/watch?v=aqz-KE-bpKQ",
-            src: "https://www.youtube-nocookie.com/embed/aqz-KE-bpKQ",
-            title: "A film",
+            provider: "youtube",
+            embedId: "aqz-KE-bpKQ",
+            caption: "A film",
+            size: "full",
+            markers: [{ at: 0, title: "Opening" }],
           }),
           $createParagraphNode().append($createTextNode("The end.")),
         );

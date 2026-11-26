@@ -17,7 +17,6 @@ export { CodeHighlightExtension } from "./code-highlight.ts";
 export {
   autoLinkExtension,
   dividerExtension,
-  embedExtension,
   mentionExtension,
   richTextExtension,
   tableExtension,
@@ -114,18 +113,31 @@ export {
   floatingStyles,
 } from "./floating.tsx";
 export {
-  DEFAULT_EMBED_PROVIDERS,
   type EditorMedia,
   type EditorUploads,
-  type EmbedData,
-  EmbedBlock,
-  type EmbedProvider,
+  type MediaAddressed,
   mediaAddress,
-  mediaStyles,
   provideEditorMedia,
-  resolveEmbed,
   useEditorMedia,
 } from "./media.tsx";
+export {
+  $isEmbedNode,
+  DEFAULT_EMBED_PROVIDERS,
+  type EmbedData,
+  EmbedBlock,
+  EmbedDialog,
+  type EmbedDialogProps,
+  EmbedFigure,
+  type EmbedFigureProps,
+  type EmbedOptions,
+  type EmbedProvider,
+  type FramedPlayer,
+  type ResolvedEmbed,
+  embedExtension,
+  embedHtml,
+  embedStyles,
+  resolveEmbed,
+} from "./embeds.tsx";
 export {
   $isImageNode,
   BLOCK_ALIGNMENTS,

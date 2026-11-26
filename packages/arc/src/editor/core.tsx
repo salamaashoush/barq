@@ -10,7 +10,6 @@ import { Minus } from "@barqjs/lucide/icons/minus";
 import { Pilcrow } from "@barqjs/lucide/icons/pilcrow";
 import { Quote } from "@barqjs/lucide/icons/quote";
 import { SquareCode } from "@barqjs/lucide/icons/square-code";
-import { SquarePlay } from "@barqjs/lucide/icons/square-play";
 import { Table } from "@barqjs/lucide/icons/table";
 import {
   $createHorizontalRuleNode,
@@ -70,7 +69,6 @@ import {
 
 import { CodeHighlightExtension } from "./code-highlight.ts";
 import {
-  OPEN_EMBED_DIALOG_COMMAND,
   OPEN_TABLE_DIALOG_COMMAND,
   TEXT_BLOCK_TYPES,
   type TextBlockType,
@@ -81,10 +79,8 @@ import {
   textBlockLabel,
   toggleMark,
 } from "./commands.ts";
-import { type EditorExtension, defineEditorExtension } from "./extension.ts";
+import { defineEditorExtension } from "./extension.ts";
 import { useDialogCommand } from "./hooks.ts";
-import { DEFAULT_EMBED_PROVIDERS, EmbedBlock, type EmbedProvider, resolveEmbed } from "./media.tsx";
-import { EmbedDialog } from "./media-insert.tsx";
 import { $createMentionNode, $isMentionNode, MentionNode } from "./mention-node.ts";
 import { TableControls, registerTableKeys } from "./table-controls.tsx";
 import { TableDialog } from "./table-size.tsx";
@@ -378,57 +374,6 @@ export const dividerExtension = defineEditorExtension({
   ],
   markdown: [HR],
 });
-
-export interface EmbedExtensionOptions {
-  providers?: readonly EmbedProvider[];
-}
-
-/** Video and other pages framed from the sites `providers` allows: YouTube and Vimeo by default. */
-export function embedExtension(options: EmbedExtensionOptions = {}): EditorExtension {
-  const providers = options.providers ?? DEFAULT_EMBED_PROVIDERS;
-  return defineEditorExtension({
-    name: "arc/embed",
-    dependencies: [EmbedBlock],
-    commands: [
-      {
-        id: "embed",
-        label: (messages) => messages.embed,
-        group: (messages) => messages.mediaBlocks,
-        icon: () => <SquarePlay />,
-        keywords: ["video", "youtube", "vimeo"],
-        run: (editor) => editor.dispatchCommand(OPEN_EMBED_DIALOG_COMMAND, undefined),
-      },
-    ],
-    // An address a provider takes, pasted on an empty line, or a frame's
-    // embed code anywhere, becomes the embed.
-    paste: [
-      {
-        priority: 15,
-        $paste: (data, selection) => {
-          const text = data.getData("text/plain").trim();
-          const frame = /^<iframe\b[^>]*\ssrc=["']([^"']+)["']/i.exec(text);
-          const top = selection.anchor.getNode().getTopLevelElement();
-          const emptyLine = $isParagraphNode(top) && top.getTextContentSize() === 0;
-          const address = frame?.[1] ?? (emptyLine && !/\s/.test(text) ? text : null);
-          const embed = address === null ? null : resolveEmbed(address, providers);
-          if (embed === null || !selection.isCollapsed()) return false;
-          const block = EmbedBlock.$create(embed);
-          if (emptyLine && top !== null) top.replace(block);
-          else selection.insertNodes([block]);
-          if (block.getNextSibling() === null) block.insertAfter($createParagraphNode());
-          block.selectNext();
-          return true;
-        },
-      },
-    ],
-    plugins: [
-      () => {
-        const [open, setOpen] = useDialogCommand(OPEN_EMBED_DIALOG_COMMAND);
-        return <EmbedDialog open={open()} onOpenChange={setOpen} providers={providers} />;
-      },
-    ],
-  });
-}
 
 const MENTION: TextMatchTransformer = {
   dependencies: [MentionNode],
