@@ -30,6 +30,7 @@ import {
   DrawnElement,
   $fillEmpty,
   $placeContainer,
+  $unwrapInto,
   buildDrawn,
   registerContainerKeys,
 } from "./containers.tsx";
@@ -293,6 +294,34 @@ export const calloutExtension = defineEditorExtension({
       },
     },
   ],
+  turnInto: [
+    {
+      id: "callout",
+      label: (messages) => messages.callout,
+      icon: () => <Info />,
+      $is: $isCalloutNode,
+      $from: (block) => {
+        const callout = $createCalloutNode();
+        block.replace(callout);
+        callout.append(block);
+        if (callout.getNextSibling() === null) callout.insertAfter($createParagraphNode());
+        block.selectEnd();
+        return callout;
+      },
+      $unwrap: (block) => {
+        const held = block.getChildren();
+        $unwrapInto(block);
+        return held;
+      },
+    },
+  ],
+  // A callout of one empty line says what it is, so it is not taken for a stray gap.
+  placeholder: (block) => {
+    const parent = block.getParent();
+    return $isCalloutNode(parent) && parent.getChildrenSize() === 1
+      ? (messages) => messages.callout
+      : null;
+  },
   markdown: (all) => [calloutMarkdown(all)],
   markdownPriority: 10,
   render: {

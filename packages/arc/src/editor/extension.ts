@@ -4,6 +4,7 @@ import type { Transformer } from "@lexical/markdown";
 import type {
   AnyLexicalExtensionArgument,
   EditorThemeClasses,
+  ElementNode,
   Klass,
   LexicalEditor,
   LexicalNode,
@@ -41,8 +42,7 @@ export interface EditorCommand {
   run: (editor: LexicalEditor) => void;
 }
 
-/** A button an extension puts on the toolbar, or over selected text. */
-export interface EditorToolbarItem {
+interface ToolbarItemBase {
   id: string;
   label: Label;
   icon: () => Child;
@@ -52,9 +52,43 @@ export interface EditorToolbarItem {
   $pressed?: () => boolean;
   /** Read in the editor's state: whether it is offered for the selection. @default always */
   $shown?: () => boolean;
-  run: (editor: LexicalEditor) => void;
   /** How long it stays out of the More menu as the toolbar narrows; higher stays longer. @default 2 */
   priority?: number;
+}
+
+/** A button an extension puts on the toolbar, or over selected text. */
+export interface EditorToolbarButton extends ToolbarItemBase {
+  run: (editor: LexicalEditor) => void;
+  control?: undefined;
+}
+
+/**
+ * A control of an extension's own on the toolbar or over selected text, a
+ * menu or a popover, drawn inside the editor so it reads it.
+ */
+export interface EditorToolbarControl extends ToolbarItemBase {
+  control: () => JSX.Element;
+  /** What it offers as items of the toolbar's More menu once it no longer fits. */
+  folded?: () => JSX.Element;
+  run?: undefined;
+}
+
+export type EditorToolbarItem = EditorToolbarButton | EditorToolbarControl;
+
+/**
+ * A kind of block Turn into offers beside the text styles: a callout, a
+ * toggle. A block of the kind turned into anything else is taken apart first.
+ */
+export interface BlockConversion {
+  id: string;
+  label: Label;
+  icon?: () => Child;
+  /** Whether the block is one. */
+  $is: (block: LexicalNode) => boolean;
+  /** Inside an update: the block made into one, which is returned. */
+  $from: (block: ElementNode) => ElementNode;
+  /** Inside an update: one taken apart into the blocks it held, left where it was. */
+  $unwrap: (block: ElementNode) => LexicalNode[];
 }
 
 export interface BlockChoiceState {
@@ -164,6 +198,10 @@ export interface EditorExtension {
   readonly keys?: readonly EditorKeyBinding[];
   /** In a block's menu, for the blocks each applies to. */
   readonly blockMenu?: readonly BlockMenuChoice[];
+  /** Kinds of block Turn into offers, in a block's menu and over selected text. */
+  readonly turnInto?: readonly BlockConversion[];
+  /** What an empty block says it is for, faint, where it has a word of the extension's: a toggle's title. */
+  readonly placeholder?: (block: ElementNode) => Label | null;
   readonly paste?: readonly PasteRule[];
   /** Markdown it reads and writes; a function is handed every rule, for a block that holds markdown of its own. */
   readonly markdown?:

@@ -11,34 +11,51 @@ import {
 import { ref as makeRef } from "@barqjs/primitives/refs";
 import { mediaQuery } from "@barqjs/primitives/media";
 import { useLexicalEditor, useLexicalEditorState } from "@barqjs/lexical";
+import { ChevronDown } from "@barqjs/lucide/icons/chevron-down";
+import { Copy } from "@barqjs/lucide/icons/copy";
 import { ExternalLink } from "@barqjs/lucide/icons/external-link";
 import { Link } from "@barqjs/lucide/icons/link";
 import { Pencil } from "@barqjs/lucide/icons/pencil";
+import { Trash2 } from "@barqjs/lucide/icons/trash-2";
 import { Unlink } from "@barqjs/lucide/icons/unlink";
 import { Button } from "@barqjs/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from "@barqjs/ui/dropdown-menu";
 import { Field, FieldError, FieldLabel } from "@barqjs/ui/field";
 import { Input } from "@barqjs/ui/input";
 import { Portal } from "@barqjs/web";
+import { $isCodeNode } from "@lexical/code-core";
 import { formatUrl } from "@lexical/link";
+import { $findMatchingParent } from "@lexical/utils";
 import {
   $getSelection,
+  $isNodeSelection,
   $isRangeSelection,
   COMMAND_PRIORITY_LOW,
   COMMAND_PRIORITY_NORMAL,
   KEY_ESCAPE_COMMAND,
+  KEY_TAB_COMMAND,
   type LexicalEditor,
+  type LexicalNode,
+  type NodeKey,
   SELECTION_CHANGE_COMMAND,
   mergeRegister,
 } from "lexical";
 
 import { IconButton } from "../components/icon-button.tsx";
 import { useArcMessages } from "../components/messages.ts";
-import { Toolbar } from "../components/toolbar.tsx";
+import { Toolbar, ToolbarSeparator } from "../components/toolbar.tsx";
 import { arcLayer as arc } from "../layer.ts";
 import { type Customisable, parts } from "../lib/parts.ts";
 import {
   fg,
   gap,
+  glyph,
   layout,
   rounded,
   space,
@@ -48,22 +65,33 @@ import {
   zIndex,
 } from "../style/index.ts";
 import {
+  $turnInto,
   MARKS,
   type Mark,
   OPEN_LINK_EDITOR_COMMAND,
+  TEXT_BLOCK_TYPES,
+  type TextBlockType,
+  duplicateBlock,
+  editorConversions,
+  removeBlock,
   setLink,
+  setTextBlock,
   shortcutLabel,
+  textBlockLabel,
   toggleMark,
 } from "./commands.ts";
+import { $rootBlockOf } from "./containers.tsx";
 import { labelOf } from "./blocks.tsx";
 import { isSafeUrl } from "./document.ts";
-import { type EditorToolbarItem, editorExtensions } from "./extension.ts";
+import { type BlockConversion, type EditorToolbarItem, editorExtensions } from "./extension.ts";
 import { editorSignal, useRegistration } from "./hooks.ts";
 import { markIcon, markLabel, markShortcut, useSelectionFormat } from "./toolbar.tsx";
 
 export const floatingStyles = variants({
   slots: {
     bar: arc({ zIndex: zIndex.popover, maxWidth: "calc(100vw - 1rem)" }),
+    turnInto: arc(gap[1], { justifyContent: "space-between", minInlineSize: "7rem" }),
+    chevron: arc(glyph.sm),
     popover: arc(surface.elevated, rounded.lg, { zIndex: zIndex.popover, outline: "none" }),
     linkText: arc(type.meta, fg.link, truncate, { maxWidth: "16rem", paddingInline: space.x2 }),
     form: arc(layout.column, gap[3], {
@@ -99,16 +127,38 @@ export interface FloatingFormatToolbarProps extends Customisable<Slots> {
   marks?: readonly Mark[];
   /** A link button. @default true */
   link?: boolean;
+  /** A Turn into menu at its start. @default true */
+  turnInto?: boolean;
+}
+
+/** What the bar is over: words selected, or a block chosen whole. */
+type BarMode = "text" | "block";
+
+interface BarPlace {
+  mode: BarMode;
+  rect: AnchorRect;
+  /** The chosen block's key, in block mode. */
+  block: NodeKey | null;
+}
+
+function rectOf(element: Element): AnchorRect {
+  const box = element.getBoundingClientRect();
+  return { top: box.top, left: box.left, width: box.width, height: box.height };
 }
 
 /**
- * The marks and a link over the text a reader selects, and over a link the
- * caret is in its address with Edit and Remove.
+ * The marks and a link over the text a reader selects, with Turn into at
+ * its start and what the editor's extensions add after (colours, sizes,
+ * clear formatting in a document), and over a block chosen whole its
+ * Duplicate and Delete. It stays away from a code block, where formatting
+ * means nothing, and from a selection still being drawn by a pressed
+ * pointer, coming back once it is let go.
  *
  * Placed with aria's positioning against the selection's box: above it,
  * flipping below near the top of the screen, and below it on a touch screen
  * where the system's own selection menu sits above. It takes no focus, so
- * typing goes on; Alt+F10 moves into it and Escape back out.
+ * typing goes on; Alt+F10, or Tab on a chosen block, moves into it and
+ * Escape back out.
  */
 export function FloatingFormatToolbar(props: FloatingFormatToolbarProps) {
   const editor = useLexicalEditor();
@@ -119,28 +169,65 @@ export function FloatingFormatToolbar(props: FloatingFormatToolbarProps) {
   function cls(): Slots {
     return parts(floatingStyles(), props.classes);
   }
-  const [rect, setRect] = editorSignal<AnchorRect | null>(null);
+  const [place, setPlace] = editorSignal<BarPlace | null>(null);
   const [dismissed, setDismissed] = editorSignal(false);
+  // Read where it is written, so a plain flag rather than a staged signal.
+  let pressed = false;
   const barRef = makeRef<HTMLDivElement>();
   const target = usePortalTarget();
-  const extra = editorExtensions(editor).flatMap((extension) => extension.floating ?? []);
+  const extensions = editorExtensions(editor);
+  const extra = extensions.flatMap((extension) => extension.floating ?? []);
+  const conversions = editorConversions(extensions);
 
   function read(): void {
     const active = editor.getRootElement()?.ownerDocument.activeElement ?? null;
     const inBar = active !== null && (barRef()?.contains(active) ?? false);
-    if (inBar) return;
-    const show = editor.read(() => {
+    if (inBar || pressed) return;
+    const found = editor.read((): BarMode | NodeKey | null => {
       const selection = $getSelection();
-      if (!editor.isEditable() || !$isRangeSelection(selection)) return false;
-      return !selection.isCollapsed() && selection.getTextContent().trim() !== "";
+      if (!editor.isEditable()) return null;
+      if ($isNodeSelection(selection)) {
+        const [node] = selection.getNodes();
+        return selection.getNodes().length === 1 && node !== undefined && node.getParent() !== null
+          ? node.getKey()
+          : null;
+      }
+      if (!$isRangeSelection(selection) || selection.isCollapsed()) return null;
+      if (selection.getTextContent().trim() === "") return null;
+      const inCode = selection.getNodes().some((node) => $findMatchingParent(node, $isCodeNode) !== null);
+      return inCode ? null : "text";
     });
-    setRect(show ? selectionRect(editor) : null);
+    if (found === null) {
+      setPlace(null);
+      return;
+    }
+    if (found === "text") {
+      const rect = selectionRect(editor);
+      setPlace(rect === null ? null : { mode: "text", rect, block: null });
+      return;
+    }
+    const element = editor.getElementByKey(found);
+    setPlace(element === null ? null : { mode: "block", rect: rectOf(element), block: found });
+  }
+
+  function enter(event: KeyboardEvent): boolean {
+    if (place() === null || dismissed()) return false;
+    const first = barRef()?.querySelector<HTMLElement>("button:not([disabled])");
+    if (first === null || first === undefined) return false;
+    event.preventDefault();
+    first.focus();
+    return true;
   }
 
   useRegistration(() =>
     mergeRegister(
-      editor.registerUpdateListener(() => {
-        setDismissed(false);
+      editor.registerUpdateListener(({ editorState, prevEditorState, dirtyElements, dirtyLeaves }) => {
+        // Escape keeps it away until the text or the selection changes; focus
+        // coming back to the text is neither.
+        const now = editorState.read(() => $getSelection());
+        const before = prevEditorState.read(() => $getSelection());
+        const moved = now === null || before === null ? now !== before : !now.is(before);
+        if (moved || dirtyElements.size > 0 || dirtyLeaves.size > 0) setDismissed(false);
         read();
       }),
       editor.registerCommand(
@@ -154,30 +241,45 @@ export function FloatingFormatToolbar(props: FloatingFormatToolbarProps) {
       editor.registerCommand(
         KEY_ESCAPE_COMMAND,
         () => {
-          if (rect() === null) return false;
+          if (place() === null || dismissed()) return false;
           setDismissed(true);
           return true;
         },
         COMMAND_PRIORITY_LOW,
       ),
+      editor.registerCommand(
+        KEY_TAB_COMMAND,
+        (event) => !event.shiftKey && place()?.mode === "block" && enter(event),
+        COMMAND_PRIORITY_LOW,
+      ),
       editor.registerRootListener((root, previous) => {
         function onKey(event: KeyboardEvent): void {
-          if (event.key !== "F10" || !event.altKey || rect() === null) return;
-          event.preventDefault();
-          barRef()?.querySelector<HTMLElement>("button:not([disabled])")?.focus();
+          if (event.key === "F10" && event.altKey) enter(event);
+        }
+        function onDown(event: PointerEvent): void {
+          if (event.button !== 0) return;
+          pressed = true;
+          setPlace(null);
+          root?.ownerDocument.addEventListener("pointerup", onUp, { once: true });
+        }
+        function onUp(): void {
+          pressed = false;
+          read();
         }
         previous?.removeEventListener("keydown", onKey);
+        previous?.removeEventListener("pointerdown", onDown);
         root?.addEventListener("keydown", onKey);
+        root?.addEventListener("pointerdown", onDown);
       }),
     ),
   );
 
   function open(): boolean {
-    return rect() !== null && !dismissed();
+    return place() !== null && !dismissed();
   }
   const position = overlayPosition({
     targetRef: () => editor.getRootElement(),
-    targetRect: rect,
+    targetRect: () => place()?.rect ?? null,
     overlayRef: barRef,
     placement: () => (coarse() ? "bottom" : "top"),
     offset: () => 8,
@@ -190,6 +292,42 @@ export function FloatingFormatToolbar(props: FloatingFormatToolbarProps) {
     editor.focus();
   }
 
+  function kind(): string {
+    return editor.read(() => {
+      const selection = $getSelection();
+      if (!$isRangeSelection(selection)) return "";
+      const block = $rootBlockOf(selection.anchor.getNode());
+      const own = block === null ? undefined : conversions.find((one) => one.$is(block));
+      return own?.id ?? format().block ?? "";
+    });
+  }
+
+  function turn(value: string): void {
+    const conversion = conversions.find((one) => one.id === value);
+    if (conversion === undefined) {
+      editor.update(() => {
+        const selection = $getSelection();
+        if (!$isRangeSelection(selection)) return;
+        const block = $rootBlockOf(selection.anchor.getNode());
+        // Out of a callout or a toggle first, then the line takes the style.
+        if (block !== null && conversions.some((one) => one.$is(block))) {
+          $turnInto(block, value, conversions);
+        }
+      });
+      if (TEXT_BLOCK_TYPES.some((one) => one === value)) setTextBlock(editor, value as TextBlockType);
+    } else {
+      editor.update(() => {
+        const selection = $getSelection();
+        if (!$isRangeSelection(selection)) return;
+        const block = $rootBlockOf(selection.anchor.getNode());
+        if (block !== null && $findMatchingParent(selection.anchor.getNode(), $isTableCell) === null) {
+          $turnInto(block, value, conversions);
+        }
+      });
+    }
+    editor.focus();
+  }
+
   return (
     <Show when={open()}>
       <Portal mount={portalContainer(target)}>
@@ -198,6 +336,7 @@ export function FloatingFormatToolbar(props: FloatingFormatToolbarProps) {
           ref={barRef.set}
           class={arc(cls().bar, props.class, props.className)}
           data-slot="floating-format-toolbar"
+          data-mode={place()?.mode}
           onKeyDown={(event: KeyboardEvent) => {
             if (event.key === "Escape") {
               event.preventDefault();
@@ -205,37 +344,113 @@ export function FloatingFormatToolbar(props: FloatingFormatToolbarProps) {
             }
           }}
         >
-          <Toolbar variant="floating" aria-label={messages().formatting}>
-            <For each={props.marks ?? MARKS}>
-              {(mark: Mark) => (
+          <Show
+            when={place()?.mode === "text"}
+            fallback={
+              <Toolbar variant="floating" aria-label={messages().blockToolbar}>
                 <IconButton
-                  label={markLabel(mark, messages())}
-                  shortcut={markShortcut(mark)}
+                  label={messages().duplicate}
+                  shortcut={shortcutLabel("Mod+D")}
                   size="sm"
-                  isPressed={format().marks[mark]}
-                  onPress={() => toggleMark(editor, mark)}
+                  onPress={() => {
+                    const key = place()?.block;
+                    if (key !== null && key !== undefined) duplicateBlock(editor, key);
+                    editor.focus();
+                  }}
                 >
-                  {markIcon(mark)}
+                  <Copy />
                 </IconButton>
-              )}
-            </For>
-            <Show when={props.link !== false}>
-              <IconButton
-                label={messages().link}
-                shortcut={shortcutLabel("Mod+K")}
-                size="sm"
-                isPressed={format().link !== null}
-                onPress={() => editor.dispatchCommand(OPEN_LINK_EDITOR_COMMAND, undefined)}
-              >
-                <Link />
-              </IconButton>
-            </Show>
-            <For each={extra}>{(item: EditorToolbarItem) => <FloatingItem item={item} />}</For>
-          </Toolbar>
+                <IconButton
+                  label={messages().delete}
+                  size="sm"
+                  onPress={() => {
+                    const key = place()?.block;
+                    if (key !== null && key !== undefined) removeBlock(editor, key);
+                    editor.focus();
+                  }}
+                >
+                  <Trash2 />
+                </IconButton>
+              </Toolbar>
+            }
+          >
+            <Toolbar variant="floating" aria-label={messages().formatting}>
+              <Show when={props.turnInto !== false}>
+                <DropdownMenu>
+                  <DropdownMenuTrigger>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      class={cls().turnInto}
+                      data-slot="floating-turn-into"
+                      aria-label={messages().turnInto}
+                    >
+                      <span>
+                        {format().block === null
+                          ? messages().turnInto
+                          : textBlockLabel(format().block!, messages())}
+                      </span>
+                      <ChevronDown class={cls().chevron} aria-hidden="true" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent aria-label={messages().turnInto} align="start">
+                    <DropdownMenuRadioGroup value={kind()} onValueChange={turn}>
+                      <For each={TEXT_BLOCK_TYPES}>
+                        {(style: TextBlockType) => (
+                          <DropdownMenuRadioItem value={style}>
+                            {textBlockLabel(style, messages())}
+                          </DropdownMenuRadioItem>
+                        )}
+                      </For>
+                      <Show when={!format().inTable}>
+                        <For each={conversions}>
+                          {(conversion: BlockConversion) => (
+                            <DropdownMenuRadioItem value={conversion.id}>
+                              {labelOf(conversion.label, messages())}
+                            </DropdownMenuRadioItem>
+                          )}
+                        </For>
+                      </Show>
+                    </DropdownMenuRadioGroup>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <ToolbarSeparator />
+              </Show>
+              <For each={props.marks ?? MARKS}>
+                {(mark: Mark) => (
+                  <IconButton
+                    label={markLabel(mark, messages())}
+                    shortcut={markShortcut(mark)}
+                    size="sm"
+                    isPressed={format().marks[mark]}
+                    onPress={() => toggleMark(editor, mark)}
+                  >
+                    {markIcon(mark)}
+                  </IconButton>
+                )}
+              </For>
+              <Show when={props.link !== false}>
+                <IconButton
+                  label={messages().link}
+                  shortcut={shortcutLabel("Mod+K")}
+                  size="sm"
+                  isPressed={format().link !== null}
+                  onPress={() => editor.dispatchCommand(OPEN_LINK_EDITOR_COMMAND, undefined)}
+                >
+                  <Link />
+                </IconButton>
+              </Show>
+              <For each={extra}>{(item: EditorToolbarItem) => <FloatingItem item={item} />}</For>
+            </Toolbar>
+          </Show>
         </div>
       </Portal>
     </Show>
   );
+}
+
+function $isTableCell(node: LexicalNode): boolean {
+  return node.getType() === "tablecell";
 }
 
 interface FloatingItemProps {
@@ -248,6 +463,14 @@ function FloatingItem(props: FloatingItemProps) {
   const messages = useArcMessages();
   const shown = useLexicalEditorState(() => props.item.$shown?.() ?? true);
   const pressed = useLexicalEditorState(() => props.item.$pressed?.() ?? false);
+  const item = props.item;
+  if (item.control !== undefined) {
+    return (
+      <Show when={shown()}>
+        <item.control />
+      </Show>
+    );
+  }
   return (
     <Show when={shown()}>
       <IconButton
@@ -257,7 +480,7 @@ function FloatingItem(props: FloatingItemProps) {
         }
         size="sm"
         isPressed={props.item.$pressed === undefined ? undefined : pressed()}
-        onPress={() => props.item.run(editor)}
+        onPress={() => item.run(editor)}
       >
         {props.item.icon()}
       </IconButton>

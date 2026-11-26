@@ -13,7 +13,8 @@ import {
 import { BlockEditor } from "./block-editor.tsx";
 import { embedExtension } from "./core.tsx";
 import { documentToMarkdown, htmlToDocument } from "./document.ts";
-import { clipboardGrid, isMarkdown, sanitiseStyle } from "./paste.ts";
+import { clipboardGrid, isMarkdown } from "./paste.ts";
+import { sanitiseStyle } from "./text-style.ts";
 import { RichTextEditor } from "./rich-text-editor.tsx";
 import { capture, settle, textOf } from "./test-editor.ts";
 

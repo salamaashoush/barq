@@ -46,6 +46,7 @@ import { $unwrapInto } from "./containers.tsx";
 import { isSafeUrl } from "./core.tsx";
 import { defineEditorExtension, editorExtensions, transformersOf } from "./extension.ts";
 import { $insertHtml } from "./html-import.ts";
+import { sanitiseStyle } from "./text-style.ts";
 
 export const MAX_TABLE_ROWS = 50;
 export const MAX_TABLE_COLUMNS = 20;
@@ -401,50 +402,6 @@ export async function pasteAt(
     });
   }
   editor.focus();
-}
-
-/** One colour as `#rrggbb`, or nothing for a transparent one. */
-function normaliseColour(value: string): string | null {
-  const rgb = /^rgba?\(\s*(\d+)[\s,]+(\d+)[\s,]+(\d+)(?:[\s,/]+([\d.]+%?))?\s*\)$/i.exec(value);
-  if (rgb === null) return /^#[\da-f]{3,8}$/i.test(value) ? value.toLowerCase() : null;
-  const alpha =
-    rgb[4] === undefined ? 1 : Number.parseFloat(rgb[4]) / (rgb[4].endsWith("%") ? 100 : 1);
-  if (alpha === 0) return null;
-  return `#${[rgb[1], rgb[2], rgb[3]].map((one) => Number(one).toString(16).padStart(2, "0")).join("")}`;
-}
-
-/** The font sizes kept: an em of the text around, or pixels within reason. */
-function normaliseSize(value: string): string | null {
-  const size = /^([\d.]+)(px|em|rem)$/.exec(value);
-  if (size === null) return null;
-  const amount = Number(size[1]);
-  if (size[2] === "px") return amount >= 8 && amount <= 96 ? value : null;
-  return amount >= 0.5 && amount <= 4 ? `${String(amount)}em` : null;
-}
-
-/**
- * A pasted style kept to what a document draws: its colour, its highlight,
- * its size and its first font. Everything else a page or a word processor
- * brings (margins, line heights, positions) is dropped.
- */
-export function sanitiseStyle(style: string): string {
-  const kept: string[] = [];
-  for (const declaration of style.split(";")) {
-    const at = declaration.indexOf(":");
-    if (at < 0) continue;
-    const property = declaration.slice(0, at).trim().toLowerCase();
-    const raw = declaration.slice(at + 1).trim();
-    const value =
-      property === "color" || property === "background-color"
-        ? normaliseColour(raw)
-        : property === "font-size"
-          ? normaliseSize(raw)
-          : property === "font-family"
-            ? (raw.split(",")[0]?.trim() ?? null)
-            : null;
-    if (value !== null && value !== "") kept.push(`${property}: ${value}`);
-  }
-  return kept.join("; ");
 }
 
 function $sanitiseText(node: TextNode): void {

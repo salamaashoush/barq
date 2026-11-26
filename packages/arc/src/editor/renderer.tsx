@@ -13,6 +13,8 @@ import {
   type SerializedEditorState,
 } from "lexical";
 
+import { TableCellHeaderStates } from "@lexical/table";
+
 import { CodeBlock } from "../code/code-block.tsx";
 import { type ArcMessages, useArcMessages } from "../components/messages.ts";
 import { Link } from "../components/text-link.tsx";
@@ -33,6 +35,8 @@ import type {
   RenderScope,
   StoredNode as AnyStoredNode,
 } from "./extension.ts";
+import { codeGutter } from "./code-gutter.ts";
+import { sanitiseStyle } from "./text-style.ts";
 import { type DocumentSlots, documentStyles } from "./theme.ts";
 
 /** A node as stored, read loosely, with the fields of the nodes drawn here typed. */
@@ -52,10 +56,14 @@ interface StoredNode extends AnyStoredNode {
   colSpan?: number;
   colWidths?: readonly number[];
   rowSpan?: number;
+  rowStriping?: boolean;
+  backgroundColor?: string | null;
+  verticalAlign?: string;
   mentionId?: string;
   mentionName?: string;
   trigger?: string;
   data?: unknown;
+  style?: string;
 }
 
 /** A mention as `RichTextRenderer` hands it to `renderMention`. */
@@ -127,7 +135,19 @@ function Text(props: TextProps): JSX.Element {
   if (has(IS_SUBSCRIPT)) out = <sub>{out}</sub>;
   if (has(IS_SUPERSCRIPT)) out = <sup>{out}</sup>;
   if (has(IS_CODE)) out = <code>{out}</code>;
+  const style = typeof node.style === "string" ? styleOf(sanitiseStyle(node.style)) : undefined;
+  if (style !== undefined) out = <span style={style}>{out}</span>;
   return out;
+}
+
+/** A sanitised style string as the properties JSX takes, or none when it is empty. */
+function styleOf(style: string): Record<string, string> | undefined {
+  const out: Record<string, string> = {};
+  for (const declaration of style.split(";")) {
+    const at = declaration.indexOf(":");
+    if (at > 0) out[declaration.slice(0, at).trim()] = declaration.slice(at + 1).trim();
+  }
+  return Object.keys(out).length === 0 ? undefined : out;
 }
 
 interface ChildrenProps {
@@ -236,6 +256,7 @@ function Node(props: NodeProps): JSX.Element {
           class={context.slots.codeBlock}
           spellcheck={false}
           data-language={node.language ?? undefined}
+          data-gutter={codeGutter(codeText(node))}
         >
           {codeText(node)}
         </code>
@@ -245,7 +266,10 @@ function Node(props: NodeProps): JSX.Element {
     case "table":
       return (
         <div class={context.slots.tableScroller}>
-          <table class={context.slots.table}>
+          <table
+            class={arc(context.slots.table, node.rowStriping === true ? context.slots.tableStriped : undefined)}
+            data-lexical-row-striping={node.rowStriping === true ? "true" : undefined}
+          >
             <Show when={(node.colWidths?.length ?? 0) > 0}>
               <colgroup>
                 <For each={node.colWidths ?? []}>
@@ -270,6 +294,16 @@ function Node(props: NodeProps): JSX.Element {
     case "tablecell": {
       const header = (node.headerState ?? 0) !== 0;
       const Cell = dynamic(() => (header ? "th" : "td") as "td");
+      const columnHeader = ((node.headerState ?? 0) & TableCellHeaderStates.ROW) === 0;
+      const colour =
+        typeof node.backgroundColor === "string"
+          ? styleOf(sanitiseStyle(`background-color: ${node.backgroundColor}`))
+          : undefined;
+      const vertical =
+        node.verticalAlign === "middle" || node.verticalAlign === "bottom"
+          ? { "vertical-align": node.verticalAlign }
+          : undefined;
+      const cellStyle = colour === undefined && vertical === undefined ? undefined : { ...colour, ...vertical };
       return (
         <Cell
           class={
@@ -281,7 +315,8 @@ function Node(props: NodeProps): JSX.Element {
           }
           colSpan={node.colSpan !== undefined && node.colSpan > 1 ? node.colSpan : undefined}
           rowSpan={node.rowSpan !== undefined && node.rowSpan > 1 ? node.rowSpan : undefined}
-          scope={header ? "col" : undefined}
+          scope={header ? (columnHeader ? "row" : "col") : undefined}
+          style={cellStyle}
         >
           <Children nodes={node.children} context={context} />
         </Cell>

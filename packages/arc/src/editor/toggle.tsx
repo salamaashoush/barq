@@ -522,6 +522,42 @@ export const toggleExtension = defineEditorExtension({
       run: (editor) => editor.update(() => void $insertToggle()),
     },
   ],
+  turnInto: [
+    {
+      id: "toggle",
+      label: (messages) => messages.toggle,
+      icon: () => <ListCollapse />,
+      $is: $isToggleNode,
+      $from: (block) => {
+        const toggle = $createToggleNode(true);
+        const title = $createToggleTitleNode();
+        const content = $createToggleContentNode();
+        // A list has no line to be the title: it goes under an empty one.
+        if ($isListNode(block)) {
+          block.replace(toggle);
+          content.append(block);
+        } else {
+          title.append(...block.getChildren());
+          block.replace(toggle);
+          content.append($createParagraphNode());
+        }
+        toggle.append(title, content);
+        if (toggle.getNextSibling() === null) toggle.insertAfter($createParagraphNode());
+        title.selectEnd();
+        return toggle;
+      },
+      $unwrap: (block) => {
+        const [title, content] = block.getChildren();
+        const held: LexicalNode[] = [];
+        if ($isElementNode(title)) held.push($createParagraphNode().append(...title.getChildren()));
+        if ($isElementNode(content)) held.push(...content.getChildren());
+        for (const one of held) block.insertBefore(one);
+        block.remove();
+        return held;
+      },
+    },
+  ],
+  placeholder: (block) => ($isToggleTitleNode(block) ? (messages) => messages.toggleTitle : null),
   markdown: (all) => [toggleMarkdown(all)],
   markdownPriority: 10,
   render: {

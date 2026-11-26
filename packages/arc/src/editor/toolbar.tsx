@@ -566,11 +566,13 @@ interface ExtensionToolProps {
   disabled: boolean;
 }
 
-/** An extension's button, pressed as its `$pressed` reads the selection. */
+/** An extension's button, pressed as its `$pressed` reads the selection, or its own control. */
 function ExtensionTool(props: ExtensionToolProps) {
   const editor = useLexicalEditor();
   const messages = useArcMessages();
   const pressed = useLexicalEditorState(() => props.item.$pressed?.() ?? false);
+  const item = props.item;
+  if (item.control !== undefined) return <item.control />;
   return (
     <IconButton
       label={labelOf(props.item.label, messages())}
@@ -578,7 +580,7 @@ function ExtensionTool(props: ExtensionToolProps) {
       size="sm"
       isPressed={props.item.$pressed === undefined ? undefined : pressed()}
       isDisabled={props.disabled}
-      onPress={() => props.item.run(editor)}
+      onPress={() => item.run(editor)}
     >
       {props.item.icon()}
     </IconButton>
@@ -602,6 +604,10 @@ function FoldedTool(props: FoldedToolProps) {
   const messages = useArcMessages();
   const tool = props.tool;
   const extra = props.item;
+  if (extra?.control !== undefined) {
+    const Folded = extra.folded;
+    return Folded === undefined ? null : <Folded />;
+  }
   if (extra !== undefined) {
     return (
       <DropdownMenuItem onSelect={() => extra.run(editor)}>

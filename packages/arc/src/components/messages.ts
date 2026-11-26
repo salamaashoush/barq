@@ -640,6 +640,45 @@ export interface ArcMessages {
   cut: string;
   paste: string;
   pasteAsText: string;
+  superscript: string;
+  subscript: string;
+  textColour: string;
+  highlight: string;
+  defaultColour: string;
+  colourName: (
+    colour: "gray" | "brown" | "orange" | "yellow" | "green" | "blue" | "purple" | "pink" | "red",
+  ) => string;
+  textSize: string;
+  textSizeName: (size: "small" | "normal" | "large" | "huge") => string;
+  clearFormatting: string;
+  documentInvalid: string;
+  markdown: string;
+  markdownHint: string;
+  replaceFromMarkdown: string;
+  blockToolbar: string;
+  blockGroups: string;
+  tableRow: (row: number) => string;
+  tableColumn: (column: number) => string;
+  dragTableLine: string;
+  moveRowUp: string;
+  moveRowDown: string;
+  moveColumnBefore: string;
+  moveColumnAfter: string;
+  headerColumn: string;
+  mergeCells: string;
+  splitCell: string;
+  cellColour: string;
+  cellAlignment: string;
+  verticalAlignment: string;
+  alignTop: string;
+  alignMiddle: string;
+  alignBottom: string;
+  stripedRows: string;
+  lineAbove: string;
+  lineBelow: string;
+  tableMoved: (kind: "row" | "column", position: number, total: number) => string;
+  codeLanguage: string;
+  plainText: string;
 }
 
 export const ENGLISH: ArcMessages = {
@@ -1316,6 +1355,56 @@ export const ENGLISH: ArcMessages = {
   cut: "Cut",
   paste: "Paste",
   pasteAsText: "Paste as plain text",
+  superscript: "Superscript",
+  subscript: "Subscript",
+  textColour: "Text colour",
+  highlight: "Highlight",
+  defaultColour: "Default",
+  colourName: (colour) =>
+    ({
+      gray: "Grey",
+      brown: "Brown",
+      orange: "Orange",
+      yellow: "Yellow",
+      green: "Green",
+      blue: "Blue",
+      purple: "Purple",
+      pink: "Pink",
+      red: "Red",
+    })[colour],
+  textSize: "Text size",
+  textSizeName: (size) =>
+    ({ small: "Small", normal: "Normal", large: "Large", huge: "Huge" })[size],
+  clearFormatting: "Clear formatting",
+  documentInvalid: "This document cannot be saved as it is",
+  markdown: "Markdown",
+  markdownHint: "The document as Markdown: copy it out, or change it and replace the document.",
+  replaceFromMarkdown: "Replace the document",
+  blockToolbar: "Block",
+  blockGroups: "Groups",
+  tableRow: (row) => `Row ${String(row)}`,
+  tableColumn: (column) => `Column ${String(column)}`,
+  dragTableLine: "Drag to move, or press for actions",
+  moveRowUp: "Move row up",
+  moveRowDown: "Move row down",
+  moveColumnBefore: "Move column before",
+  moveColumnAfter: "Move column after",
+  headerColumn: "Header column",
+  mergeCells: "Merge cells",
+  splitCell: "Split cell",
+  cellColour: "Cell colour",
+  cellAlignment: "Text alignment",
+  verticalAlignment: "Vertical alignment",
+  alignTop: "Top",
+  alignMiddle: "Middle",
+  alignBottom: "Bottom",
+  stripedRows: "Striped rows",
+  lineAbove: "Add a line above",
+  lineBelow: "Add a line below",
+  tableMoved: (kind, position, total) =>
+    `${kind === "row" ? "Row" : "Column"} moved to ${String(position)} of ${String(total)}`,
+  codeLanguage: "Language",
+  plainText: "Plain text",
 };
 
 const MessagesContext = createContext<ArcMessages>(ENGLISH, "ArcMessages");
