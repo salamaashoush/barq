@@ -13,6 +13,7 @@ import {
 import { ConfirmHost, type ConfirmHostProps } from "./confirm.tsx";
 import { linkRouter, maybeRouter } from "./link.ts";
 import { type ArcMessages, provideArcMessages } from "./messages.ts";
+import { ModalHost, type ModalHostProps } from "./modals.tsx";
 
 interface Look {
   readonly theme: ArcThemeSelection | undefined;
@@ -52,12 +53,15 @@ export interface ArcProviderProps {
   messages?: Partial<ArcMessages>;
   /** `classes` for the dialog `confirm()` draws. */
   confirm?: ConfirmHostProps;
+  /** `classes` for the loading and failed dialogs of `openModal()`. */
+  modals?: ModalHostProps;
   children?: Child;
 }
 
 /**
  * What a page built on arc needs once, near its root: the theme, the colour
- * scheme, the locale, the toast stack and the host `confirm()` draws in.
+ * scheme, the locale, the toast stack, and the hosts `confirm()` and
+ * `openModal()` draw in.
  *
  * ```tsx
  * <ArcProvider theme={{ base: "neutral", accent: "blue" }} locale="ar">
@@ -109,6 +113,7 @@ export function ArcProvider(props: ArcProviderProps) {
         <Toaster {...(props.toaster === false ? {} : props.toaster)} theme={toastTheme()} />
       </Show>
       <ConfirmHost {...props.confirm} />
+      <ModalHost {...props.modals} />
     </>
   );
 }
