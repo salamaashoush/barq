@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { type ParentProps } from "@barqjs/core";
+import { type ParentProps, createSignal } from "@barqjs/core";
 import { collectCss } from "@barqjs/css";
 import { provideLocale } from "@barqjs/aria/i18n";
 import { type AnyRouteDefinition, Outlet } from "@barqjs/router";
@@ -278,5 +278,128 @@ describe("the settings parts", () => {
     `);
     expect(result.container.querySelectorAll("h2")).toHaveLength(2);
     result.unmount();
+  });
+});
+
+function TwoCards() {
+  const name = useArcForm(() => ({ defaultValues: { name: "Acme" } }));
+  const slug = useArcForm(() => ({ defaultValues: { slug: "acme" } }));
+  return (
+    <>
+      <SettingsSection id="name" heading="Name" form={name}>
+        <name.AppField name="name">{(field) => <field.TextField label="Name" />}</name.AppField>
+      </SettingsSection>
+      <SettingsSection id="slug" heading="Address" form={slug}>
+        <slug.AppField name="slug">{(field) => <field.TextField label="Slug" />}</slug.AppField>
+      </SettingsSection>
+    </>
+  );
+}
+
+function areaTree(narrow: "list" | "row"): AnyRouteDefinition[] {
+  return [
+    {
+      path: "/",
+      component: () => (
+        <>
+          <ConfirmHost />
+          <Outlet />
+        </>
+      ),
+      children: [
+        {
+          path: "settings",
+          component: () => (
+            <SettingsLayout navigation={NAVIGATION} narrow={narrow} back={{ to: "/settings" }}>
+              <Outlet />
+            </SettingsLayout>
+          ),
+          children: [
+            { path: "profile", component: () => <TwoCards /> },
+            { path: "security", component: () => <p>Security</p> },
+          ],
+        },
+      ],
+    },
+  ] as never;
+}
+
+describe("SettingsLayout's area", () => {
+  test("asks once before leaving, however many cards hold changes", async () => {
+    const view = await renderRoute({ routeTree: areaTree("list"), path: "/settings/profile" });
+    await user.type(screen.getByRole("textbox", { name: "Name" }), "!");
+    await user.type(screen.getByRole("textbox", { name: "Slug" }), "-co");
+    await settle();
+    await user.click(screen.getByRole("link", { name: "Security" }));
+    await waitFor(() => expect(screen.getAllByRole("alertdialog")).toHaveLength(1));
+    await user.click(screen.getByRole("button", { name: "Discard" }));
+    await waitFor(() => expect(view.state.location().pathname).toBe("/settings/security"));
+    await settle();
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    view.unmount();
+  });
+
+  test("narrow as a row: the sections scroll above the open one, with no way back", async () => {
+    const view = await renderRoute({ routeTree: areaTree("row"), path: "/settings/profile" });
+    expect(slot("settings-layout")?.getAttribute("data-narrow")).toBe("row");
+    expect(screen.queryByRole("link", { name: "All settings" })).toBeNull();
+    const nav = screen.getByRole("navigation", { name: "Settings" });
+    expect(nav.closest('[data-slot="settings-layout-nav"]')).not.toBeNull();
+    view.unmount();
+  });
+});
+
+describe("SettingsSection's states", () => {
+  test("a clean form follows the record when it is fetched again; a changed one keeps its draft", async () => {
+    const [record, setRecord] = createSignal({ name: "Acme" });
+    render(() => {
+      const form = useArcForm(() => ({ defaultValues: { name: "Acme" } }));
+      return (
+        <SettingsSection heading="Name" form={form} values={record()}>
+          <form.AppField name="name">{(field) => <field.TextField label="Name" />}</form.AppField>
+        </SettingsSection>
+      );
+    });
+    await settle();
+    const input = screen.getByRole<HTMLInputElement>("textbox", { name: "Name" });
+    setRecord({ name: "Acme Ltd" });
+    await settle();
+    expect(input.value).toBe("Acme Ltd");
+    await user.type(input, "!");
+    await settle();
+    setRecord({ name: "Acme Group" });
+    await settle();
+    expect(input.value).toBe("Acme Ltd!");
+  });
+
+  test("read only: the fields are disabled and the reason takes Save's place", async () => {
+    render(() => {
+      const form = useArcForm(() => ({ defaultValues: { name: "Acme" } }));
+      return (
+        <SettingsSection heading="Name" form={form} readOnly="Only owners can change these.">
+          <form.AppField name="name">{(field) => <field.TextField label="Name" />}</form.AppField>
+        </SettingsSection>
+      );
+    });
+    await settle();
+    const fields = screen.getByRole("textbox", { name: "Name" }).closest("fieldset");
+    expect(fields?.hasAttribute("disabled")).toBe(true);
+    expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+    expect(slot("settings-section-read-only")?.textContent).toContain("Only owners");
+    expect(await ariaViolations(document.body)).toEqual([]);
+  });
+
+  test("a list slot holds rows edge to edge before the fields", () => {
+    render(() => (
+      <SettingsSection heading="Notifications" list={<ul aria-label="Rows" />}>
+        <p>Fields</p>
+      </SettingsSection>
+    ));
+    const list = slot("settings-section-list") as HTMLElement;
+    expect(list.querySelector("ul")).not.toBeNull();
+    expect(
+      list.compareDocumentPosition(slot("settings-section-body") as HTMLElement) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 });

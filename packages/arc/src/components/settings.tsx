@@ -1,15 +1,28 @@
-import { type Child, For, Show, createSignal, provide, untrack } from "@barqjs/core";
+import {
+  type Child,
+  For,
+  Show,
+  createContext,
+  createEffect,
+  createSignal,
+  hasContext,
+  onCleanup,
+  provide,
+  untrack,
+  useContext,
+} from "@barqjs/core";
 import { variants } from "@barqjs/css";
 import { type AnyFormApi, useSelector } from "@barqjs/form";
 import { Check } from "@barqjs/lucide/icons/check";
 import { ChevronLeft } from "@barqjs/lucide/icons/chevron-left";
+import { Lock } from "@barqjs/lucide/icons/lock";
 import { Button } from "@barqjs/ui/button";
 import { on } from "@barqjs/ui/conditions";
 import { icon } from "@barqjs/ui/shared-icon";
 
 import { arcLayer as arc } from "../layer.ts";
 import { type Customisable, parts } from "../lib/parts.ts";
-import { edge, fg, gap, glyph, layout, space, surface, tone, type } from "../style/index.ts";
+import { edge, fg, gap, glyph, layout, place, space, surface, tone, type } from "../style/index.ts";
 import type { NavGroup } from "./app-shell.tsx";
 import { type ConfirmOptions, confirm } from "./confirm.tsx";
 import { arcFormContext } from "./form.tsx";
@@ -26,13 +39,17 @@ export const settingsStyles = variants({
       gridTemplateColumns: { default: "100%", [on.cqLg]: "14rem minmax(0, 1fr)" },
       alignItems: "start",
     }),
-    nav: arc({
+    nav: arc(layout.minZero, {
       position: { default: "static", [on.cqLg]: "sticky" },
       top: space.x4,
-      ":is([data-selected] > &)": { display: { default: "none", [on.cqLg]: "block" } },
+      ":is([data-selected]:not([data-narrow='row']) > &)": {
+        display: { default: "none", [on.cqLg]: "block" },
+      },
     }),
     detail: arc(layout.column, gap[6], layout.minZero, {
-      ":is(:not([data-selected]) > &)": { display: { default: "none", [on.cqLg]: "flex" } },
+      ":is(:not([data-selected]):not([data-narrow='row']) > &)": {
+        display: { default: "none", [on.cqLg]: "flex" },
+      },
     }),
     back: arc(layout.row, gap[1], type.sm, fg.muted, glyph.md, {
       textDecorationLine: "none",
@@ -43,6 +60,9 @@ export const settingsStyles = variants({
     heading: arc(type.heading),
     description: arc(type.body, fg.muted),
     body: arc(layout.column, gap[4], { padding: space.x6 }),
+    list: arc({ paddingInline: space.x6 }),
+    fields: arc(layout.column, gap[4], layout.flush, layout.minZero, edge.none, place.unpadded),
+    readOnly: arc(layout.row, gap[1.5], type.meta, glyph.sm, layout.grow),
     footer: arc(layout.row, layout.wrap, gap[3], edge.top, {
       paddingInline: space.x6,
       paddingBlock: space.x3,
@@ -78,39 +98,75 @@ export interface SettingsLayoutProps extends Customisable<Slots> {
   selected?: boolean;
   /** Where the way back goes on a narrow screen: the settings' own index route. */
   back?: LinkTarget;
+  /**
+   * On a narrow container: the list of sections first and then the open one
+   * alone (`"list"`), or the sections as one row that scrolls above the open
+   * one (`"row"`). @default "list"
+   */
+  narrow?: "list" | "row";
   /** The open section. */
   children?: Child;
 }
 
+/** Where the sections of one settings area say whether they hold unsaved changes. */
+interface LeaveGuard {
+  watch: (dirty: () => boolean) => () => void;
+}
+
+const leaveGuardContext = createContext<LeaveGuard | null>(null, "SettingsLeaveGuard");
+
 /**
  * A settings area: its sections in a `SideNav` beside the open one on a wide
  * container, and on a narrow one a list of them first and then the section
- * on its own, with a way back.
+ * on its own, with a way back, or with `narrow="row"` the sections as a row
+ * above it.
+ *
+ * Every `SettingsSection` inside reports its unsaved changes to the layout,
+ * which asks once before the area is left, however many cards hold them.
  */
 export function SettingsLayout(props: SettingsLayoutProps) {
   const messages = useArcMessages();
+  const hasRouter = maybeRouter() !== undefined;
+  const [watched, setWatched] = createSignal<readonly (() => boolean)[]>([], { ownedWrite: true });
+  const guard: LeaveGuard = {
+    watch(dirty) {
+      setWatched((all) => [...all, dirty]);
+      return () => setWatched((all) => all.filter((one) => one !== dirty));
+    },
+  };
   function cls(): Slots {
     return parts(settingsStyles(), props.classes);
+  }
+  function row(): boolean {
+    return props.narrow === "row";
   }
   return (
     <div
       class={arc(cls().root, props.class, props.className)}
       data-slot="settings-layout"
       data-selected={props.selected === false ? undefined : ""}
+      data-narrow={props.narrow ?? "list"}
     >
       <div class={cls().nav} data-slot="settings-layout-nav">
         <SideNav
           navigation={props.navigation}
           aria-label={props["aria-label"] ?? messages().settings}
-          collapse="never"
+          collapse={row() ? "scroll" : "never"}
         />
       </div>
       <div class={cls().detail} data-slot="settings-layout-detail">
-        <Show when={props.back !== undefined}>
+        <Show when={props.back !== undefined && !row()}>
           <BackLink target={props.back as LinkTarget} classes={cls()} />
         </Show>
-        {props.children}
+        {provide(
+          leaveGuardContext,
+          () => guard,
+          () => props.children,
+        )}
       </div>
+      <Show when={hasRouter}>
+        <UnsavedChangesGuard when={watched().some((dirty) => dirty())} />
+      </Show>
     </div>
   );
 }
@@ -155,6 +211,19 @@ export interface SettingsSectionProps extends Customisable<Slots> {
   submitLabel?: Child;
   /** Actions in the bar when there is no form. */
   footer?: Child;
+  /**
+   * The record as the server has it now. When it changes, a refetch or
+   * another tab's save, a form with no unsaved change follows it; one with
+   * changes keeps them.
+   */
+  values?: unknown;
+  /**
+   * Read only, with why: "Only owners can change these". The fields are
+   * disabled and Save gives way to the reason.
+   */
+  readOnly?: Child;
+  /** Rows edge to edge under the header, `SettingRow`s or a list, before the fields. */
+  list?: Child;
   children?: Child;
 }
 
@@ -177,9 +246,26 @@ export function SettingsSection(props: SettingsSectionProps) {
           canSubmit: current.canSubmit,
         }));
   let timer: ReturnType<typeof setTimeout> | undefined;
+  const area = hasContext(leaveGuardContext) ? useContext(leaveGuardContext)() : null;
+  if (area !== null && state !== undefined) {
+    const release = area.watch(() => state().isDirty);
+    onCleanup(release);
+  }
+  if (form !== undefined) {
+    createEffect(
+      () => props.values,
+      (values) => {
+        if (values !== undefined && !form.state.isDirty) form.reset(values);
+      },
+      { defer: true },
+    );
+  }
+  function readOnly(): boolean {
+    return props.readOnly !== undefined;
+  }
   async function submit(event: Event): Promise<void> {
     event.preventDefault();
-    if (form === undefined) return;
+    if (form === undefined || readOnly()) return;
     await form.handleSubmit();
     // A save the server refused still completes, its errors set on the form:
     // resetting would wipe them and "Saved" would say the opposite.
@@ -194,14 +280,19 @@ export function SettingsSection(props: SettingsSectionProps) {
   function bar() {
     return (
       <div class={cls().footer} data-slot="settings-section-footer">
-        <span class={cls().hint}>{props.hint}</span>
+        <Show when={readOnly()} fallback={<span class={cls().hint}>{props.hint}</span>}>
+          <span class={cls().readOnly} data-slot="settings-section-read-only">
+            <Lock aria-hidden="true" />
+            {props.readOnly}
+          </span>
+        </Show>
         <Show when={saved() && state?.().isDirty !== true}>
           <span class={cls().saved} role="status" data-slot="settings-section-saved">
             <Check aria-hidden="true" />
             {messages().saved}
           </span>
         </Show>
-        <Show when={form !== undefined} fallback={props.footer}>
+        <Show when={form !== undefined && !readOnly()} fallback={props.footer}>
           <Button
             type="submit"
             isPending={state?.().isSubmitting === true}
@@ -228,10 +319,25 @@ export function SettingsSection(props: SettingsSectionProps) {
             </p>
           </Show>
         </header>
-        <div class={cls().body} data-slot="settings-section-body">
-          {props.children}
-        </div>
-        <Show when={form !== undefined || props.footer !== undefined}>{bar()}</Show>
+        <Show when={props.list !== undefined}>
+          <div class={cls().list} data-slot="settings-section-list">
+            {props.list}
+          </div>
+        </Show>
+        <Show when={props.children !== undefined}>
+          <div class={cls().body} data-slot="settings-section-body">
+            <Show when={form !== undefined} fallback={props.children}>
+              <fieldset
+                class={cls().fields}
+                disabled={readOnly()}
+                data-slot="settings-section-fields"
+              >
+                {props.children}
+              </fieldset>
+            </Show>
+          </div>
+        </Show>
+        <Show when={form !== undefined || props.footer !== undefined || readOnly()}>{bar()}</Show>
       </>
     );
   }
@@ -251,7 +357,7 @@ export function SettingsSection(props: SettingsSectionProps) {
             () => content(),
           )}
         </form>
-        <Show when={hasRouter}>
+        <Show when={hasRouter && area === null}>
           <UnsavedChangesGuard when={state?.().isDirty === true} />
         </Show>
       </Show>

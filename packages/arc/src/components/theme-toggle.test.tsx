@@ -4,7 +4,9 @@ import { type ColorScheme, colorScheme } from "@barqjs/primitives/color-scheme";
 import { ariaViolations, render, renderAndHydrate, screen, tick, user } from "@barqjs/testing";
 
 import { halves } from "../ssr-harness.ts";
-import { ThemeToggle } from "./theme-toggle.tsx";
+import { createSignal } from "@barqjs/core";
+import { waitFor } from "@barqjs/testing";
+import { type ThemeAccountSync, ThemeToggle, useThemeAccountSync } from "./theme-toggle.tsx";
 
 async function settle(): Promise<void> {
   flush();
@@ -124,5 +126,64 @@ describe("ThemeToggle", () => {
       served?.querySelector("svg")?.innerHTML ?? "",
     );
     result.unmount();
+  });
+});
+
+type Choice = "light" | "dark" | "system";
+
+describe("useThemeAccountSync", () => {
+  test("the account's theme wins once loaded, and a choice made here is saved to it", async () => {
+    const [account, setAccount] = createSignal<Choice | undefined>(undefined);
+    const saved: Choice[] = [];
+    render(() => (
+      <Scheme>
+        {(() => {
+          useThemeAccountSync({
+            saved: account,
+            save: async (choice) => {
+              saved.push(choice);
+              setAccount(choice);
+            },
+          });
+          return <ThemeToggle />;
+        })()}
+      </Scheme>
+    ));
+    await settle();
+    expect(scheme?.choice()).toBe("system");
+    setAccount("dark");
+    await settle();
+    expect(scheme?.choice()).toBe("dark");
+    expect(saved).toEqual([]);
+    await user.click(toggle());
+    await settle();
+    await user.click(screen.getByRole("menuitemradio", { name: "Light" }));
+    await waitFor(() => expect(saved).toEqual(["light"]));
+    await settle();
+    expect(scheme?.choice()).toBe("light");
+    setAccount("dark");
+    await settle();
+    expect(scheme?.choice()).toBe("dark");
+    expect(saved).toEqual(["light"]);
+  });
+
+  test("a save that fails keeps the choice here and says why", async () => {
+    let sync: ThemeAccountSync | undefined;
+    render(() => (
+      <Scheme>
+        {(() => {
+          sync = useThemeAccountSync({
+            saved: () => "system",
+            save: () => Promise.reject(new Error("the profile is read only")),
+          });
+          return <ThemeToggle />;
+        })()}
+      </Scheme>
+    ));
+    await settle();
+    scheme?.set("dark");
+    await waitFor(() => expect(sync?.error()).toBe("The profile is read only."));
+    expect(scheme?.choice()).toBe("dark");
+    expect(sync?.pending()).toBe(false);
   });
 });
