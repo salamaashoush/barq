@@ -56,6 +56,7 @@ import {
 import { scrollPosition, windowScroll } from "./scroll.ts";
 import { clearPersisted, peekPersisted, persisted, persistedSession } from "./storage.ts";
 import { elapsed, interval, now, timeout } from "./timer.ts";
+import { decodeUrlState, encodeUrlState, readUrlState, writeUrlState } from "./url-state.ts";
 import { access, shared, sharedKeyed } from "./utils.ts";
 
 const fired: string[] = [];
@@ -228,6 +229,9 @@ const asyncChecks = {
     () => "resolved",
     (error: Error) => error.message,
   ),
+  readUrlState: (await readUrlState()) ?? null,
+  writeUrlState: await writeUrlState({ a: 1 }, { key: "s" }),
+  urlStateRoundTrip: await decodeUrlState(await encodeUrlState({ a: [1, "b"] })),
 };
 
 console.log(JSON.stringify({ ...report, ...asyncChecks }));

@@ -78,6 +78,9 @@ interface Probe {
   raceTimeout: string;
   writeClipboard: string;
   readClipboard: string;
+  readUrlState: unknown;
+  writeUrlState: string;
+  urlStateRoundTrip: unknown;
 }
 
 async function run(): Promise<Probe> {
@@ -199,5 +202,11 @@ describe("with no DOM in the process", () => {
     expect(probed.sleep).toBe("slept");
     expect(probed.raceTimeout).toBe("value");
     expect(probed.aborted).toBe(false);
+  });
+
+  test("URL state has no hash to read, answers a link it cannot write, and still encodes", () => {
+    expect(probed.readUrlState).toBeNull();
+    expect(probed.writeUrlState.startsWith("http://localhost/#s=")).toBe(true);
+    expect(probed.urlStateRoundTrip).toEqual({ a: [1, "b"] });
   });
 });

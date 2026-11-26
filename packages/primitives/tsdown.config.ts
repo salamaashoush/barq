@@ -28,6 +28,7 @@ const modules = [
   "scroll",
   "storage",
   "timer",
+  "url-state",
   "utils",
   "virtual",
   "websocket",

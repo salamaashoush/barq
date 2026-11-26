@@ -172,6 +172,11 @@
       "bun": "./src/timer.ts",
       "import": "./dist/timer.js"
     },
+    "./url-state": {
+      "types": "./dist/url-state.d.ts",
+      "bun": "./src/url-state.ts",
+      "import": "./dist/url-state.js"
+    },
     "./utils": {
       "types": "./dist/utils.d.ts",
       "bun": "./src/utils.ts",

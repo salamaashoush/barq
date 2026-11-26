@@ -226,6 +226,8 @@ clickOutside(menu, close, { ignore: [trigger] });
 `mod` is Command on Apple platforms and Control everywhere else. Modifiers must
 match exactly, so `"k"` does not fire on `mod+k`, and a bare letter is
 suppressed while someone is typing in a field.
+Combos separated by spaces are a sequence: `shortcut("g p", …)` fires on G
+then P, pressed within `sequenceTimeout` (a second) of each other.
 
 ## Reactive collections
 
@@ -359,6 +361,24 @@ backoff, because a server restarting behind a proxy answers 502 for a moment.
 Handlers registered with `on` stay bound across every reconnect, and a
 reactive URL moves the stream.
 
+## State in a link
+
+```ts
+import { readUrlState, urlStateLink, writeUrlState } from "@barqjs/primitives";
+
+const shared = await readUrlState<Workspace>(); // #state=… on the page, or undefined
+const link = await writeUrlState(workspace()); // the address bar is now the link
+const elsewhere = await urlStateLink(workspace(), { base: "https://play.example.com/" });
+```
+
+A JSON value goes into the hash compressed with `deflate-raw` and written in
+base64url, so a playground's whole workspace fits in a link and never reaches
+a server's logs. `key` names the hash parameter (`state` by default) and the
+hash's other parameters stay. Writing rewrites the history entry unless
+`history: "push"` asks for a new one, and fires no `hashchange`.
+`readUrlState` answers `undefined` for a link cut short or edited by hand;
+`encodeUrlState` and `decodeUrlState` are the codec alone, and they reject.
+
 ## Everything else
 
 `bus` and `emitter` for typed events that unsubscribe with their scope,
@@ -400,6 +420,7 @@ would mean two listeners.
 - `websocket`: `websocket`.
 - `event-source`: `eventSource`.
 - `timer`: `timeout`, `interval`, `now`, `elapsed`.
+- `url-state`: `encodeUrlState`, `decodeUrlState`, `readUrlState`, `writeUrlState`, `urlStateLink`.
 - `raf`: `raf`, `fps`.
 - `promise`: `until`, `raceTimeout`, `TimeoutError`, `sleep`, `abortOnCleanup`.
 - `bus`: `emitter`, `bus`, `trigger`.

@@ -40,6 +40,7 @@ import * as scheduled from "./scheduled.ts";
 import * as scroll from "./scroll.ts";
 import * as storage from "./storage.ts";
 import * as timer from "./timer.ts";
+import * as urlState from "./url-state.ts";
 import * as utils from "./utils.ts";
 import * as virtual from "./virtual.ts";
 import * as websocket from "./websocket.ts";
@@ -71,6 +72,7 @@ const MODULES: Record<string, Record<string, unknown>> = {
   scroll,
   storage,
   timer,
+  "url-state": urlState,
   utils,
   virtual,
   websocket,

@@ -168,6 +168,17 @@ export {
 export { type Delay, elapsed, interval, now, timeout } from "./timer.ts";
 
 export {
+  type UrlStateLinkOptions,
+  type UrlStateOptions,
+  type WriteUrlStateOptions,
+  decodeUrlState,
+  encodeUrlState,
+  readUrlState,
+  urlStateLink,
+  writeUrlState,
+} from "./url-state.ts";
+
+export {
   type AnyFunction,
   type Clear,
   type MaybeAccessor,
