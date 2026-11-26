@@ -505,7 +505,10 @@ export function splitterState(options: SplitterStateOptions): SplitterState {
   function sizeContext(): SizeContext {
     const element = access(options.ref) ?? null;
     const context: SizeContext = { groupPixels: groupPixels() || measure() };
-    if (isServer || element === null) return context;
+    // A group built outside the document (cloned from a template, so its
+    // document has no root element) has no font to measure yet; its size
+    // effect settles the layout again once it is placed.
+    if (isServer || element === null || !element.isConnected) return context;
     const view = ownerWindow(element);
     function fontOf(target: Element): number | undefined {
       const parsed = Number.parseFloat(view.getComputedStyle(target).fontSize);

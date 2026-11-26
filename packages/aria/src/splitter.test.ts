@@ -207,6 +207,19 @@ function build(
 }
 
 describe("splitterState", () => {
+  test("a group not yet in the document lays out a length limit without measuring fonts", () => {
+    // As an element cloned from a template's content is in a browser: its
+    // document is inert and has no root element to read a font from.
+    const detached = document.createElement("div");
+    Object.defineProperty(detached, "ownerDocument", {
+      value: { documentElement: null, defaultView: window },
+    });
+    const { state } = build([{ defaultSize: 30, minSize: "12rem" }, {}], {
+      ref: () => detached,
+    });
+    expect(state.layout()).toEqual([30, 70]);
+  });
+
   test("lays the panels out as they register", () => {
     const { state } = build([{ defaultSize: 30 }, {}, {}]);
     expect(state.panelIds()).toEqual(["p0", "p1", "p2"]);
