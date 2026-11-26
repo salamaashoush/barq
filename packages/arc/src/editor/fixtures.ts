@@ -35,6 +35,7 @@ const WRITING = [
   "![A river at dawn](https://example.com/river.png)",
   '<figure data-gallery><img src="https://example.com/river.png" alt="A river"><img src="https://example.com/bridge.png" alt="A bridge" title="The old bridge"></figure>',
   '<figure data-compare><img src="https://example.com/before.png" alt="The field in May"><img src="https://example.com/after.png" alt="The field in June"></figure>',
+  '<a data-file href="https://example.com/report.pdf" data-name="report.pdf" data-mime="application/pdf" data-bytes="48213">report.pdf</a>',
   "مرحبا بالعالم، هذا سطر بالعربية",
 ].join("\n\n");
 

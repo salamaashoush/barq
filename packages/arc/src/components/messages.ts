@@ -836,6 +836,16 @@ export interface ArcMessages {
   compareShown: (before: string, percent: number) => string;
   compareChoose: (side: string) => string;
   editComparison: string;
+  fileBlock: string;
+  fileCaption: string;
+  fileNoPreview: string;
+  openFile: (name: string) => string;
+  viewFile: string;
+  copyFileLink: string;
+  newFileVersion: string;
+  fileDisplay: string;
+  fileShowCard: string;
+  fileShowPages: string;
   cut: string;
   paste: string;
   pasteAsText: string;
@@ -1840,6 +1850,16 @@ export const ENGLISH: ArcMessages = {
   compareShown: (before, percent) => `${before} ${String(percent)}%`,
   compareChoose: (side) => `Choose the ${side.toLowerCase()} picture`,
   editComparison: "Edit comparison",
+  fileBlock: "File",
+  fileCaption: "Caption",
+  fileNoPreview: "This file cannot be shown here.",
+  openFile: (name) => `Open ${name}`,
+  viewFile: "View",
+  copyFileLink: "Copy link",
+  newFileVersion: "Upload a new version",
+  fileDisplay: "Show as",
+  fileShowCard: "A card",
+  fileShowPages: "A card and its pages",
   cut: "Cut",
   paste: "Paste",
   pasteAsText: "Paste as plain text",

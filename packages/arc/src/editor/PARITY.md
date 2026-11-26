@@ -76,7 +76,7 @@ Borderline calls are justified where they are made.
 - **A link on a collapsed caret inserts the address as its text**: generic; done, floating.test.tsx; formatting.ts.
 - **Pasted styles kept to colour, highlight, size and first font**: generic; done, paste.test.tsx; extensions.ts, blocks.spec.ts.
 - **Unsafe links unwrapped to their words**: generic; done, paste.test.tsx; extensions.ts.
-- **Text-format and theme helpers** (number tags, bytes, clock, logical alignment): generic; done for the clock (text-tracks.test.tsx) and alignment (rich-text-editor.test.tsx), pending for bytes and sizes in phase 4; format.ts, theme.ts.
+- **Text-format and theme helpers** (number tags, bytes, clock, logical alignment): generic; done, text-tracks.test.tsx (the clock), rich-text-editor.test.tsx (alignment), file-block.test.tsx (bytes, through arc's `formatBytes`, in the reader's digits), picture.test.tsx (the four sizes); format.ts, theme.ts.
 
 ## Toolbar, floating bar, menus
 
@@ -169,7 +169,7 @@ Borderline calls are justified where they are made.
 ## Import
 
 - **HTML as a document, headless**: generic; done, paste.test.tsx; html-import.ts, html-import.spec.ts.
-- **Stored files addressed in imported HTML** (`<scheme>-file:` links, files and recordings): generic; pending, phase 4 (pictures and embeds done); nodes/stored.ts, html-import.spec.ts.
+- **Stored files addressed in imported HTML** (`<scheme>-file:` links, files and recordings): generic; pending, phase 4 for recordings (pictures and files done through `storedFilesExtension({ scheme })`, file-block.test.tsx); nodes/stored.ts, html-import.spec.ts.
 - **Word: headings, lists, tables, links, pictures where the caret is**: generic; done, docx-import.test.tsx; plugins/word.tsx.
 - **Word: footnotes and endnotes as footnotes**: generic; done, docx-import.test.tsx; plugins/word.tsx.
 - **Word: equations to LaTeX** (fractions, powers, roots, sums, brackets, matrices, functions, limits, accents): generic; done, docx-import.test.tsx; omml.ts, docx.ts, docx.spec.ts.
@@ -201,7 +201,7 @@ Borderline calls are justified where they are made.
 - **Labelled picture: numbered markers with descriptions**: generic (an annotated figure); done, picture.test.tsx (placed by drag and by the arrows, opened one at a time by the reader, listed on paper); picture-labels.tsx.
 - **Gallery: grid, viewer, reorder, up to twenty-four**: generic; done, pictures.test.tsx (read on arc's `Gallery` and `Lightbox`; reordered by a finger's drag, by Alt with an arrow in the reading direction, and by Earlier and Later); nodes/pictures.tsx, pictures-view.tsx, gallery.spec.tsx.
 - **Before and after comparison slider**: generic (image comparison is common in docs); done, pictures.test.tsx (a range control a keyboard, a screen reader and a finger move alike, left to right in either language; one side alone stands named); nodes/pictures.tsx.
-- **File block: card or PDF preview, new version keeping its first id, viewer**: generic; pending, phase 4; nodes/media.tsx, files.tsx, file-viewer.tsx.
+- **File block: card or PDF preview, new version keeping its first id, viewer**: generic; done, file-block.test.tsx (a new version from the card or the block menu keeps the first file as `origin`; the viewer shows pictures, PDFs and text, recordings on `MediaPlayer`); nodes/media.tsx, files.tsx, file-viewer.tsx.
 - **Video and audio block with captions, transcript, chapters, audio description**: generic; pending, phase 4 (the player is arc's `MediaPlayer`); nodes/rich.tsx, media-view.tsx, player.tsx.
 - **Captions, audio description and transcript written beside the recording**: generic; done, text-tracks.test.tsx; captions.tsx.
 - **Captions drafted from speech by a service**: generic; done, text-tracks.test.tsx; captions.tsx.
@@ -274,7 +274,7 @@ example in the README and extension.test.tsx is such a block.
 ## Counts
 
 - 196 lines in all: 173 generic, 23 domain.
-- Generic: 127 done, 46 pending; a line done in part counts as pending.
+- Generic: 129 done, 44 pending; a line done in part counts as pending.
 
 ## Phases
 

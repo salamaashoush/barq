@@ -153,6 +153,30 @@ export {
 } from "./picture.tsx";
 export { imageExtension } from "./picture-extension.tsx";
 export {
+  $isFileNode,
+  FILE_DISPLAYS,
+  FileBlock,
+  FileCard,
+  type FileCardProps,
+  type FileData,
+  type FileDisplay,
+  type FileFamily,
+  type FileOptions,
+  FileViewer,
+  type FileViewerProps,
+  fileBlockStyles,
+  fileExtension,
+  fileFamily,
+  fileHtml,
+  fileMeta,
+  fileViewerStyles,
+  insertFiles,
+  pickFiles,
+  previewable,
+  replaceFile,
+} from "./file-block.tsx";
+export { type StoredFilesOptions, storedFilesExtension } from "./stored-files.ts";
+export {
   CompareBlock,
   CompareFigure,
   type CompareFigureProps,

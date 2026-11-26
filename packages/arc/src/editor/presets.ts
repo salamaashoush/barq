@@ -12,6 +12,7 @@ import {
 import { documentStatusExtension } from "./document-status.tsx";
 import { wordImportExtension } from "./docx-import.tsx";
 import type { EditorExtension } from "./extension.ts";
+import { fileExtension } from "./file-block.tsx";
 import { findExtension } from "./find-panel.tsx";
 import { footnoteExtension } from "./footnote.tsx";
 import { markdownDialogExtension } from "./markdown-dialog.tsx";
@@ -36,6 +37,7 @@ export const documentPreset: readonly EditorExtension[] = [
   dividerExtension,
   imageExtension(),
   picturesExtension(),
+  fileExtension(),
   embedExtension(),
   mentionExtension,
   calloutExtension,
