@@ -25,6 +25,7 @@ import { Route as DiagramRoute } from "./routes/diagram";
 import { Route as EditorRoute } from "./routes/editor";
 import { Route as ExampleAppRoute } from "./routes/example-app";
 import { Route as FeedbackRoute } from "./routes/feedback";
+import { Route as FieldsRoute } from "./routes/fields";
 import { Route as FormattingRoute } from "./routes/formatting";
 import { Route as FormsRoute } from "./routes/forms";
 import { Route as FoundationsRoute } from "./routes/foundations";
@@ -80,6 +81,7 @@ export const routeTree: AnyRouteDefinition[] = [
         path: "feedback",
         src: "/src/routes/feedback.tsx",
       },
+      { ...FieldsRoute.options, id: "/fields", path: "fields", src: "/src/routes/fields.tsx" },
       {
         ...FormattingRoute.options,
         id: "/formatting",
@@ -161,6 +163,7 @@ export interface FileRoutesById {
   "/editor": typeof EditorRoute;
   "/example-app": typeof ExampleAppRoute;
   "/feedback": typeof FeedbackRoute;
+  "/fields": typeof FieldsRoute;
   "/formatting": typeof FormattingRoute;
   "/forms": typeof FormsRoute;
   "/foundations": typeof FoundationsRoute;
@@ -192,6 +195,7 @@ export interface FileRouteTypes {
     | "/editor"
     | "/example-app"
     | "/feedback"
+    | "/fields"
     | "/formatting"
     | "/forms"
     | "/foundations"
@@ -219,6 +223,7 @@ export interface FileRouteTypes {
     | "/editor"
     | "/example-app"
     | "/feedback"
+    | "/fields"
     | "/formatting"
     | "/forms"
     | "/foundations"
