@@ -49,10 +49,111 @@ export interface ArcMessages {
   selected: (count: number) => string;
   clearSelection: string;
   selection: string;
+  actions: string;
+  actionsFor: (name: string) => string;
+  showing: (shown: string) => string;
+  showingAll: (shown: string) => string;
+  showingOf: (shown: string, total: string) => string;
+  couldNotLoad: (label: string) => string;
+  requestId: (id: string) => string;
+  tryAgain: string;
+  totals: string;
+  bulkProgress: (settled: number, total: number) => string;
+  appliesTo: (count: number, total: number) => string;
+  bulkPartial: (done: number, total: number, reason: string) => string;
+  retryFailed: string;
+  filtersApplied: (count: number) => string;
+  clearFilter: string;
+  searchOptions: (label: string) => string;
+  anyTime: string;
+  since: (day: string) => string;
+  until: (day: string) => string;
+  views: string;
+  viewEdited: (name: string) => string;
+  yourViews: string;
+  sharedViews: string;
+  saveAsView: string;
+  updateView: (name: string) => string;
+  renameView: string;
+  openOnView: string;
+  stopOpeningOnView: string;
+  opensByDefault: string;
+  copyViewLink: string;
+  deleteView: string;
+  saveView: string;
+  changeView: (name: string) => string;
+  saveViewDescription: string;
+  changeViewDescription: string;
+  viewName: string;
+  viewNamePlaceholder: string;
+  shareView: string;
+  shareViewHint: string;
+  openOnViewHint: string;
+  timeRange: string;
+  lastHours: (hours: number) => string;
+  customRange: string;
+  live: string;
+  rangeFrom: string;
+  rangeTo: string;
+  rangeOrder: string;
+  fromScope: (owner: string) => string;
+  editIn: string;
+  noneInScope: string;
   discardHeading: string;
   discardDescription: string;
   discard: string;
   keepEditing: string;
+  typeToConfirm: (text: string) => string;
+  checkingDependents: string;
+  blockedTitle: string;
+  blockedDescription: string;
+  dependsOnIt: (count: number) => string;
+  andMore: (count: number) => string;
+  dependentsFailed: string;
+  loading: string;
+  modalFailed: string;
+  allDone: string;
+  restrictedHeading: string;
+  askAnAdmin: string;
+  askForAccess: (names: string) => string;
+  noMatchesHeading: string;
+  noMatchesDescription: string;
+  nextSteps: string;
+  statusHeading: (
+    kind: "not-found" | "forbidden" | "gone" | "signed-out" | "offline" | "unreachable" | "failed",
+  ) => string;
+  statusDescription: (
+    kind: "not-found" | "forbidden" | "gone" | "signed-out" | "offline" | "unreachable" | "failed",
+  ) => string;
+  goHome: string;
+  goBack: string;
+  errorDetails: string;
+  none: string;
+  notSet: string;
+  noLimit: string;
+  nobody: string;
+  notRecorded: string;
+  notApplicable: string;
+  timeLeft: (duration: string) => string;
+  timeUp: string;
+  sessionEndsIn: (time: string) => string;
+  sessionIdle: string;
+  sessionLimit: string;
+  keepAlive: string;
+  extendSession: string;
+  sessionEnded: string;
+  restoreNamed: (name: string) => string;
+  archivedOn: (by: string | undefined, date: string) => string;
+  deletedOn: (by: string | undefined, date: string) => string;
+  archivedHint: string;
+  deletedHint: string;
+  purgedIn: (time: string) => string;
+  reviewStage: string;
+  stageName: (stage: "none" | "draft" | "review" | "completed") => string;
+  startDocument: string;
+  documentLocked: string;
+  publish: string;
+  saveBeforePublishing: string;
   theme: string;
   light: string;
   dark: string;
@@ -723,10 +824,133 @@ export const ENGLISH: ArcMessages = {
   selected: (count) => `${String(count)} selected`,
   clearSelection: "Clear selection",
   selection: "Selection",
+  actions: "Actions",
+  actionsFor: (name) => (name === "" ? "Actions" : `Actions for ${name}`),
+  showing: (shown) => `Showing ${shown}`,
+  showingAll: (shown) => `Showing ${shown}, all loaded`,
+  showingOf: (shown, total) => `Showing ${shown} of ${total}`,
+  couldNotLoad: (label) => `Could not load ${label.toLocaleLowerCase("en")}`,
+  requestId: (id) => `Request ID ${id}`,
+  tryAgain: "Try again",
+  totals: "Totals",
+  bulkProgress: (settled, total) => `${String(settled)} of ${String(total)} done`,
+  appliesTo: (count, total) => `applies to ${String(count)} of ${String(total)}`,
+  bulkPartial: (done, total, reason) =>
+    `${String(done)} of ${String(total)} went through. ${reason}`,
+  retryFailed: "Retry failed",
+  filtersApplied: (count) =>
+    count === 1 ? "1 filter applied" : `${String(count)} filters applied`,
+  clearFilter: "Clear filter",
+  searchOptions: (label) => `Search ${label.toLocaleLowerCase("en")}`,
+  anyTime: "Any time",
+  since: (day) => `Since ${day}`,
+  until: (day) => `Until ${day}`,
+  views: "Views",
+  viewEdited: (name) => `${name} (edited)`,
+  yourViews: "Your views",
+  sharedViews: "Shared",
+  saveAsView: "Save as a new view…",
+  updateView: (name) => `Update ${name}`,
+  renameView: "Rename or share…",
+  openOnView: "Open the list on it",
+  stopOpeningOnView: "Stop opening on it",
+  opensByDefault: "Opens by default",
+  copyViewLink: "Copy link",
+  deleteView: "Delete view",
+  saveView: "Save view",
+  changeView: (name) => `Change ${name}`,
+  saveViewDescription: "The list's filters, sort and columns as they are now, under a name.",
+  changeViewDescription:
+    "Its filters stay as they are; Update in the Views menu saves the list as it is set up now.",
+  viewName: "Name",
+  viewNamePlaceholder: "Failing in production",
+  shareView: "Share with everyone",
+  shareViewHint: "Everyone who sees this list sees it in their Views menu.",
+  openOnViewHint: "The list opens on this view when its address names none.",
+  timeRange: "Time range",
+  lastHours: (hours) => (hours === 1 ? "Last hour" : `Last ${String(hours)} hours`),
+  customRange: "Custom",
+  live: "Live",
+  rangeFrom: "From",
+  rangeTo: "To",
+  rangeOrder: "The end has to come after the start",
+  fromScope: (owner) => `From ${owner}`,
+  editIn: "Read only here. Edit them in",
+  noneInScope: "None.",
   discardHeading: "Discard unsaved changes?",
   discardDescription: "What you changed here has not been saved.",
   discard: "Discard",
   keepEditing: "Keep editing",
+  typeToConfirm: (text) => `To confirm, type ${text}`,
+  checkingDependents: "Checking what depends on it…",
+  blockedTitle: "This can't be deleted yet",
+  blockedDescription: "These depend on it. Change or remove them first.",
+  dependsOnIt: (count) =>
+    count === 1 ? "1 item depends on it:" : `${String(count)} items depend on it:`,
+  andMore: (count) => `and ${String(count)} more`,
+  dependentsFailed: "What depends on it could not be checked",
+  loading: "Loading",
+  modalFailed: "This could not be opened",
+  allDone: "All done",
+  restrictedHeading: "Nothing to show you",
+  askAnAdmin: "Ask an admin for access.",
+  askForAccess: (names) => `Ask ${names} for access.`,
+  noMatchesHeading: "No matches",
+  noMatchesDescription: "Nothing matches these filters. Clear them to see everything.",
+  nextSteps: "Next steps",
+  statusHeading: (kind) =>
+    ({
+      "not-found": "Nothing here",
+      forbidden: "You can't open this page",
+      gone: "This is gone",
+      "signed-out": "Your session has ended",
+      offline: "You're offline",
+      unreachable: "Can't reach the server",
+      failed: "This page failed to load",
+    })[kind],
+  statusDescription: (kind) =>
+    ({
+      "not-found": "The page does not exist, or you do not have access to it.",
+      forbidden: "Your account does not have access to it. Ask an admin if you need it.",
+      gone: "It was deleted or moved, and is no longer here.",
+      "signed-out": "Sign in again to carry on where you were.",
+      offline: "Check your connection. The page loads once it is back.",
+      unreachable: "It may be restarting. Try again in a moment.",
+      failed: "Something went wrong while showing this page.",
+    })[kind],
+  goHome: "Go home",
+  goBack: "Go back",
+  errorDetails: "Details",
+  none: "None",
+  notSet: "Not set",
+  noLimit: "No limit",
+  nobody: "Nobody yet",
+  notRecorded: "Not recorded",
+  notApplicable: "Not applicable",
+  timeLeft: (duration) => `${duration} left`,
+  timeUp: "Time is up",
+  sessionEndsIn: (time) => `Your session ends in ${time}`,
+  sessionIdle: "Nothing is using it. Keep it alive to carry on.",
+  sessionLimit: "It has reached its time limit. Extend it to carry on.",
+  keepAlive: "Keep alive",
+  extendSession: "Extend",
+  sessionEnded: "Your session has ended",
+  restoreNamed: (name) => `Restore ${name}`,
+  archivedOn: (by, date) =>
+    by === undefined ? `Archived on ${date}.` : `Archived by ${by} on ${date}.`,
+  deletedOn: (by, date) =>
+    by === undefined ? `Deleted on ${date}.` : `Deleted by ${by} on ${date}.`,
+  archivedHint: "Its history stays; nothing in it runs or changes.",
+  deletedHint: "It does nothing while deleted. Restore it to use it again.",
+  purgedIn: (time) => `It is removed for good ${time}.`,
+  reviewStage: "Review state",
+  stageName: (stage) =>
+    ({ none: "Not started", draft: "Draft", review: "In review", completed: "Completed" })[stage],
+  startDocument: "Start",
+  documentLocked:
+    "Completed, so it cannot be changed. Set it back to draft or in review to edit it.",
+  publish: "Publish",
+  saveBeforePublishing: "Save the changes before publishing.",
   theme: "Theme",
   light: "Light",
   dark: "Dark",

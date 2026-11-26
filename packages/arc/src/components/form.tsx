@@ -38,6 +38,7 @@ import { useArcMessages } from "./messages.ts";
 import { CheckboxCards, RadioCards } from "./choice-cards.tsx";
 import { ColorField, ColorPicker, ColorSwatches } from "./color.tsx";
 import { DateRangeField } from "./date-range-field.tsx";
+import { MultiSegmentedField, SegmentedField } from "./segmented-control.tsx";
 import { CurrencyField, PercentField, UnitField } from "./number-fields.tsx";
 import { PhoneField } from "./phone-field.tsx";
 import { RangeSlider } from "./range-slider.tsx";
@@ -674,6 +675,8 @@ const arcFieldComponents = {
   Rating,
   RadioCards,
   CheckboxCards,
+  SegmentedField,
+  MultiSegmentedField,
 };
 
 const arcFormComponents = { SubmitButton, FormError };
