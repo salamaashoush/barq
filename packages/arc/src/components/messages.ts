@@ -1,5 +1,7 @@
 import { createContext, getOwner, install, useContext } from "@barqjs/core";
 
+import type { PanelLayout } from "../editor/panels-view.tsx";
+
 /**
  * Every word arc's own components put on the page.
  *
@@ -684,6 +686,20 @@ export interface ArcMessages {
   toggleTitle: string;
   toggleExpanded: string;
   toggleCollapsed: string;
+  panelLayout: string;
+  panelLayoutName: (layout: PanelLayout) => string;
+  panelLayoutHint: (layout: PanelLayout) => string;
+  panelTitle: (layout: PanelLayout) => string;
+  addPanel: (layout: PanelLayout) => string;
+  turnCardOver: string;
+  turnCardBack: string;
+  chooseAgain: string;
+  chosenPath: string;
+  sharedBlock: string;
+  sharedBlockHint: string;
+  editSharedBlock: string;
+  copySharedBlockHere: string;
+  keepAsSharedBlock: string;
   pageBreak: string;
   footnote: string;
   footnotes: string;
@@ -1555,6 +1571,48 @@ export const ENGLISH: ArcMessages = {
   toggleTitle: "Toggle heading",
   toggleExpanded: "Expanded",
   toggleCollapsed: "Collapsed",
+  panelLayout: "Show as",
+  panelLayoutName: (layout) =>
+    ({
+      tabs: "Tabs",
+      steps: "Steps",
+      timeline: "Timeline",
+      cards: "Flip cards",
+      choices: "Choices",
+    })[layout],
+  panelLayoutHint: (layout) =>
+    ({
+      tabs: "Parts a reader opens one at a time",
+      steps: "A process, step by numbered step",
+      timeline: "Events in the order they happened",
+      cards: "Cards a reader turns over, a title on the front",
+      choices: "Paths a reader chooses between",
+    })[layout],
+  panelTitle: (layout) =>
+    ({
+      tabs: "Tab name",
+      steps: "Step",
+      timeline: "Date or event",
+      cards: "Front of the card",
+      choices: "A choice the reader can make",
+    })[layout],
+  addPanel: (layout) =>
+    ({
+      tabs: "Add a tab",
+      steps: "Add a step",
+      timeline: "Add an event",
+      cards: "Add a card",
+      choices: "Add a choice",
+    })[layout],
+  turnCardOver: "Turn over",
+  turnCardBack: "Turn back",
+  chooseAgain: "Choose again",
+  chosenPath: "What happens next",
+  sharedBlock: "Shared block",
+  sharedBlockHint: "A block kept once and shown wherever it is used",
+  editSharedBlock: "Edit everywhere",
+  copySharedBlockHere: "Copy here",
+  keepAsSharedBlock: "Keep as a shared block",
   pageBreak: "Page break",
   footnote: "Footnote",
   footnotes: "Footnotes",

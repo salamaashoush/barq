@@ -458,7 +458,7 @@ interface NodeWithChildren {
 }
 
 /** A node and everything under it as JSON, children included, for a copy. */
-function $deepJSON(node: LexicalNode): SerializedLexicalNode {
+export function $deepJSON(node: LexicalNode): SerializedLexicalNode {
   const json = node.exportJSON() as SerializedLexicalNode & NodeWithChildren;
   if ($isElementNode(node)) json.children = node.getChildren().map($deepJSON);
   return json;

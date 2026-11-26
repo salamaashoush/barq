@@ -19,6 +19,8 @@ import { markdownDialogExtension } from "./markdown-dialog.tsx";
 import { formattingExtension } from "./formatting.tsx";
 import { pasteExtension } from "./paste.ts";
 import { PageBreakBlock } from "./page-break.tsx";
+import { panelsExtension } from "./panels.tsx";
+import { sharedBlockExtension } from "./shared-block.tsx";
 import { toggleExtension } from "./toggle.tsx";
 
 /**
@@ -37,6 +39,8 @@ export const documentPreset: readonly EditorExtension[] = [
   calloutExtension,
   columnsExtension,
   toggleExtension,
+  panelsExtension(),
+  sharedBlockExtension(),
   PageBreakBlock,
   footnoteExtension,
   findExtension,

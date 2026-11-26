@@ -230,6 +230,7 @@ export {
   columnsStyles,
 } from "./columns.tsx";
 export {
+  type BlockMenuAction,
   type BlockMenuChoice,
   editorMessages,
   provideEditorMessages,
@@ -256,6 +257,50 @@ export {
   toggleExtension,
   toggleStyles,
 } from "./toggle.tsx";
+export {
+  $createPanel,
+  $createPanelBodyNode,
+  $createPanelTitleNode,
+  $createPanelsNode,
+  $insertPanels,
+  $isPanelBodyNode,
+  $isPanelNode,
+  $isPanelTitleNode,
+  $isPanelsNode,
+  PanelBodyNode,
+  PanelNode,
+  PanelTitleNode,
+  PanelsNode,
+  type PanelsExtensionOptions,
+  panelsExtension,
+  panelsStyles,
+} from "./panels.tsx";
+export {
+  MAX_PANELS,
+  PANEL_LAYOUTS,
+  type PanelItem,
+  type PanelLayout,
+  type PanelsLook,
+  PanelsView,
+  type PanelsViewProps,
+  type PanelsViewRenders,
+  type PanelsViewSlots,
+  panelsViewStyles,
+} from "./panels-view.tsx";
+export {
+  $createSharedBlockNode,
+  $isSharedBlockNode,
+  $sharableBlock,
+  type SharedBlockOptions,
+  type SharedBlockSource,
+  type SharedBlockViewProps,
+  SharedBlockNode,
+  chooseSharedBlock,
+  copySharedBlockHere,
+  keepSharedBlock,
+  sharedBlockExtension,
+  sharedBlockStyles,
+} from "./shared-block.tsx";
 export { PageBreakBlock, pageBreakStyles } from "./page-break.tsx";
 export {
   $createFootnoteNode,

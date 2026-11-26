@@ -27,6 +27,8 @@ const WRITING = [
   "> A quote",
   "> [!warning]\n> A callout with **words**",
   "<details open>\n<summary>A toggle</summary>\n\nWhat it holds\n\n</details>",
+  '<section data-panels="steps">\n<header>Mix</header>\n\nFlour, then **water**.\n\n<header>Bake</header>\n\nForty minutes.\n\n</section>',
+  '<div data-shared-block="kept-block-1"></div>',
   "```ts\nconst a = 1;\nconst b = 2;\n```",
   "| Name | Role |\n| --- | --- |\n| Sam | Owner |",
   "---",

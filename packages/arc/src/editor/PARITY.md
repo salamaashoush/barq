@@ -106,7 +106,7 @@ Borderline calls are justified where they are made.
 - **Stable block ids on every block, re-made when shared**: generic; pending, phase 11 (comments anchor on them); extensions.ts, format.ts.
 - **Arrow keys leave a container at its edges**: generic; done, callout.test.tsx (shared by callouts, columns and toggles through `registerContainerKeys`); extensions.ts.
 - **Placeholders: empty document, empty heading, list item, quote, the caret's line**: generic; done, block-editor.test.tsx; plugins/Placeholder.tsx.
-- **Placeholders in a toggle's title, a panel's title, a one-line callout**: generic; done for a toggle's title and a one-line callout (block-shell.test.tsx, through each extension's `placeholder`), pending a panel's title with panels in phase 3; plugins/Placeholder.tsx.
+- **Placeholders in a toggle's title, a panel's title, a one-line callout**: generic; done, block-shell.test.tsx (a toggle's title, a one-line callout), panels.test.tsx (a panel's title, worded for its layout), each through its extension's `placeholder`; plugins/Placeholder.tsx.
 - **Divider before the line, caret kept**: generic; done, block-shell.test.tsx; blocks.ts.
 
 ## Callouts, columns, toggles, panels, page breaks
@@ -125,8 +125,8 @@ Borderline calls are justified where they are made.
 - **Toggle: Backspace at its start unwraps it, the title a line**: generic; done, containers.test.tsx; nodes/toggle.ts.
 - **Toggle read as `<details>`, written as `<details>` in HTML and markdown**: generic; done, containers.test.tsx, paste.test.tsx; nodes/toggle.ts, view.tsx.
 - **Toggle opened and closed from the keyboard, announced** (the source had a pointer zone only; arc adds Mod+Enter): generic; done, containers.test.tsx; nodes/toggle.ts.
-- **Panels: tabs, steps, timeline, cards, choices, a layout switch that loses nothing**: generic (tabs and steps are a document's own structure; the source's "choices" are branching paths any guide uses); pending, phase 3; nodes/panels.ts, panels-view.tsx, panels-view.spec.tsx.
-- **Panels: Enter moves title to body, an empty last body line starts a new part, at most twelve**: generic; pending, phase 3; extensions.ts.
+- **Panels: tabs, steps, timeline, cards, choices, a layout switch that loses nothing**: generic (tabs and steps are a document's own structure; the source's "choices" are branching paths any guide uses); done, panels.test.tsx (read on ui's `Tabs` and arc's `Timeline`, keys, pointer, touch, right-to-left, markdown and HTML as `<section data-panels>`, the server and hydration); nodes/panels.ts, panels-view.tsx, panels-view.spec.tsx.
+- **Panels: Enter moves title to body, an empty last body line starts a new part, at most twelve**: generic; done, panels.test.tsx (with Backspace at a title's start, and the block menu's new part through `blockActions`); extensions.ts.
 - **Page break, drawn as a named dashed line, read as a printed page's end**: generic; done, containers.test.tsx; nodes/page-break.tsx.
 - **Page break read from HTML's page-break styles**: generic; done, paste.test.tsx (`data-page-break`); nodes/page-break.tsx.
 - **Student copy region**: domain (the part of a brief each learner gets a copy of); arc gives an element block through `defineEditorExtension` with `$placeContainer`; nodes/starter.ts.
@@ -235,7 +235,7 @@ Borderline calls are justified where they are made.
 - **Comments anchored by block and offset, surviving edits**: generic; pending, phase 11; comments.ts, comments.spec.ts, anchors.ts.
 - **Comment highlights, Mod+Alt+M, a thread opened from its passage, ordered for a panel**: generic; pending, phase 11; plugins/comments.tsx.
 - **Comment marks in the reader**: generic; pending, phase 11; view.tsx.
-- **Shared blocks: kept, inserted, edited where kept, copied here**: generic (synced blocks); pending, phase 3; nodes/shared.tsx, plugins/shared.tsx.
+- **Shared blocks: kept, inserted, edited where kept, copied here**: generic (synced blocks; which blocks a source refuses, the source's questions among them, is the app's `sharable`); done, shared-block.test.tsx (through `sharedBlockExtension({ source })`); nodes/shared.tsx, plugins/shared.tsx.
 
 ## Collaboration and headless
 
@@ -271,7 +271,7 @@ example in the README and extension.test.tsx is such a block.
 ## Counts
 
 - 196 lines in all: 173 generic, 23 domain.
-- Generic: 117 done, 56 pending; a line done in part counts as pending.
+- Generic: 121 done, 52 pending; a line done in part counts as pending.
 
 ## Phases
 
@@ -289,10 +289,10 @@ own sizes.
    containers, direction and language, `replace`, validity, history cap,
    the markdown dialog, table grips, merge and split, colours, stripes, Tab
    rows and the code block's language menu, gutter and copy, fixtures for
-   performance and coverage. Landed, a panel's title placeholder left to
-   phase 3 with panels.
+   performance and coverage. Landed.
 3. **Panels and shared blocks** (about 1,600): tabs, steps, timeline, cards
    and choices with their reader views; shared blocks through a slot.
+   Landed.
 4. **Media** (about 5,500): image sizes, credits, labels, focus; gallery
    and comparison; files with previews and versions; the video and audio
    block on `MediaPlayer` with chapters and descriptions read aloud; the

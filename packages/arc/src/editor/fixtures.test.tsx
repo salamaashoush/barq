@@ -62,7 +62,7 @@ describe("the every-block document", () => {
   test("the renderer draws every block with no violations", async () => {
     render(() => <RichTextRenderer value={everyBlock()} />);
     const page = document.querySelector('[data-slot="rich-text"]')!;
-    for (const part of ["callout", "toggle", "columns", "page-break", "footnotes"]) {
+    for (const part of ["callout", "toggle", "columns", "panels", "page-break", "footnotes"]) {
       expect(page.querySelector(`[data-slot="${part}"]`)).not.toBeNull();
     }
     expect(page.querySelector("table")).not.toBeNull();

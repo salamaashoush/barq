@@ -1517,6 +1517,24 @@ Each keeps the stored shape a document written elsewhere already has.
   as saved. A press on its arrow or Mod+Enter in the title flips it, said to
   a screen reader; Enter in the title goes into its content. The renderer
   draws `<details>`, and `<details>` in HTML or markdown reads back as one.
+- Panels: a set of titled parts read as tabs, numbered steps, a timeline,
+  flip cards or choices between paths, at most twelve. Enter goes from a
+  title to its body, from an empty last line to the next part and from an
+  empty last title out of the set; the block menu shows the set another
+  way, every part kept, and adds a part. The renderer draws them with ui's
+  `Tabs` (the arrows follow the reading direction), arc's `Timeline` (steps
+  numbered in the reader's digits), cards whose front is one button, and
+  choices that show the path taken with a way back; `PanelsView` draws an
+  app's own parts the same way, and `panelsExtension({ class, classes,
+  renders })` restyles every set a renderer draws. Markdown and HTML keep a
+  set as `<section data-panels>`.
+- Shared blocks: a block kept once and shown in many documents, stored as
+  `{ type: "shared", sharedId }`. `sharedBlockExtension({ source })` takes
+  the app's `SharedBlockSource`: a `View` that draws one as it now is,
+  `choose` for the `/shared block` command, `keep` for the block menu's
+  Keep as a shared block, `edit` and `read` for the editor's Edit
+  everywhere and Copy here. Without a source a document still opens and
+  keeps the ones it holds.
 - Formatting past the marks: superscript (Mod+.) and subscript (Mod+,),
   text colour and highlight from nine colours on arc's `ColorSwatches`,
   small, large and huge text, a yellow highlight on Mod+Shift+H, clear
@@ -1631,10 +1649,11 @@ optional beside its `name`:
   block picker (`places` narrows them, `available` asks the editor first);
   `toolbar` and `floating` buttons, or a `control` of its own such as a
   menu (`folded` for the More menu); `blockMenu` choices for the block a
-  menu is open on; `turnInto`, kinds of block Turn into offers, taken
-  apart again when turned into another; `placeholder`, what an empty block
-  of its own says; `keys`, by key or by the key's place, so an Arabic
-  keyboard reaches them;
+  menu is open on and `blockActions`, what it does to that block (a part
+  added, a block kept elsewhere); `turnInto`, kinds of block Turn into
+  offers, taken apart again when turned into another; `placeholder`, what
+  an empty block of its own says; `keys`, by key or by the key's place, so
+  an Arabic keyboard reaches them;
 - `paste` rules, higher `priority` first; `markdown` rules (a function is
   handed every rule, for a block that holds markdown of its own) tried by
   `markdownPriority`; `html`, which rewrites a page before it is read; and
