@@ -8,6 +8,7 @@ import { FilePen } from "@barqjs/lucide/icons/file-pen";
 import { FormInput } from "@barqjs/lucide/icons/form-input";
 import { Gauge } from "@barqjs/lucide/icons/gauge";
 import { Hash } from "@barqjs/lucide/icons/hash";
+import { History } from "@barqjs/lucide/icons/history";
 import { House } from "@barqjs/lucide/icons/house";
 import { Image } from "@barqjs/lucide/icons/image";
 import { KeyRound } from "@barqjs/lucide/icons/key-round";
@@ -48,6 +49,7 @@ import { catalog as metrics } from "../examples/metrics/catalog.ts";
 import { catalog as navigation } from "../examples/navigation/catalog.ts";
 import { catalog as notifications } from "../examples/notifications/catalog.ts";
 import { catalog as overlays } from "../examples/overlays/catalog.ts";
+import { catalog as records } from "../examples/records/catalog.ts";
 import { catalog as secrets } from "../examples/secrets/catalog.ts";
 import { catalog as settings } from "../examples/settings/catalog.ts";
 import { catalog as views } from "../examples/views/catalog.ts";
@@ -82,6 +84,7 @@ export const SECTIONS: readonly Section[] = [
       { catalog: navigation, icon: Compass },
       { catalog: data, icon: Table2 },
       { catalog: views, icon: ListFilter },
+      { catalog: records, icon: History },
       { catalog: media, icon: Image },
       { catalog: charts, icon: ChartColumn },
       { catalog: metrics, icon: Gauge },

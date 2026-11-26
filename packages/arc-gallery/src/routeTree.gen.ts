@@ -36,6 +36,7 @@ import { Route as MetricsRoute } from "./routes/metrics";
 import { Route as NavigationRoute } from "./routes/navigation";
 import { Route as NotificationsRoute } from "./routes/notifications";
 import { Route as OverlaysRoute } from "./routes/overlays";
+import { Route as RecordsRoute } from "./routes/records";
 import { Route as SecretsRoute } from "./routes/secrets";
 import { Route as SettingsRoute } from "./routes/settings";
 import { Route as ViewsRoute } from "./routes/views";
@@ -120,6 +121,7 @@ export const routeTree: AnyRouteDefinition[] = [
         path: "overlays",
         src: "/src/routes/overlays.tsx",
       },
+      { ...RecordsRoute.options, id: "/records", path: "records", src: "/src/routes/records.tsx" },
       { ...SecretsRoute.options, id: "/secrets", path: "secrets", src: "/src/routes/secrets.tsx" },
       {
         ...SettingsRoute.options,
@@ -180,6 +182,7 @@ export interface FileRoutesById {
   "/navigation": typeof NavigationRoute;
   "/notifications": typeof NotificationsRoute;
   "/overlays": typeof OverlaysRoute;
+  "/records": typeof RecordsRoute;
   "/secrets": typeof SecretsRoute;
   "/settings": typeof SettingsRoute;
   "/views": typeof ViewsRoute;
@@ -215,6 +218,7 @@ export interface FileRouteTypes {
     | "/navigation"
     | "/notifications"
     | "/overlays"
+    | "/records"
     | "/secrets"
     | "/settings"
     | "/views"
@@ -246,6 +250,7 @@ export interface FileRouteTypes {
     | "/navigation"
     | "/notifications"
     | "/overlays"
+    | "/records"
     | "/secrets"
     | "/settings"
     | "/views"
