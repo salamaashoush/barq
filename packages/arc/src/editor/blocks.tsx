@@ -39,14 +39,19 @@ export interface BlockProps<Data> {
   remove: () => void;
   /** The node's key while in an editor; empty in a renderer. */
   nodeKey: NodeKey;
+  /** Where the block sits in the column, for a block narrower than it: `start`, `center`, `end`. */
+  format: ElementFormatType;
 }
 
 /** A word that depends on the reader's language, or one fixed. */
 export type BlockLabel = string | ((messages: ArcMessages) => string);
 
+/** What a block's reader finds: its data, and where the block sits, as the node's own `format`. */
+export type BlockRead<Data> = Data & { readonly format?: ElementFormatType };
+
 export interface MarkdownImport<Data> {
   regExp: RegExp;
-  data: (match: string[]) => Data | null;
+  data: (match: string[]) => BlockRead<Data> | null;
 }
 
 export interface BlockDefinition<Data> {
@@ -68,24 +73,40 @@ export interface BlockDefinition<Data> {
   component: (props: BlockProps<Data>) => JSX.Element;
   /** Offered by the pickers. @default true */
   insertable?: boolean;
-  /** As markdown, for export; `null` leaves it out. */
-  toMarkdown?(data: Data): string | null;
+  /** As markdown, for export; `null` leaves it out. `format` is where the block sits. */
+  toMarkdown?(data: Data, format: ElementFormatType): string | null;
   /** A whole line of markdown that becomes this block on import and as it is typed. */
   fromMarkdown?: MarkdownImport<Data>;
   /**
    * Elements read into this block from pasted or imported HTML, by tag name:
    * the block's data, or `null` to leave the element to another reader.
    */
-  fromHtml?: Readonly<Record<string, (element: HTMLElement) => Data | null>>;
+  fromHtml?: Readonly<Record<string, (element: HTMLElement) => BlockRead<Data> | null>>;
   /** The block as HTML, for a copy and an HTML export. */
-  toHtml?: (data: Data) => HTMLElement;
+  toHtml?: (data: Data, format: ElementFormatType) => HTMLElement;
 }
 
-export type BlockFields<Data> = {
-  data: Data;
-};
+/**
+ * A block as stored: its data's fields beside the node's own `type`,
+ * `version` and `format`, the shape a node written by hand has, so a document
+ * stored by another Lexical editor with the same fields opens unchanged.
+ */
+export type SerializedBlockNode<Data> = Spread<Data, SerializedDecoratorBlockNode>;
 
-export type SerializedBlockNode<Data> = Spread<BlockFields<Data>, SerializedDecoratorBlockNode>;
+/** The fields Lexical keeps on every block node, which a block's data never holds. */
+const NODE_FIELDS: ReadonlySet<string> = new Set(["type", "version", "format", "$"]);
+
+/** A block's data from its stored node: every field but the node's own, over its defaults. */
+export function storedBlockData<Data>(
+  definition: BlockDefinition<Data>,
+  stored: Readonly<Record<string, unknown>>,
+): Data {
+  const fields: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(stored)) {
+    if (!NODE_FIELDS.has(key)) fields[key] = value;
+  }
+  return { ...definition.defaultData(), ...fields };
+}
 
 /** A document block drawn by a barq component, holding its data as JSON. */
 export class BlockNode extends DecoratorBlockNode {
@@ -101,15 +122,14 @@ export class BlockNode extends DecoratorBlockNode {
     throw new Error("A block node is made by defineBlock, which says what it is.");
   }
 
-  updateFromJSON(json: LexicalUpdateJSON<SerializedBlockNode<unknown>>): this {
+  updateFromJSON(json: LexicalUpdateJSON<SerializedDecoratorBlockNode>): this {
     const node = super.updateFromJSON(json).getWritable();
-    // A block stored before it had data keeps the data it was made with.
-    if (json.data !== undefined) node.__data = json.data;
+    node.__data = storedBlockData(this.getDefinition(), json as Record<string, unknown>);
     return node;
   }
 
-  exportJSON(): SerializedBlockNode<unknown> {
-    return { ...super.exportJSON(), data: this.getLatest().__data };
+  exportJSON(): SerializedDecoratorBlockNode {
+    return { ...(this.getLatest().__data as object), ...super.exportJSON() };
   }
 
   getData(): unknown {
@@ -123,14 +143,20 @@ export class BlockNode extends DecoratorBlockNode {
   }
 
   getTextContent(): string {
-    const markdown = this.getDefinition().toMarkdown?.(this.getLatest().__data);
+    const latest = this.getLatest();
+    const markdown = this.getDefinition().toMarkdown?.(latest.__data, latest.__format);
     return markdown === null || markdown === undefined ? "" : `${markdown}\n`;
   }
 
   decorate(): Decoration<this> {
     const definition = this.getDefinition();
     return (node) => (
-      <BlockFrame definition={definition} nodeKey={node().getKey()} data={node().__data} />
+      <BlockFrame
+        definition={definition}
+        nodeKey={node().getKey()}
+        data={node().__data}
+        format={node().__format}
+      />
     );
   }
 }
@@ -159,6 +185,7 @@ interface BlockFrameProps {
   definition: BlockDefinition<unknown>;
   nodeKey: NodeKey;
   data: unknown;
+  format: ElementFormatType;
 }
 
 function BlockFrame(props: BlockFrameProps): JSX.Element {
@@ -172,6 +199,7 @@ function BlockFrame(props: BlockFrameProps): JSX.Element {
       editable={editable()}
       selected={selected()}
       nodeKey={props.nodeKey}
+      format={props.format}
       setData={(next) => {
         if (editor.isEditable()) updateBlockData(editor, props.nodeKey, next);
       }}
@@ -190,6 +218,14 @@ export interface TypedBlockNode<Data> extends BlockNode {
 export interface AnyMarkdownImport {
   regExp: RegExp;
   data: (match: string[]) => unknown;
+}
+
+/** The node with what a reader found: its data, and its `format` set apart as the node's own. */
+function $blockFromRead<Node extends BlockNode>(node: Node, read: unknown): Node {
+  const { format, ...data } = read as BlockRead<object>;
+  node.setData(data);
+  if (typeof format === "string") node.setFormat(format);
+  return node;
 }
 
 /** Any block, whatever its data: what a picker lists and a document registers. */
@@ -255,7 +291,7 @@ export function defineBlock<Data>(definition: BlockDefinition<Data>): Block<Data
       return new DefinedBlockNode(node.__data, node.__format, node.__key);
     }
 
-    static importJSON(json: SerializedBlockNode<Data>): DefinedBlockNode {
+    static importJSON(json: SerializedDecoratorBlockNode): DefinedBlockNode {
       return new DefinedBlockNode(definition.defaultData()).updateFromJSON(json);
     }
 
@@ -265,10 +301,14 @@ export function defineBlock<Data>(definition: BlockDefinition<Data>): Block<Data
       const map: DOMConversionMap = {};
       for (const [tag, read] of Object.entries(readers)) {
         map[tag] = (element: HTMLElement) => {
-          const data = read(element);
-          return data === null
-            ? null
-            : { conversion: () => ({ node: new DefinedBlockNode(data) }), priority: 1 };
+          const found = read(element);
+          if (found === null) return null;
+          return {
+            conversion: () => ({
+              node: $blockFromRead(new DefinedBlockNode(definition.defaultData()), found),
+            }),
+            priority: 1,
+          };
         };
       }
       return map;
@@ -277,7 +317,9 @@ export function defineBlock<Data>(definition: BlockDefinition<Data>): Block<Data
     exportDOM(editor: LexicalEditor): DOMExportOutput {
       return definition.toHtml === undefined
         ? super.exportDOM(editor)
-        : { element: definition.toHtml(this.getLatest().__data as Data) };
+        : {
+            element: definition.toHtml(this.getLatest().__data as Data, this.getLatest().__format),
+          };
     }
 
     getDefinition(): BlockDefinition<unknown> {
@@ -321,12 +363,14 @@ function blockTransformer(block: AnyBlock): ElementTransformer {
   return {
     dependencies: [block.node],
     export: (node) =>
-      block.$is(node) ? (node.getDefinition().toMarkdown?.(node.getData()) ?? null) : null,
+      block.$is(node)
+        ? (node.getDefinition().toMarkdown?.(node.getData(), node.getFormat()) ?? null)
+        : null,
     regExp: from?.regExp ?? /(?!)/,
     replace: (parent, _children, match) => {
       const data = from?.data(match);
       if (data === null || data === undefined) return false;
-      parent.replace(block.$create().setData(data));
+      parent.replace($blockFromRead(block.$create(), data));
       return undefined;
     },
     type: "element",

@@ -34,6 +34,7 @@ import {
   $getRoot,
   $getSelection,
   $isElementNode,
+  $isNodeSelection,
   $isRangeSelection,
   type ElementNode,
   COMMAND_PRIORITY_LOW,
@@ -406,9 +407,12 @@ function BlockHandles(props: BlockHandlesProps) {
   function caretBlock(): NodeKey | null {
     return editor.read(() => {
       const selection = $getSelection();
-      return $isRangeSelection(selection)
-        ? ($rootBlockOf(selection.anchor.getNode())?.getKey() ?? null)
-        : null;
+      if ($isRangeSelection(selection)) {
+        return $rootBlockOf(selection.anchor.getNode())?.getKey() ?? null;
+      }
+      // A block chosen whole, as a picture is by a press, has the caret's place.
+      const [chosen] = $isNodeSelection(selection) ? selection.getNodes() : [];
+      return chosen === undefined ? null : ($rootBlockOf(chosen)?.getKey() ?? null);
     });
   }
 

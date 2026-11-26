@@ -85,7 +85,8 @@ describe("a document without a screen", () => {
     const state = markdownToDocument("![A chart](https://example.com/chart.png)");
     expect(state.root.children[0]).toMatchObject({
       type: "image",
-      data: { alt: "A chart", src: "https://example.com/chart.png" },
+      alt: "A chart",
+      src: "https://example.com/chart.png",
     });
     expect(documentToMarkdown(state)).toBe("![A chart](https://example.com/chart.png)");
   });
@@ -95,7 +96,7 @@ describe("a document without a screen", () => {
     const state = markdownToDocument("> [!note] Bring water", options);
     expect(state.root.children[0]).toMatchObject({
       type: "acme-note",
-      data: { text: "Bring water" },
+      text: "Bring water",
     });
     expect(documentToMarkdown(state, options)).toBe("> [!note] Bring water");
   });

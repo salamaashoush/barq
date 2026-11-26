@@ -66,7 +66,8 @@ import {
   useDocumentDirection,
 } from "./direction.tsx";
 import { FloatingFormatToolbar, LinkEditor } from "./floating.tsx";
-import { provideEditorUploads, settleUpload } from "./media.tsx";
+import { provideEditorUploads } from "./media.tsx";
+import { settleUpload } from "./picture.tsx";
 import {
   type AutosaveOptions,
   QUIET_REPLACE_TAG,

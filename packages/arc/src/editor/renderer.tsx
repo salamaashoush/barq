@@ -10,6 +10,7 @@ import {
   IS_SUBSCRIPT,
   IS_SUPERSCRIPT,
   IS_UNDERLINE,
+  type ElementFormatType,
   type SerializedEditorState,
 } from "lexical";
 
@@ -21,7 +22,7 @@ import { Link } from "../components/text-link.tsx";
 import { proseStyles } from "../components/typography.tsx";
 import { arcLayer as arc } from "../layer.ts";
 import { type Customisable, parts } from "../lib/parts.ts";
-import type { BlockDefinition } from "./blocks.tsx";
+import { type BlockDefinition, storedBlockData } from "./blocks.tsx";
 import {
   type DocumentOptions,
   type DocumentValue,
@@ -380,10 +381,11 @@ function Node(props: NodeProps): JSX.Element {
         const Component = definition.component;
         return (
           <Component
-            data={node.data}
+            data={storedBlockData(definition, node)}
             editable={false}
             selected={false}
             nodeKey=""
+            format={(typeof node.format === "string" ? node.format : "") as ElementFormatType}
             setData={() => undefined}
             remove={() => undefined}
           />

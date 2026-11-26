@@ -5,10 +5,12 @@ export {
   type BlockLabel,
   BlockNode,
   type BlockProps,
+  type BlockRead,
   type SerializedBlockNode,
   type TypedBlockNode,
   $isBlockNode,
   defineBlock,
+  storedBlockData,
   updateBlockData,
 } from "./blocks.tsx";
 export { CodeHighlightExtension } from "./code-highlight.ts";
@@ -16,7 +18,6 @@ export {
   autoLinkExtension,
   dividerExtension,
   embedExtension,
-  imageExtension,
   mentionExtension,
   richTextExtension,
   tableExtension,
@@ -114,15 +115,52 @@ export {
 } from "./floating.tsx";
 export {
   DEFAULT_EMBED_PROVIDERS,
+  type EditorMedia,
   type EditorUploads,
   type EmbedData,
   EmbedBlock,
   type EmbedProvider,
+  mediaAddress,
+  mediaStyles,
+  provideEditorMedia,
+  resolveEmbed,
+  useEditorMedia,
+} from "./media.tsx";
+export {
+  $isImageNode,
+  BLOCK_ALIGNMENTS,
+  type BlockAlignment,
+  CreditLine,
+  type CreditLineProps,
+  FocusPicker,
+  type FocusPickerProps,
+  IMAGE_SIZES,
   type ImageData,
   ImageBlock,
-  mediaStyles,
-  resolveEmbed,
-} from "./media.tsx";
+  type ImageSize,
+  PICTURE_LICENCES,
+  type PictureCredit,
+  type PictureFocus,
+  type PictureLicence,
+  type PictureOptions,
+  type PictureRenders,
+  creditOf,
+  creditSource,
+  pictureDetailsStyles,
+  pictureHtml,
+  pictureNeedsAlt,
+  pictureStyles,
+} from "./picture.tsx";
+export { imageExtension } from "./picture-extension.tsx";
+export {
+  LabelledPicture,
+  type LabelledPictureProps,
+  MAX_PICTURE_LABELS,
+  type PictureLabel,
+  PictureLabelsEditor,
+  type PictureLabelsEditorProps,
+  pictureLabelsStyles,
+} from "./picture-labels.tsx";
 export {
   $createMentionNode,
   $isMentionNode,

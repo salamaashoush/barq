@@ -54,7 +54,7 @@ export default function BaseInputs() {
       </Field>
       <Field>
         <FieldLabel for="api-key">API key</FieldLabel>
-        <Input id="api-key" value="sk_live_4f9a…" disabled />
+        <Input id="api-key" value="acme_demo_4f9a…" disabled />
       </Field>
       <Field>
         <FieldLabel for="role">Role</FieldLabel>

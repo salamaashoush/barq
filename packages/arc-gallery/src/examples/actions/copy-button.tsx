@@ -1,7 +1,7 @@
 import { createSignal } from "@barqjs/core";
 import { Code, CopyButton, Inline, Stack, Text } from "@barqjs/arc";
 
-const KEY = "sk_live_51Hacme7Kx2";
+const KEY = "acme_demo_51hacme7kx2";
 
 export default function CopyButtons() {
   const [copies, setCopies] = createSignal(0);

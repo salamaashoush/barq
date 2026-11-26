@@ -31,6 +31,7 @@ import {
 import { useRegistration } from "./hooks.ts";
 import { $insertHtml } from "./html-import.ts";
 import { editorUploads } from "./media.tsx";
+import { IMAGE_SIZES, type ImageSize } from "./picture.tsx";
 import { ommlToLatex } from "./omml.ts";
 
 /** Opens the file picker for a Word document to read in where the caret is. */
@@ -41,6 +42,65 @@ const WORD_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 
 /** Where an equation stood, as the reader passes text through: a numbered mark. */
 const FORMULA = /(\d+)/g;
+
+/** Joins a picture's description to the size it had on Word's page, as the reader passes it through. */
+const SIZE_MARK = "\uE0F5";
+
+// Word measures a picture in EMUs and a page in twips, 635 EMUs each.
+const EMU_PER_TWIP = 635;
+/** An A4 page's text with inch margins, where a document gives no page. */
+const A4_TEXT_EMU = (11_906 - 2 * 1440) * EMU_PER_TWIP;
+
+/** The size a picture as wide as this share of the page's text reads at. */
+export function sizeOfShare(share: number): ImageSize {
+  if (share <= 0.42) return "small";
+  if (share <= 0.62) return "medium";
+  if (share <= 0.87) return "large";
+  return "full";
+}
+
+/** How wide the page's text runs between its margins, in EMUs. */
+function textWidth(xml: XMLDocument): number {
+  const sections = xml.getElementsByTagName("w:sectPr");
+  const section = sections[sections.length - 1];
+  const page = section?.getElementsByTagName("w:pgSz")[0];
+  const margins = section?.getElementsByTagName("w:pgMar")[0];
+  const width = Number(page?.getAttribute("w:w"));
+  const left = Number(margins?.getAttribute("w:left") ?? 0);
+  const right = Number(margins?.getAttribute("w:right") ?? 0);
+  const text = (width - left - right) * EMU_PER_TWIP;
+  return Number.isFinite(text) && text > 0 ? text : A4_TEXT_EMU;
+}
+
+/**
+ * Each picture's share of the page's width, which the reader drops, written
+ * into its description as a size the picture block keeps.
+ */
+function markPictureSizes(xml: XMLDocument): void {
+  const page = textWidth(xml);
+  for (const drawing of [
+    ...xml.getElementsByTagName("wp:inline"),
+    ...xml.getElementsByTagName("wp:anchor"),
+  ]) {
+    const width = Number(drawing.getElementsByTagName("wp:extent")[0]?.getAttribute("cx"));
+    const described = drawing.getElementsByTagName("wp:docPr")[0];
+    if (described === undefined || !(width > 0)) continue;
+    const words =
+      described.getAttribute("descr")?.trim() || described.getAttribute("title")?.trim() || "";
+    described.setAttribute("descr", `${words}${SIZE_MARK}${sizeOfShare(width / page)}`);
+  }
+}
+
+interface SizedDescription {
+  alt: string;
+  size: ImageSize | null;
+}
+
+/** A picture's description and the size it had in Word, as the reader passed them on. */
+function sizedDescription(described: string): SizedDescription {
+  const [alt = "", size] = described.split(SIZE_MARK);
+  return { alt: alt.trim(), size: IMAGE_SIZES.find((one) => one === size) ?? null };
+}
 
 type Mammoth = typeof import("mammoth");
 type Fflate = typeof import("fflate");
@@ -106,6 +166,7 @@ function prepareDocx(bytes: Uint8Array, fflate: Fflate, rules: readonly DocxRule
     formulas.push({ latex: ommlToLatex(math), block: false });
     math.replaceWith(mark(formulas.length - 1));
   }
+  markPictureSizes(xml);
   for (const rule of rules) rule.prepare?.(xml);
   files["word/document.xml"] = fflate.strToU8(new XMLSerializer().serializeToString(xml));
   return { docx: fflate.zipSync(files), formulas };
@@ -200,7 +261,9 @@ export async function wordToHtml(
     externalFileAccess: false,
     convertImage: mammoth.images.imgElement(async (image) => {
       // mammoth hands each picture its description, though its types leave it out.
-      const alt = "altText" in image && typeof image.altText === "string" ? image.altText : "";
+      const { alt, size } = sizedDescription(
+        "altText" in image && typeof image.altText === "string" ? image.altText : "",
+      );
       const extension = image.contentType.split("/")[1] ?? "png";
       pictures += 1;
       const file = new File(
@@ -217,7 +280,12 @@ export async function wordToHtml(
         skipped += 1;
         return { src: "", alt };
       }
-      return { ...stored.attributes, src: stored.src, alt };
+      return {
+        ...stored.attributes,
+        src: stored.src,
+        alt,
+        ...(size === null ? {} : { "data-size": size }),
+      };
     }),
   });
   const formula = rules.find((rule) => rule.formula !== undefined)?.formula ?? formulaAsCode;

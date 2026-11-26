@@ -216,7 +216,7 @@ describe("HTML as a document", () => {
       "embed",
       "pagebreak",
     ]);
-    expect(children[2]?.data).toMatchObject({
+    expect(children[2]).toMatchObject({
       src: "https://example.com/flood.jpg",
       alt: "A flood",
     });

@@ -11,13 +11,8 @@ import { useArcMessages } from "../components/messages.ts";
 import { ResponsiveOverlay } from "../components/responsive-overlay.tsx";
 import { $insertBlock } from "./commands.ts";
 import { useRegistration } from "./hooks.ts";
-import {
-  type EmbedProvider,
-  EmbedBlock,
-  ImageBlock,
-  resolveEmbed,
-  useEditorUploads,
-} from "./media.tsx";
+import { type EmbedProvider, EmbedBlock, resolveEmbed, useEditorUploads } from "./media.tsx";
+import { ImageBlock } from "./picture.tsx";
 
 /** Sends each image through the editor's upload queue and puts a block for it where the caret is. */
 export function useInsertImages(): (files: readonly File[]) => void {
@@ -33,6 +28,8 @@ export function useInsertImages(): (files: readonly File[]) => void {
           ImageBlock.$create({
             src: item.preview ?? "",
             alt: item.file.name.replace(/\.[^.]+$/, ""),
+            caption: "",
+            size: "full",
             uploadId: item.id,
           }),
         );

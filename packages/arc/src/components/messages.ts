@@ -798,6 +798,28 @@ export interface ArcMessages {
   descriptionsHint: string;
   descriptionsSkipped: (count: number) => string;
   transcriptHint: string;
+  imageSize: string;
+  imageSizeName: (size: "small" | "medium" | "large" | "full") => string;
+  imageDecorative: string;
+  imageAltMissing: string;
+  imageCredit: string;
+  imageCreditAuthor: string;
+  imageCreditLicence: string;
+  imageCreditSource: string;
+  imageCreditAllRights: string;
+  imageCreditPublicDomain: string;
+  imageFocus: string;
+  imageFocusHint: string;
+  imageFocusAt: (x: number, y: number) => string;
+  pictureLabels: string;
+  addPictureLabel: string;
+  pictureLabel: (number: string) => string;
+  movePictureLabel: (number: string) => string;
+  pictureLabelTitle: (number: string) => string;
+  pictureLabelTitlePlaceholder: string;
+  pictureLabelText: (number: string) => string;
+  pictureLabelTextPlaceholder: string;
+  removePictureLabel: (number: string) => string;
   cut: string;
   paste: string;
   pasteAsText: string;
@@ -1762,6 +1784,30 @@ export const ENGLISH: ArcMessages = {
       ? "1 line has no time and is left out"
       : `${String(count)} lines have no time and are left out`,
   transcriptHint: "Everything the recording says, written out",
+  imageSize: "Size",
+  imageSizeName: (size) =>
+    ({ small: "Small", medium: "Medium", large: "Large", full: "Full width" })[size],
+  imageDecorative: "Decorative only: screen readers skip it",
+  imageAltMissing: "Add alt text, or mark the picture decorative",
+  imageCredit: "Credit",
+  imageCreditAuthor: "Made by",
+  imageCreditLicence: "Licence",
+  imageCreditSource: "Page it came from",
+  imageCreditAllRights: "All rights reserved",
+  imageCreditPublicDomain: "Public domain",
+  imageFocus: "Focus point",
+  imageFocusHint:
+    "Press on what matters, or move the dot with the arrow keys; a crop keeps it in view",
+  imageFocusAt: (x, y) => `Focus point, ${String(x)}% across and ${String(y)}% down`,
+  pictureLabels: "Labels",
+  addPictureLabel: "Add label",
+  pictureLabel: (number) => `Label ${number}`,
+  movePictureLabel: (number) => `Move label ${number}`,
+  pictureLabelTitle: (number) => `Label ${number} name`,
+  pictureLabelTitlePlaceholder: "What is here",
+  pictureLabelText: (number) => `Label ${number} description`,
+  pictureLabelTextPlaceholder: "More about it",
+  removePictureLabel: (number) => `Remove label ${number}`,
   cut: "Cut",
   paste: "Paste",
   pasteAsText: "Paste as plain text",

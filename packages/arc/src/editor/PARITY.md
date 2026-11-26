@@ -16,8 +16,11 @@ Each line reads: **feature**: classification; status; source file.
 
 Stored node types and their fields keep the source's names (`callout` with
 `tone`, `columns` with `layout`, `toggle` with `open`, `pagebreak`,
-`footnote` with `note` and `source`), so documents saved by the source open
-in arc unchanged.
+`footnote` with `note` and `source`, `image` with `fileId`, `alt`, `size`
+and `credit`), so documents saved by the source open in arc unchanged. A
+block made with `defineBlock` is stored as its data's fields beside the
+node's own `type`, `version` and `format`, the shape the source's hand-made
+nodes have.
 
 Borderline calls are justified where they are made.
 
@@ -172,7 +175,7 @@ Borderline calls are justified where they are made.
 - **Word: equations to LaTeX** (fractions, powers, roots, sums, brackets, matrices, functions, limits, accents): generic; done, docx-import.test.tsx; omml.ts, docx.ts, docx.spec.ts.
 - **Word: equations as formula nodes**: generic; pending, phase 5 (each equation comes in as its LaTeX in code until the math extension's `docx.formula` rule takes it); docx.ts.
 - **Word: pictures uploaded as read, those that cannot be shown counted**: generic; done, docx-import.test.tsx; plugins/word.tsx.
-- **Word: each picture at its size on the page**: generic; pending, phase 4 (image size presets); docx.ts.
+- **Word: each picture at its size on the page**: generic; done, picture.test.tsx (its share of the page's text width, read before mammoth drops it, becomes the picture's size); docx.ts.
 - **Word: chosen from Insert or `/word`, dropped on the editor, a card that says how it went**: generic; done, docx-import.test.tsx; plugins/word.tsx.
 - **Word reader loads only when a document is read**: generic; done, docx-import.test.tsx; plugins/word.tsx.
 - **Markdown read in pieces for a streamed reply**: generic; done, document.test.ts (`markdownToDocument`); markdown-import.ts.
@@ -193,9 +196,9 @@ Borderline calls are justified where they are made.
 ## Media
 
 - **Image: alt, caption, uploaded, pasted, dropped**: generic; done, media.test.tsx; nodes/media.tsx.
-- **Image: four sizes, alignment, decorative, alt-missing warning, focus point**: generic; pending, phase 4; nodes/media.tsx, media.spec.ts.
-- **Image: credit line with licences**: generic; pending, phase 4; picture-credit*.tsx, media.spec.ts.
-- **Labelled picture: numbered markers with descriptions**: generic (an annotated figure); pending, phase 4; picture-labels.tsx.
+- **Image: four sizes, alignment, decorative, alt-missing warning, focus point**: generic; done, picture.test.tsx (sizes and alignment from the block menu, alignment kept as the node's `format` and written on the inline axis; the focus point by pointer and by the arrows, which keep the picture's own left and right); nodes/media.tsx, media.spec.ts.
+- **Image: credit line with licences**: generic; done, picture.test.tsx; picture-credit*.tsx, media.spec.ts.
+- **Labelled picture: numbered markers with descriptions**: generic (an annotated figure); done, picture.test.tsx (placed by drag and by the arrows, opened one at a time by the reader, listed on paper); picture-labels.tsx.
 - **Gallery: grid, viewer, reorder, up to twenty-four**: generic; pending, phase 4; nodes/pictures.tsx, pictures-view.tsx, gallery.spec.tsx.
 - **Before and after comparison slider**: generic (image comparison is common in docs); pending, phase 4; nodes/pictures.tsx.
 - **File block: card or PDF preview, new version keeping its first id, viewer**: generic; pending, phase 4; nodes/media.tsx, files.tsx, file-viewer.tsx.
@@ -271,7 +274,7 @@ example in the README and extension.test.tsx is such a block.
 ## Counts
 
 - 196 lines in all: 173 generic, 23 domain.
-- Generic: 121 done, 52 pending; a line done in part counts as pending.
+- Generic: 125 done, 48 pending; a line done in part counts as pending.
 
 ## Phases
 

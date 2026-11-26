@@ -1,9 +1,8 @@
-import { type Child, Show, createSignal } from "@barqjs/core";
+import { type Child } from "@barqjs/core";
 import { useLexicalEditor } from "@barqjs/lexical";
 import { Heading1 } from "@barqjs/lucide/icons/heading-1";
 import { Heading2 } from "@barqjs/lucide/icons/heading-2";
 import { Heading3 } from "@barqjs/lucide/icons/heading-3";
-import { Image as ImageIcon } from "@barqjs/lucide/icons/image";
 import { List } from "@barqjs/lucide/icons/list";
 import { ListChecks } from "@barqjs/lucide/icons/list-checks";
 import { ListOrdered } from "@barqjs/lucide/icons/list-ordered";
@@ -62,7 +61,6 @@ import {
   $isTextNode,
   BEFORE_INPUT_COMMAND,
   COMMAND_PRIORITY_LOW,
-  type LexicalCommand,
   type LexicalEditor,
   configExtension,
 } from "lexical";
@@ -70,7 +68,6 @@ import {
 import { CodeHighlightExtension } from "./code-highlight.ts";
 import {
   OPEN_EMBED_DIALOG_COMMAND,
-  OPEN_IMAGE_DIALOG_COMMAND,
   OPEN_TABLE_DIALOG_COMMAND,
   TEXT_BLOCK_TYPES,
   type TextBlockType,
@@ -82,16 +79,9 @@ import {
   toggleMark,
 } from "./commands.ts";
 import { type EditorExtension, defineEditorExtension } from "./extension.ts";
-import { useRegistration } from "./hooks.ts";
-import {
-  DEFAULT_EMBED_PROVIDERS,
-  EmbedBlock,
-  type EmbedProvider,
-  ImageBlock,
-  editorUploads,
-  resolveEmbed,
-} from "./media.tsx";
-import { EmbedDialog, ImageDialog, ImagePaste } from "./media-insert.tsx";
+import { useDialogCommand } from "./hooks.ts";
+import { DEFAULT_EMBED_PROVIDERS, EmbedBlock, type EmbedProvider, resolveEmbed } from "./media.tsx";
+import { EmbedDialog } from "./media-insert.tsx";
 import { $createMentionNode, $isMentionNode, MentionNode } from "./mention-node.ts";
 import { TableControls, registerTableKeys } from "./table-controls.tsx";
 import { TableDialog } from "./table-size.tsx";
@@ -302,23 +292,6 @@ function tableTransformer(cellTransformers: () => readonly Transformer[]): Eleme
   };
 }
 
-/** Opens a dialog on a command, for an extension whose insert asks first. */
-function useDialogCommand(command: LexicalCommand<void>): [() => boolean, (open: boolean) => void] {
-  const editor = useLexicalEditor();
-  const [open, setOpen] = createSignal(false, { ownedWrite: true });
-  useRegistration(() =>
-    editor.registerCommand(
-      command,
-      () => {
-        setOpen(true);
-        return true;
-      },
-      COMMAND_PRIORITY_LOW,
-    ),
-  );
-  return [open, setOpen];
-}
-
 function TableDialogHost() {
   const editor = useLexicalEditor();
   const [open, setOpen] = useDialogCommand(OPEN_TABLE_DIALOG_COMMAND);
@@ -386,38 +359,6 @@ export const dividerExtension = defineEditorExtension({
     },
   ],
   markdown: [HR],
-});
-
-function ImageDialogHost() {
-  const editor = useLexicalEditor();
-  const [open, setOpen] = useDialogCommand(OPEN_IMAGE_DIALOG_COMMAND);
-  return (
-    <Show when={editorUploads(editor) !== null}>
-      <ImageDialog open={open()} onOpenChange={setOpen} maxSize={editorUploads(editor)?.maxSize} />
-      <ImagePaste />
-    </Show>
-  );
-}
-
-/**
- * Images, offered, pasted and dropped where the editor uploads: each shown at
- * once and sent through arc's upload queue.
- */
-export const imageExtension = defineEditorExtension({
-  name: "arc/image",
-  dependencies: [ImageBlock],
-  commands: [
-    {
-      id: "image",
-      label: (messages) => messages.image,
-      group: (messages) => messages.mediaBlocks,
-      icon: () => <ImageIcon />,
-      keywords: ["picture", "photo", "upload"],
-      available: (editor) => editorUploads(editor) !== null,
-      run: (editor) => editor.dispatchCommand(OPEN_IMAGE_DIALOG_COMMAND, undefined),
-    },
-  ],
-  plugins: [ImageDialogHost],
 });
 
 export interface EmbedExtensionOptions {

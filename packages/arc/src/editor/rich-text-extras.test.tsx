@@ -7,7 +7,7 @@ import { $createParagraphNode, $getRoot, type LexicalEditor } from "lexical";
 
 import { BlockEditor } from "./block-editor.tsx";
 import { OPEN_TABLE_DIALOG_COMMAND } from "./commands.ts";
-import { type ImageData, ImageBlock } from "./media.tsx";
+import { type ImageData, ImageBlock } from "./picture.tsx";
 import { RichTextRenderer } from "./renderer.tsx";
 import { RichTextEditor } from "./rich-text-editor.tsx";
 import { capture, settle, typeText } from "./test-editor.ts";
@@ -126,7 +126,12 @@ describe("an image's alt text and caption", () => {
     await settle();
     editor.get().update(() => {
       $getRoot().append(
-        ImageBlock.$create({ src: "https://cdn.example.com/chart.png", alt: "chart" }),
+        ImageBlock.$create({
+          src: "https://cdn.example.com/chart.png",
+          alt: "chart",
+          caption: "",
+          size: "full",
+        }),
       );
     });
     await settle();

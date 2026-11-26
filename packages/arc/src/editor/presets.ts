@@ -5,7 +5,6 @@ import {
   autoLinkExtension,
   dividerExtension,
   embedExtension,
-  imageExtension,
   mentionExtension,
   richTextExtension,
   tableExtension,
@@ -18,6 +17,7 @@ import { footnoteExtension } from "./footnote.tsx";
 import { markdownDialogExtension } from "./markdown-dialog.tsx";
 import { formattingExtension } from "./formatting.tsx";
 import { pasteExtension } from "./paste.ts";
+import { imageExtension } from "./picture-extension.tsx";
 import { PageBreakBlock } from "./page-break.tsx";
 import { panelsExtension } from "./panels.tsx";
 import { sharedBlockExtension } from "./shared-block.tsx";
@@ -33,7 +33,7 @@ export const documentPreset: readonly EditorExtension[] = [
   autoLinkExtension,
   tableExtension,
   dividerExtension,
-  imageExtension,
+  imageExtension(),
   embedExtension(),
   mentionExtension,
   calloutExtension,
@@ -56,7 +56,7 @@ export const chatPreset: readonly EditorExtension[] = [
   richTextExtension,
   autoLinkExtension,
   dividerExtension,
-  imageExtension,
+  imageExtension(),
   embedExtension(),
   mentionExtension,
   pasteExtension,
