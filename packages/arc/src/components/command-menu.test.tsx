@@ -211,6 +211,104 @@ describe("CommandMenu", () => {
     expect(screen.getByRole("dialog")).toBeDefined();
     shown.unmount();
   });
+
+  test("with bindKeys an action's keys run it from anywhere, a sequence included", async () => {
+    const saved: string[] = [];
+    const view = await renderRoute({
+      routeTree: tree({
+        bindKeys: true,
+        groups: [
+          ...GROUPS,
+          {
+            heading: "File",
+            actions: [
+              { label: "Save", keys: "mod+s", onSelect: () => saved.push("save") },
+              {
+                label: "Print",
+                keys: "mod+p",
+                disabled: true,
+                onSelect: () => saved.push("print"),
+              },
+            ],
+          },
+        ],
+      }),
+    });
+    await settle();
+    const mod = parseCombo("mod");
+    function press(key: string, modded = false): void {
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key,
+          ctrlKey: modded && mod.ctrl,
+          metaKey: modded && mod.meta,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    }
+    press("s", true);
+    press("p", true);
+    await settle();
+    expect(saved).toEqual(["save"]);
+    expect(screen.queryByRole("dialog")).toBeNull();
+
+    press("g");
+    press("p");
+    await waitFor(() => expect(view.state.location().pathname).toBe("/projects"));
+
+    const undo = registerCommands([
+      {
+        heading: "Help",
+        actions: [{ label: "Shortcuts", keys: "shift+?", onSelect: () => saved.push("help") }],
+      },
+    ]);
+    await settle();
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "?", shiftKey: true, bubbles: true, cancelable: true }),
+    );
+    await settle();
+    expect(saved).toEqual(["save", "help"]);
+    undo();
+    await settle();
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "?", shiftKey: true, bubbles: true, cancelable: true }),
+    );
+    await settle();
+    expect(saved).toEqual(["save", "help"]);
+    view.unmount();
+  });
+
+  test("keys are shown as the reader's keyboard writes them, and unbound without bindKeys", async () => {
+    const saved: string[] = [];
+    const view = await renderRoute({
+      routeTree: tree({
+        groups: [
+          {
+            heading: "File",
+            actions: [{ label: "Save", keys: "mod+s", onSelect: () => saved.push("save") }],
+          },
+        ],
+      }),
+    });
+    await settle();
+    const mod = parseCombo("mod");
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "s",
+        ctrlKey: mod.ctrl,
+        metaKey: mod.meta,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+    await settle();
+    expect(saved).toEqual([]);
+    openCommandMenu();
+    await settle();
+    expect(options()).toEqual([mod.meta ? "Save⌘S" : "SaveCtrl+S"]);
+    view.unmount();
+  });
 });
 
 interface Doc {

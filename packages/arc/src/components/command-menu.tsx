@@ -1,4 +1,16 @@
-import { type Child, For, Show, createSignal, onCleanup, untrack } from "@barqjs/core";
+import {
+  type Child,
+  For,
+  Show,
+  createEffect,
+  createRoot,
+  createSignal,
+  getOwner,
+  onCleanup,
+  runWithOwner,
+  untrack,
+} from "@barqjs/core";
+import { isAppleDevice } from "@barqjs/aria/platform";
 import { shortcut } from "@barqjs/primitives/keyboard";
 import { persisted } from "@barqjs/primitives/storage";
 import { useRouter } from "@barqjs/router";
@@ -23,6 +35,7 @@ import { type Customisable, parts } from "../lib/parts.ts";
 import { fg, gap, glyph, layout, space, type } from "../style/index.ts";
 import { HighlightMatches, type MatchRange } from "./highlight-matches.tsx";
 import { useArcMessages } from "./messages.ts";
+import { keyLabel } from "./shortcut.tsx";
 import {
   type RemotePage,
   type RemoteSearch,
@@ -40,7 +53,11 @@ export interface CommandMenuAction extends Partial<LinkTarget> {
   icon?: NavIcon;
   /** More words it is found by, which are not shown. */
   keywords?: readonly string[];
-  /** The keys shown beside it, such as `"G P"`. Shown only; binding them is the caller's. */
+  /**
+   * Its keys, as `@barqjs/primitives`' `shortcut` writes them: `"mod+s"`, or
+   * `"g p"` for G then P. Shown beside it as the reader's keyboard writes
+   * them, and pressed from anywhere when the menu has `bindKeys`.
+   */
   keys?: string;
   /** Runs after the palette has closed, and after the navigation to `to` has started. */
   onSelect?: () => void;
@@ -213,6 +230,12 @@ export interface CommandMenuProps extends Customisable<Slots> {
   groups?: readonly CommandMenuGroup[];
   /** The combo that opens and closes it, `false` for none. @default "mod+k" */
   shortcut?: string | false;
+  /**
+   * Bind every action's `keys`, its own and registered ones, while the menu
+   * is on the page: pressing them runs the action as choosing it would. A
+   * disabled action's keys do nothing. @default false
+   */
+  bindKeys?: boolean;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   /** Names the dialog to a screen reader. @default "Command menu" */
@@ -324,6 +347,30 @@ export function CommandMenu(props: CommandMenuProps) {
     return merged(props.groups ?? [], registered());
   }
 
+  function bound(): CommandMenuAction[] {
+    if (props.bindKeys !== true) return [];
+    return groups()
+      .flatMap((group) => group.actions)
+      .filter((action) => action.keys !== undefined && action.disabled !== true);
+  }
+  if (!isServer) {
+    const owner = getOwner();
+    createEffect(bound, (actions) => {
+      if (actions.length === 0) return undefined;
+      // `shortcut` removes its listener with the owner in scope, and an
+      // effect's apply has none: the bindings get a root of their own,
+      // released when the actions change.
+      return runWithOwner(owner, () =>
+        createRoot((release) => {
+          for (const action of actions) {
+            shortcut(action.keys as string, () => perform(action));
+          }
+          return release;
+        }),
+      );
+    });
+  }
+
   function go(target: Partial<LinkTarget>): void {
     if (target.to === undefined) return;
     void router.navigate({
@@ -336,6 +383,12 @@ export function CommandMenu(props: CommandMenuProps) {
 
   function run(action: CommandMenuAction): void {
     setOpen(false);
+    go(action);
+    action.onSelect?.();
+  }
+
+  function perform(action: CommandMenuAction): void {
+    if (untrack(isOpen)) setOpen(false);
     go(action);
     action.onSelect?.();
   }
@@ -556,6 +609,23 @@ function ResultItem(props: ResultItemProps) {
   );
 }
 
+/** Keys as `shortcut` takes them, written as the reader's keyboard writes them: `⌘K`, `Ctrl+K`, `G P`. */
+function keysText(keys: string): string {
+  const apple = isAppleDevice();
+  return keys
+    .replace(/\s*\+\s*/g, "+")
+    .trim()
+    .split(/\s+/)
+    .map((step) =>
+      step
+        .split("+")
+        .filter((key) => key !== "")
+        .map((key) => keyLabel(key, apple))
+        .join(apple ? "" : "+"),
+    )
+    .join(" ");
+}
+
 interface ActionItemProps {
   action: CommandMenuAction;
   run: (action: CommandMenuAction) => void;
@@ -578,7 +648,9 @@ function ActionItem(props: ActionItemProps) {
       {Icon === undefined ? null : <Icon />}
       <span>{action.label}</span>
       <Show when={action.keys}>
-        <CommandShortcut class={props.classes.shortcut}>{action.keys}</CommandShortcut>
+        <CommandShortcut class={props.classes.shortcut}>
+          {keysText(action.keys ?? "")}
+        </CommandShortcut>
       </Show>
     </CommandItem>
   );
