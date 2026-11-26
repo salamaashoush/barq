@@ -1326,3 +1326,42 @@ export {
   galleryStyles,
   lightboxStyles,
 } from "./components/gallery.tsx";
+export {
+  type AnsiSegment,
+  ConsoleLogView,
+  type ConsoleLogViewProps,
+  LOG_LEVELS,
+  type LogEntry,
+  type LogLevel,
+  ansiSegments,
+  consoleLogStyles,
+  stripAnsi,
+} from "./components/console-log.tsx";
+export {
+  type JsonSchema,
+  type JsonSchemaDefs,
+  JsonSchemaFields,
+  type JsonSchemaFieldsProps,
+  jsonSchemaDefs,
+  jsonSchemaExample,
+  jsonSchemaFieldsStyles,
+  jsonSchemaTypeLabel,
+} from "./components/json-schema.tsx";
+export {
+  SnippetValue,
+  type SnippetValueMap,
+  type SnippetValueProps,
+  type SnippetValueResolver,
+  SnippetValuesProvider,
+  type SnippetValuesProviderProps,
+  readerOrigin,
+  snippetValueStyles,
+  useSnippetValues,
+} from "./components/snippet-values.tsx";
+export {
+  type TemplateToken,
+  TemplateTokenField,
+  type TemplateTokenFieldProps,
+  templateReferences,
+  templateTokenFieldStyles,
+} from "./components/template-token-field.tsx";
