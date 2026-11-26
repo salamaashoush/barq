@@ -1,6 +1,6 @@
 {
   "name": "@barqjs/lexical",
-  "version": "0.2.0-next.3",
+  "version": "0.2.0-next.4",
   "description": "Lexical for barq: a composer over Lexical extensions, a content editable, decorator nodes rendered as barq components, typeahead and node menus, Yjs collaboration and editor-state signals",
   "keywords": [
     "barq",
@@ -82,9 +82,9 @@
     "yjs": "^13.6.33"
   },
   "peerDependencies": {
-    "@barqjs/core": ">=0.2.0-next.3",
-    "@barqjs/server": ">=0.2.0-next.3",
-    "@barqjs/web": ">=0.2.0-next.3",
+    "@barqjs/core": ">=0.2.0-next.4",
+    "@barqjs/server": ">=0.2.0-next.4",
+    "@barqjs/web": ">=0.2.0-next.4",
     "yjs": ">=13.5.37"
   },
   "peerDependenciesMeta": {

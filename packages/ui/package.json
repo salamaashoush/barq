@@ -1,6 +1,6 @@
 {
   "name": "@barqjs/ui",
-  "version": "0.2.0-next.3",
+  "version": "0.2.0-next.4",
   "description": "barq's styled, accessible base components and twenty-four themes, compiled to a stylesheet: the source barq-ui copies from and @barqjs/arc builds on",
   "keywords": [
     "barq",
@@ -514,13 +514,13 @@
     "vite": "^8.3.8"
   },
   "peerDependencies": {
-    "@barqjs/aria": ">=0.2.0-next.3",
-    "@barqjs/core": ">=0.2.0-next.3",
-    "@barqjs/css": ">=0.2.0-next.3",
-    "@barqjs/lucide": ">=0.2.0-next.3",
-    "@barqjs/primitives": ">=0.2.0-next.3",
-    "@barqjs/server": ">=0.2.0-next.3",
-    "@barqjs/web": ">=0.2.0-next.3"
+    "@barqjs/aria": ">=0.2.0-next.4",
+    "@barqjs/core": ">=0.2.0-next.4",
+    "@barqjs/css": ">=0.2.0-next.4",
+    "@barqjs/lucide": ">=0.2.0-next.4",
+    "@barqjs/primitives": ">=0.2.0-next.4",
+    "@barqjs/server": ">=0.2.0-next.4",
+    "@barqjs/web": ">=0.2.0-next.4"
   },
   "peerDependenciesMeta": {},
   "engines": {

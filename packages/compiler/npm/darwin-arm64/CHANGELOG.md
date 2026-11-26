@@ -1,5 +1,9 @@
 # @barqjs/compiler-darwin-arm64
 
+## 0.2.0-next.4
+
+No changes in this release.
+
 ## 0.2.0-next.3
 
 No changes in this release.

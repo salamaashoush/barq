@@ -1,6 +1,6 @@
 {
   "name": "@barqjs/arc",
-  "version": "0.2.0-next.3",
+  "version": "0.2.0-next.4",
   "description": "barq's design system: themes, app shell, pages, data tables, form fields and the patterns every product repeats, on @barqjs/ui's accessible components",
   "keywords": [
     "accessibility",
@@ -150,19 +150,19 @@
     "yjs": "^13.6.33"
   },
   "peerDependencies": {
-    "@barqjs/aria": ">=0.2.0-next.3",
-    "@barqjs/core": ">=0.2.0-next.3",
-    "@barqjs/css": ">=0.2.0-next.3",
-    "@barqjs/db": ">=0.2.0-next.3",
-    "@barqjs/form": ">=0.2.0-next.3",
-    "@barqjs/lexical": ">=0.2.0-next.3",
-    "@barqjs/lucide": ">=0.2.0-next.3",
-    "@barqjs/primitives": ">=0.2.0-next.3",
-    "@barqjs/router": ">=0.2.0-next.3",
-    "@barqjs/server": ">=0.2.0-next.3",
-    "@barqjs/table": ">=0.2.0-next.3",
-    "@barqjs/ui": ">=0.2.0-next.3",
-    "@barqjs/web": ">=0.2.0-next.3",
+    "@barqjs/aria": ">=0.2.0-next.4",
+    "@barqjs/core": ">=0.2.0-next.4",
+    "@barqjs/css": ">=0.2.0-next.4",
+    "@barqjs/db": ">=0.2.0-next.4",
+    "@barqjs/form": ">=0.2.0-next.4",
+    "@barqjs/lexical": ">=0.2.0-next.4",
+    "@barqjs/lucide": ">=0.2.0-next.4",
+    "@barqjs/primitives": ">=0.2.0-next.4",
+    "@barqjs/router": ">=0.2.0-next.4",
+    "@barqjs/server": ">=0.2.0-next.4",
+    "@barqjs/table": ">=0.2.0-next.4",
+    "@barqjs/ui": ">=0.2.0-next.4",
+    "@barqjs/web": ">=0.2.0-next.4",
     "yjs": ">=13.5.37"
   },
   "peerDependenciesMeta": {

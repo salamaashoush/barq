@@ -1,5 +1,15 @@
 # @barqjs/diagnostics
 
+## 0.2.0-next.4
+
+### Patch Changes
+
+- Updated dependencies [ec06e14]
+- Updated dependencies [7847b93]
+- Updated dependencies [f265cd9]
+- Updated dependencies [b6342be]
+  - @barqjs/core@0.2.0-next.4
+
 ## 0.2.0-next.3
 
 ### Patch Changes

@@ -1,5 +1,14 @@
 # @barqjs/core
 
+## 0.2.0-next.4
+
+### Patch Changes
+
+- ec06e14: A `<For>` row that renders nothing (a component returning `null` or `undefined`, or an empty string) now hydrates the server's markup when it comes after the last row that rendered something. The browser reported such a row as one the server did not send, so the list counted as longer in the browser and a structure mismatch was recorded for a page that matched.
+- 7847b93: A handler reaches what it was handed to. `<button {...props} />` attached each handler's Cell as the listener, so a click answered with the handler instead of running it; the record is now read through `elementProps`, which takes each handler and `ref` out of its Cell. A part branded with `asRecord` and spread onto a component hands its handlers over uncalled, where the component's first read used to call them. `createComponent` called from a `.ts` module takes the record of Cells only, so a record of values with a callback in it is a type error rather than a callback the read calls.
+- f265cd9: A function written as a component's prop is the prop's value, and reading it never calls it. `upload={() => send()}`, a named callback and a signal's accessor used to be taken for the prop's Cell, so the component's first read called them and every read called them again; they now cross inside a Cell of their own on every path, and `x={count()}` crosses as `count` itself, one closure fewer. An accessor handed through a component for an attribute, `data-active={() => …}` or `aria-current={() => …}`, still reaches the element as the value it answers and follows it: an element's attribute reads a prop through `readAttr`, and the DOM, server and universal spreads and `Link`'s attributes read through it too. A context's `value` given as an accessor is read through as before, and `Link` now runs an `onClick` it is handed instead of answering with it.
+- b6342be: A `<Show>` or `<Match>` whose only child is a value the compiler cannot see the kind of, such as `{item.label}` inside a render callback, is compiled to a region like any other and hydrates the server's markup. It was left to the component, which carries no hydration flags, so the browser reported it `not-hydratable` and built it again. The arm still decides the child by Solid 2.0's rule, through `callSlot`, now exported from `@barqjs/core`.
+
 ## 0.2.0-next.3
 
 ### Minor Changes
