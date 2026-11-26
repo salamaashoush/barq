@@ -92,3 +92,19 @@ export {
   type MessageHistoryOptions,
   useMessageHistory,
 } from "./message-history.ts";
+export {
+  type MessageSource,
+  QuotedMessageCard,
+  type QuotedMessageCardProps,
+  type QuotedMessageCardSlots,
+  quotedMessageCardStyles,
+} from "./quoted-message-card.tsx";
+export {
+  CustomStatusDialog,
+  type CustomStatusDialogProps,
+  type CustomStatusSlots,
+  type StatusClearAfter,
+  type StatusPreset,
+  customStatusStyles,
+  statusExpiry,
+} from "./custom-status.tsx";

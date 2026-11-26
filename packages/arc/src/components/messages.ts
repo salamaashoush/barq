@@ -1119,6 +1119,20 @@ export interface ArcMessages {
   templateCategory: string;
   noCategory: string;
   startFrom: string;
+  setStatus: string;
+  statusText: string;
+  statusPlaceholder: string;
+  statusEmoji: string;
+  statusSuggestions: string;
+  statusNeedsSomething: string;
+  clearStatus: string;
+  clearAfter: string;
+  clearNever: string;
+  clearIn30Minutes: string;
+  clearIn1Hour: string;
+  clearIn4Hours: string;
+  clearToday: string;
+  clearThisWeek: string;
 }
 
 export const ENGLISH: ArcMessages = {
@@ -2361,6 +2375,20 @@ export const ENGLISH: ArcMessages = {
   templateCategory: "Category",
   noCategory: "No category",
   startFrom: "Start from",
+  setStatus: "Set a status",
+  statusText: "Status",
+  statusPlaceholder: "What are you up to?",
+  statusEmoji: "Choose an emoji for your status",
+  statusSuggestions: "Suggestions",
+  statusNeedsSomething: "Add an emoji or a few words.",
+  clearStatus: "Clear status",
+  clearAfter: "Clear after",
+  clearNever: "Don't clear",
+  clearIn30Minutes: "30 minutes",
+  clearIn1Hour: "1 hour",
+  clearIn4Hours: "4 hours",
+  clearToday: "Today",
+  clearThisWeek: "This week",
 };
 
 const MessagesContext = createContext<ArcMessages>(ENGLISH, "ArcMessages");
