@@ -19,10 +19,7 @@ export interface DescriptionItem {
 
 export const descriptionListStyles = variants({
   slots: {
-    root: arc(layout.container, layout.flush, {
-      display: "grid",
-      gridTemplateColumns: "minmax(0, 1fr)",
-    }),
+    root: arc(layout.container, layout.flush, layout.track),
     row: arc(layout.minZero, {
       display: "grid",
       gridTemplateColumns: "minmax(0, 1fr) auto",

@@ -42,6 +42,8 @@ export const layout = {
   clamp3: arc(flow.lineClamp, { "-webkit-line-clamp": "3" }),
   /** An element's own margin gone: a heading or a paragraph placed by its parent's gap. */
   flush: arc({ margin: "0" }),
+  /** One grid track as wide as its parent and no wider, so a long line inside wraps or scrolls in place. */
+  track: arc({ display: "grid", gridTemplateColumns: "minmax(0, 1fr)" }),
   /** A query container, for what is laid out by `on.cq*`. */
   container: arc({ containerType: "inline-size" }),
   /** Scrolls by itself along the block axis, the page not scrolled past it. */

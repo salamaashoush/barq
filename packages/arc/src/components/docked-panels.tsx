@@ -41,10 +41,7 @@ export const dockedPanelsStyles = variants({
     root: arc(layout.minZero, place.fill),
     main: arc(layout.minZero, place.fill, { overflow: "auto" }),
     panel: arc(layout.column, bg.card, edge.start, place.fill),
-    header: arc(layout.row, gap[2], edge.bottom, {
-      paddingInline: space.x4,
-      paddingBlock: space.x2,
-    }),
+    header: arc(layout.row, gap[2], edge.bottom, place.paddedBar),
     title: arc(type.subheading, layout.grow, layout.minZero, layout.clip, layout.nowrap),
     body: arc(panel.body, { padding: space.x4 }),
     footer: arc(edge.top, { padding: space.x3 }),
