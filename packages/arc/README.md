@@ -1877,6 +1877,8 @@ From `@barqjs/arc` itself, with no CodeMirror:
   filtered by level and text, following the newest line while `live`,
   colour codes drawn, a JSON line opened in place, redactions drawn as
   `RedactedText` draws them, and only the lines in view drawn in a long log.
+  `height` is the whole log's, its toolbar included, and `100%` fills a
+  container that has one, a resizable panel's.
 - `JsonSchemaFields`: a JSON Schema's fields to read, required first, each
   with its type in words, values and default; nesting and `oneOf` variants
   open in place and a cycle ends. `jsonSchemaExample` writes a value shaped
@@ -1940,9 +1942,10 @@ going there means: switching tabs, scrolling an editor.
 - `Workbench`: the frame of an app that is one screen, an editor's or a
   dashboard's: a `bar` along the top in a `<header>`, the `status` (a
   `StatusBar`) along the foot in a `<footer>`, and the rest filled by its
-  children, a grid cell with no minimum size, so a `ResizablePanelGroup`, a
-  `CodeEditor` or a `ConsoleLogView` given `place.fill` fills its panel and
-  scrolls there instead of growing the page. `fill="viewport"` is the
+  children, a grid cell with no minimum size, so a `ResizablePanelGroup`
+  fills it, and a `ConsoleLogView` with `height="100%"`, or a `CodeEditor`
+  or a panel given `place.fill`, fills its panel and scrolls there instead of
+  growing the page. `fill="viewport"` is the
   screen's height and the middle is the page's `<main>`; `fill="parent"`
   takes its container's height for a workbench inside a page, whose middle
   is then a region named by `aria-label` (`landmark` overrides either).
