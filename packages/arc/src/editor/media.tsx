@@ -1,4 +1,4 @@
-import { Show, createSignal, createUniqueId, onCleanup } from "@barqjs/core";
+import { Show, createSignal, createUniqueId, onCleanup, untrack } from "@barqjs/core";
 import { useLexicalEditor } from "@barqjs/lexical";
 import { variants } from "@barqjs/css";
 import { Image as ImageIcon } from "@barqjs/lucide/icons/image";
@@ -83,7 +83,8 @@ export function editorUploads(editor: LexicalEditor): EditorUploads | null {
 
 function ImageView(props: BlockProps<ImageData>) {
   const messages = useArcMessages();
-  const uploads = useEditorUploads();
+  // The renderer draws a picture with no editor, and so no queue, around it.
+  const uploads = untrack(() => props.nodeKey) === "" ? null : useEditorUploads();
   function cls() {
     return mediaStyles();
   }

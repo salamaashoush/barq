@@ -58,6 +58,9 @@ export const PageBreakBlock: Block<Record<string, never>> = defineBlock<Record<s
   defaultData: () => ({}),
   component: PageBreakView,
   fromHtml: { div: breaksPage, hr: breaksPage, br: breaksPage },
+  // Markdown has no page break of its own; the HTML one it keeps reads back here.
+  toMarkdown: () => "<div data-page-break></div>",
+  fromMarkdown: { regExp: /^<div data-page-break><\/div>\s*$/, data: () => ({}) },
   toHtml: () => {
     const element = document.createElement("div");
     element.setAttribute("data-page-break", "");
