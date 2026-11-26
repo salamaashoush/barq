@@ -502,6 +502,7 @@ export {
 export {
   type MediaChapter,
   type MediaCue,
+  type MediaDescription,
   MediaPlayer,
   type MediaPlayerProps,
   type MediaSource,

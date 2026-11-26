@@ -1,6 +1,7 @@
-import { For, Show, createEffect, createSignal, createUniqueId } from "@barqjs/core";
+import { For, Show, createEffect, createSignal, createUniqueId, untrack } from "@barqjs/core";
 import { variants } from "@barqjs/css";
 import { numberFormatter, useLocale } from "@barqjs/aria/i18n";
+import { AudioLines } from "@barqjs/lucide/icons/audio-lines";
 import { Captions } from "@barqjs/lucide/icons/captions";
 import { Gauge as SpeedIcon } from "@barqjs/lucide/icons/gauge";
 import { ListOrdered } from "@barqjs/lucide/icons/list-ordered";
@@ -78,7 +79,18 @@ export interface MediaSource {
   type?: string;
 }
 
+/** A line of a video's audio description: from when, and what the picture shows. */
+export interface MediaDescription {
+  /** Seconds from the start. */
+  at: number;
+  text: string;
+}
+
 const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2] as const;
+/** How long a described line shows where the browser has no voice to read it, in milliseconds. */
+function readingTime(text: string): number {
+  return 1500 + text.split(/\s+/).length * 400;
+}
 const SEEK = 5;
 const JUMP = 10;
 const LEAVE_ALONE = 4000;
@@ -109,6 +121,7 @@ export const mediaPlayerStyles = variants({
       maxWidth: "12rem",
     }),
     end: arc(layout.pushEnd, layout.row, layout.wrap, layout.end, gap[1]),
+    said: arc(layout.row, gap[2], type.body, bg.muted, place.padded, { alignItems: "start" }),
     transcript: arc(plainList, layout.column, gap[0.5], focus.outline, {
       maxHeight: "16rem",
       overflowY: "auto",
@@ -152,6 +165,14 @@ export interface MediaPlayerProps extends Customisable<Slots> {
   chapters?: readonly MediaChapter[];
   /** The words of the media, shown under it behind a Transcript button and kept in step. */
   transcript?: readonly MediaCue[];
+  /**
+   * A video's audio description, read out once the reader turns it on: as
+   * playing reaches each line the video waits while it is read, then plays
+   * on. A `descriptions` track in `tracks` is read the same way.
+   */
+  descriptions?: readonly MediaDescription[];
+  /** The language the description is read in. @default the reader's */
+  descriptionsLang?: string;
   /** @default 0.5, 0.75, 1, 1.25, 1.5, 2 */
   rates?: readonly number[];
   /** @default "metadata" */
@@ -217,6 +238,8 @@ export function MediaPlayer(props: MediaPlayerProps) {
   const [pip, setPip] = createSignal(false, { ownedWrite: true });
   const [mounted, setMounted] = createSignal(false, { ownedWrite: true });
   const [showTranscript, setShowTranscript] = createSignal(false);
+  const [describing, setDescribing] = createSignal(false, { ownedWrite: true });
+  const [said, setSaid] = createSignal<string | null>(null, { ownedWrite: true });
   // When the reader last scrolled the transcript themselves, and when it last
   // scrolled to follow the media, which must not count as theirs.
   let scrolledAt = 0;
@@ -250,10 +273,112 @@ export function MediaPlayer(props: MediaPlayerProps) {
         if (element === null) return;
         for (const node of element.querySelectorAll("track")) {
           if (node.kind === "chapters" || node.kind === "metadata") continue;
+          // A description is never drawn; its cues are read out while it is on.
+          if (node.kind === "descriptions") continue;
           node.track.mode = node.srclang === chosen && chosen !== "" ? "showing" : "disabled";
         }
       },
     );
+    createEffect(
+      () => [media(), describing()] as const,
+      ([element, reading]) => {
+        if (element === null) return;
+        for (const node of element.querySelectorAll("track")) {
+          if (node.kind === "descriptions") node.track.mode = reading ? "hidden" : "disabled";
+        }
+      },
+    );
+    createEffect(
+      () => media(),
+      (element) => (element === null ? undefined : describe(element)),
+    );
+  }
+
+  /**
+   * Reads the description out as the media reaches each line: the media
+   * waits while a line is read, as extended description does, so nothing it
+   * says is talked over. Going to another part, or playing on while a line is
+   * read, stops it.
+   */
+  function describe(element: HTMLMediaElement): () => void {
+    const voice = typeof speechSynthesis === "undefined" ? null : speechSynthesis;
+    let last = element.currentTime;
+    let saying = false;
+    let resume = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    function done(): void {
+      if (!saying) return;
+      saying = false;
+      clearTimeout(timer);
+      setSaid(null);
+      if (resume) {
+        resume = false;
+        void element.play().catch(() => setPaused(true));
+      }
+    }
+    function stop(): void {
+      if (!saying) return;
+      resume = false;
+      voice?.cancel();
+      done();
+    }
+    function say(text: string): void {
+      saying = true;
+      resume = !element.paused;
+      element.pause();
+      setSaid(text);
+      function shown(): void {
+        timer = setTimeout(done, readingTime(text));
+      }
+      if (voice === null || typeof SpeechSynthesisUtterance === "undefined") {
+        shown();
+        return;
+      }
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = props.descriptionsLang ?? locale().locale;
+      utterance.addEventListener("end", done);
+      // A browser with no voice for the language still shows the line for as long as it takes to read.
+      utterance.addEventListener("error", shown);
+      voice.cancel();
+      voice.speak(utterance);
+    }
+    function tick(): void {
+      const from = last;
+      last = element.currentTime;
+      if (!untrack(describing) || saying || element.paused) return;
+      // Only lines played through are read, not ones a seek passes over.
+      if (last < from || last - from > 2) return;
+      const line = (props.descriptions ?? []).find((each) => each.at > from && each.at <= last);
+      if (line !== undefined) say(line.text);
+    }
+    function cue(event: Event): void {
+      const track = event.currentTarget as TextTrack;
+      const active = track.activeCues?.[0] as VTTCue | undefined;
+      if (untrack(describing) && !saying && active !== undefined && active.text !== "") {
+        say(active.text);
+      }
+    }
+    function played(): void {
+      stop();
+    }
+    function sought(): void {
+      last = element.currentTime;
+      stop();
+    }
+    const tracks = [...element.querySelectorAll("track")]
+      .filter((node) => node.kind === "descriptions")
+      .map((node) => node.track);
+    element.addEventListener("timeupdate", tick);
+    element.addEventListener("seeking", sought);
+    element.addEventListener("play", played);
+    for (const track of tracks) track.addEventListener("cuechange", cue);
+    return () => {
+      element.removeEventListener("timeupdate", tick);
+      element.removeEventListener("seeking", sought);
+      element.removeEventListener("play", played);
+      for (const track of tracks) track.removeEventListener("cuechange", cue);
+      stop();
+    };
   }
 
   function element(): HTMLMediaElement | null {
@@ -302,6 +427,13 @@ export function MediaPlayer(props: MediaPlayerProps) {
 
   function captionTracks(): readonly MediaTrack[] {
     return (props.tracks ?? []).filter((track) => track.kind !== "descriptions");
+  }
+  function described(): boolean {
+    return (
+      kind() === "video" &&
+      ((props.descriptions?.length ?? 0) > 0 ||
+        (props.tracks ?? []).some((track) => track.kind === "descriptions"))
+    );
   }
   function toggleCaptions(): void {
     const first = captionTracks()[0];
@@ -657,6 +789,18 @@ export function MediaPlayer(props: MediaPlayerProps) {
               </DropdownMenuContent>
             </DropdownMenu>
           </Show>
+          <Show when={described()}>
+            <IconButton
+              class={cls().button}
+              label={messages().audioDescription}
+              variant="ghost"
+              size="sm"
+              isPressed={describing()}
+              onPress={() => setDescribing(!describing())}
+            >
+              <AudioLines aria-hidden="true" />
+            </IconButton>
+          </Show>
           <Show when={(props.transcript?.length ?? 0) > 0}>
             <IconButton
               class={cls().button}
@@ -696,6 +840,12 @@ export function MediaPlayer(props: MediaPlayerProps) {
           </Show>
         </div>
       </div>
+      <Show when={describing() && said() !== null}>
+        <p class={cls().said} data-slot="media-player-description" dir="auto">
+          <AudioLines aria-hidden="true" />
+          {said()}
+        </p>
+      </Show>
       <Show when={showTranscript()}>
         <ol
           id={transcriptId}

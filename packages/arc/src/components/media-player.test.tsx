@@ -283,6 +283,61 @@ describe("MediaPlayer", () => {
     expect(slot("media-player").classList.contains("mine")).toBe(true);
   });
 
+  test("an audio description, turned on, pauses at each line played through, shows it, then plays on", async () => {
+    // One TextTrack per element, as a browser keeps; happy-dom makes one a read.
+    const held = new WeakMap<HTMLTrackElement, EventTarget & HeldMode>();
+    const original = Object.getOwnPropertyDescriptor(HTMLTrackElement.prototype, "track");
+    Object.defineProperty(HTMLTrackElement.prototype, "track", {
+      configurable: true,
+      get(this: HTMLTrackElement) {
+        const own = held.get(this) ?? Object.assign(new EventTarget(), { mode: "disabled" });
+        held.set(this, own);
+        return own;
+      },
+    });
+    render(() => (
+      <MediaPlayer
+        title="Clip"
+        src="/clip.mp4"
+        descriptions={[{ at: 5, text: "A map of the river appears." }]}
+        tracks={[{ src: "/clip.ad.vtt", kind: "descriptions", srclang: "en", label: "English" }]}
+      />
+    ));
+    const video = await load();
+    const button = screen.getByRole("button", { name: "Audio description" });
+    expect(button.getAttribute("aria-pressed")).toBe("false");
+    // A descriptions track is never a caption to choose.
+    expect(screen.queryByRole("button", { name: "Captions" })).toBeNull();
+    await user.click(button);
+    await settle();
+    expect(button.getAttribute("aria-pressed")).toBe("true");
+    const track = video.querySelector("track")!;
+    expect(track.track.mode).toBe("hidden");
+    let resumed = 0;
+    Object.defineProperty(video, "paused", { configurable: true, value: false });
+    video.pause = () => Object.defineProperty(video, "paused", { configurable: true, value: true });
+    video.play = () => {
+      resumed++;
+      return Promise.resolve();
+    };
+    await at(4);
+    await at(5.2);
+    expect(video.paused).toBe(true);
+    const line = document.querySelector('[data-slot="media-player-description"]');
+    expect(line?.textContent).toBe("A map of the river appears.");
+    await new Promise((resolve) => setTimeout(resolve, 4500));
+    await settle();
+    expect(resumed).toBe(1);
+    expect(document.querySelector('[data-slot="media-player-description"]')).toBeNull();
+    // A seek past a line does not read it.
+    Object.defineProperty(video, "paused", { configurable: true, value: false });
+    await at(60);
+    expect(document.querySelector('[data-slot="media-player-description"]')).toBeNull();
+    if (original !== undefined) {
+      Object.defineProperty(HTMLTrackElement.prototype, "track", original);
+    }
+  });
+
   test("hydrates what the server wrote", async () => {
     const result = await hydrates(`
       import { MediaPlayer } from "<arc>";
