@@ -19,7 +19,7 @@ const ARABIC = [
 ].join("\n\n");
 
 export default function DocumentEditor() {
-  const [problem, setProblem] = createSignal(true);
+  const [problem, setProblem] = createSignal(false);
   return (
     <Stack gap={6}>
       <BlockEditor label="Runbook" defaultMarkdown={RUNBOOK} />
@@ -39,7 +39,7 @@ export default function DocumentEditor() {
         <Stack gap={2}>
           <RichTextEditor
             label="Status update"
-            defaultMarkdown="Write TODO somewhere in this update to see it refused."
+            defaultMarkdown="The failover finished at 14:20. Add the word to-do in capitals to see the update refused."
             toolbar={["marks"]}
             minHeight={140}
             validate={(value) =>
