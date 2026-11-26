@@ -577,6 +577,10 @@ if (await confirm({ title: "Delete the check?", tone: "danger", confirmLabel: "D
   nothing-found and failed rows and a Show more while it returns a `next`
   cursor. `recent` keeps the results chosen and offers them before anything
   is typed, and a status line tells a screen reader how many were found.
+  An action's `keys` (`"mod+s"`, or `"g p"` for G then P) are shown as the
+  reader's keyboard writes them, and with `bindKeys` they run the action from
+  anywhere on the page through `@barqjs/primitives`' `shortcut`, registered
+  actions included, for as long as the menu is mounted.
 
   ```tsx
   <CommandMenu
@@ -1887,6 +1891,96 @@ From `@barqjs/arc` itself, with no CodeMirror:
 The colours are the theme's `code-*` tokens and the metrics are custom
 properties (`--code-font-size`, `--code-line-height`, ...), so light, dark and
 an app's brand restyle a live editor with no reconfigure.
+
+## Workbench panels
+
+```tsx
+import {
+  CheckResults,
+  ProblemsPanel,
+  ShareDialog,
+  StatusBar,
+  TestResults,
+  Workbench,
+  problemCounts,
+} from "@barqjs/arc";
+
+<ProblemsPanel problems={problems()} onSelect={(location) => openAt(location)} />;
+
+<TestResults
+  tests={tests()}
+  running={running()}
+  onRun={(id) => runner.run(id)}
+  onRunAll={() => runner.runAll()}
+  onRerunFailed={(ids) => runner.run(...ids)}
+  onSelect={(location) => openAt(location)}
+/>;
+
+<StatusBar
+  problems={problemCounts(problems())}
+  onProblemsClick={() => setPanel("problems")}
+  tasks={[{ id: "build", label: "Building", progress: 0.4 }]}
+  cursor={{ line: 12, column: 5 }}
+  language="Toy"
+/>;
+
+<ShareDialog state={workspace()} trigger={<Button>Share</Button>} />;
+
+<Workbench bar={<Toolbar>…</Toolbar>} status={<StatusBar language="Toy" />}>
+  <ResizablePanelGroup orientation="vertical">…</ResizablePanelGroup>
+</Workbench>;
+```
+
+What sits around an editor, none of it tied to a language or a tool. A place
+in a document is a `SourceLocation`: a `uri`, and a `line` and `column`
+counted from 1 as a gutter counts them (a language server's are one less),
+with an optional end. Every panel answers with one, so the app decides what
+going there means: switching tabs, scrolling an editor.
+
+- `Workbench`: the frame of an app that is one screen, an editor's or a
+  dashboard's: a `bar` along the top in a `<header>`, the `status` (a
+  `StatusBar`) along the foot in a `<footer>`, and the rest filled by its
+  children, a grid cell with no minimum size, so a `ResizablePanelGroup`, a
+  `CodeEditor` or a `ConsoleLogView` given `place.fill` fills its panel and
+  scrolls there instead of growing the page. `fill="viewport"` is the
+  screen's height and the middle is the page's `<main>`; `fill="parent"`
+  takes its container's height for a workbench inside a page, whose middle
+  is then a region named by `aria-label` (`landmark` overrides either).
+  `AppShell` is the frame for an app of pages beside a navigation.
+- `ProblemsPanel`: `Problem`s (a severity, a message, a `source` and `code`,
+  `related` places) grouped under their document, documents in `uri` order
+  and each one's problems in the order they appear. Counts per severity
+  filter it, and so does a search; documents fold (`collapsed`). It is
+  `@barqjs/aria`'s tree, so Enter or a press on a problem, or on a related
+  place, calls `onSelect`. `problemCounts` counts a list for anything else.
+- `TestResults`: a tree of suites and tests (`TestNode`), each with its
+  status in words and its time; a suite's status comes from its tests.
+  Choosing a test shows its result beside the tree: the failure's message,
+  its trace, and `expected` against `actual` in `CodeDiff`, which loads the
+  first time a failure has both, so a page with no failures carries no
+  CodeMirror. Each row has a run button (`onRun`), the toolbar Run all,
+  Rerun failed and, while `running`, Stop; the counts filter by status.
+  Enter, or Go to source, calls `onSelect` with the failure's place.
+- `CheckResults`: what a prover or a property checker concluded, a check at
+  a time: proved, falsified with the counterexample that breaks it (each
+  value written as JSON in a `DescriptionList`), unknown, error or timeout.
+  `verdicts` renames one or adds the checker's own with a tone and an icon;
+  counts filter by verdict and a search by name. A name with a place is a
+  button that calls `onSelect`.
+- `StatusBar`: the strip along a workbench's foot. Problem counts (a button
+  with `onProblemsClick`), background `tasks` with a bar or a spinner, the
+  `cursor`, the `language` (a button with `onLanguageClick`), and the
+  caller's own `StatusBarItem`s at `start` and `end`. On a narrow bar the
+  cursor, the language and every `priority="low"` item step aside and a task
+  keeps its bar without its words, by container query. It is not a live
+  region, so a caret that moves on every key does not talk over the typing.
+- `ShareDialog`: a link that opens what the reader has now. `state` is
+  compressed into the link's hash by `@barqjs/primitives`' `urlStateLink`
+  (`deflate-raw`, base64url) when it opens and, unless `updateAddress` is
+  off, written into the page's own address; the page reads it back with
+  `readUrlState`. The link is shown with its length and how far the state
+  shrank, copied with `CopyButton`, with a warning past `maxLength`. A dialog
+  on a wide screen and a sheet on a phone.
 
 ## Rich text
 
