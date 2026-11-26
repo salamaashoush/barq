@@ -1827,7 +1827,7 @@ page pays only for the languages it shows.
   reconfigure the live editor. `label`, `labelledBy`, `description` and
   `describedBy` name and describe it, `invalid` marks it, and Mod-Enter calls
   `onSubmit`. `onView` hands over the `EditorView` for anything the props do
-  not reach, such as a language service in a worker. On a server, and until
+  not reach. On a server, and until
   its language loads, it is the code highlighted in a `<pre>` of the editor's
   own metrics, which a hydrated page adopts and the editor then replaces
   without moving a line.
@@ -1844,6 +1844,23 @@ page pays only for the languages it shows.
   aliases such as `ts`, `yml` and `bash`. `registerLanguage` adds an app's
   own, a legacy mode included, and `language` also takes a `LanguageSupport`
   built by hand.
+- `defineLanguage`: a language from a description of its words and
+  punctuation, with no grammar to write: keywords, types, constants and
+  builtins, operators matched longest first, strings and comments that span
+  lines (nested block comments too), numbers and identifiers. Brackets
+  indent what they hold, close themselves and fold, and the comment keys
+  work. It is a `LanguageSupport`, so a server's render highlights it too.
+
+  ```ts
+  const toy = defineLanguage({
+    name: "toy",
+    keywords: ["fn", "let", "if", "else", "return"],
+    constants: ["true", "false", "nil"],
+    operators: ["==", "->", "=", "+", "-"],
+    comments: { line: "#", block: { open: "#[", close: "]#", nested: true } },
+  });
+  registerLanguage("toy", async () => toy);
+  ```
 - Marked lines and excerpts: `marks` on `CodeBlock`, `Highlight` and
   `CodeEditor` gives lines a tone's fill, a rule and a label a screen reader
   hears; `range` (`rangeAround(code, line)` makes one) shows only those lines,
@@ -1862,14 +1879,65 @@ page pays only for the languages it shows.
   rewrite a command are its state; `shellQuote` quotes a value that needs it.
 - `languageForContentType` picks the language of a body from its type or how
   it starts, and `prettyJson` indents what parses and returns what does not.
-- Completion: `tokenCompletions` offers names after a trigger (`{{`,
-  `process.env.`), tagged by kind, closing what it opened. `codeIntelligence`
-  takes a language service (completion with docs, hover, diagnostics with a
-  gutter); `workerIntelligence` answers it from a worker started on the first
-  request, and `@barqjs/arc/code/worker` has the worker's half,
-  `serveIntelligence`, and `typescriptIntelligence` over a TypeScript
-  environment such as `@typescript/vfs` builds. A failed answer is an empty
-  one, so editing never waits on it.
+- `tokenCompletions` offers names after a trigger (`{{`, `process.env.`),
+  tagged by kind, closing what it opened.
+- `languageClient`: a Language Server Protocol client for a project, on
+  `@codemirror/lsp-client`. Any server plugs in through a `Transport`
+  (`portTransport` for a `Worker` or a `MessagePort`; a WebSocket fits the
+  same three methods), started when the first file opens. Each editor's
+  `extensions={client.document(uri)}` gives it completion (snippets, edits an
+  item brings, docs from `completionItem/resolve`), hover in arc's markdown,
+  signature help, diagnostics with their code, related places and a quick
+  fix, semantic tokens in the theme's token colours (`semanticTokenClasses`),
+  inlay hints, code lenses, code actions on Mod-. (`showCodeActions`),
+  folding for the `folding` gutter, formatting on Shift-Alt-F and as trigger
+  characters are typed (`formatCode`), definition on F12 and Mod-click
+  (`goToDefinition`), references on Shift-F12 and rename across files on F2.
+  `open(uri, text)` keeps a file no editor shows open, so answers reach
+  across a project whose files sit in tabs; definition in another file calls
+  `onNavigate(uri, range)` for the app to switch tabs, and the client selects
+  the range once that file's editor is up. A rename or fix in a file no
+  editor shows comes back through `onEdit`. `diagnostics()`, `symbols(uri)`
+  (`symbolNodes` turns them into `OutlineView` nodes), `progress()` and
+  `status()` are reactive; `onMessage`, `onCommand`, `configuration`,
+  `requests` and `notifications` answer the server's side. `features` turns
+  any of it off, and a failed answer is no answer, so editing never waits.
+  CodeMirror's words and these features' ("Quick fix", "Code actions", "New
+  name") translate through `ArcMessages.codePhrases`.
+
+  ```tsx
+  const client = languageClient({
+    transport: () => portTransport(new Worker(new URL("./server.ts", import.meta.url), { type: "module" })),
+    rootUri: "file:///project/",
+    languageId: "toy",
+    onNavigate: (uri) => setActive(uri),
+    onEdit: (uri, text) => files.write(uri, text),
+  });
+  client.open("file:///project/lib.toy", files.read("file:///project/lib.toy"));
+
+  <CodeEditor language="toy" value={main()} onChange={setMain} folding extensions={client.document("file:///project/main.toy")} />;
+  <OutlineView aria-label="Outline" nodes={symbolNodes(client.symbols("file:///project/main.toy") ?? [])} />;
+  ```
+
+  `@barqjs/arc/code/worker` is the server's half, with no CodeMirror:
+  `serveLanguageServer(self, definition)` speaks JSON-RPC over a port,
+  keeps the open documents in step (incremental changes applied), aborts a
+  handler's `signal` on `$/cancelRequest`, and lets handlers `notify` and
+  `request` the client; `typescriptServer(load)` is TypeScript over an
+  environment such as `@typescript/vfs` builds (completion, docs, hover,
+  diagnostics). The protocol's types are there as `lsp`.
+
+  ```ts
+  // server.ts, run as a module worker
+  import { type lsp, serveLanguageServer } from "@barqjs/arc/code/worker";
+
+  serveLanguageServer(self, {
+    capabilities: { hoverProvider: true },
+    requests: { "textDocument/hover": (params: lsp.HoverParams) => ({ contents: describe(params) }) },
+    changed: (document, { notify }) =>
+      notify("textDocument/publishDiagnostics", { uri: document.uri, diagnostics: check(document.text) }),
+  });
+  ```
 
 From `@barqjs/arc` itself, with no CodeMirror:
 
