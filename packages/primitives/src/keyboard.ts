@@ -80,6 +80,8 @@ export interface ShortcutOptions {
    * should open the palette, but a bare `k` must not while someone is typing.
    */
   whileTyping?: boolean;
+  /** How long a sequence such as `"g p"` waits for its next key, in milliseconds. @default 1000 */
+  sequenceTimeout?: number;
 }
 
 const TYPING = new Set(["INPUT", "TEXTAREA", "SELECT"]);
@@ -89,6 +91,27 @@ function isTyping(target: EventTarget | null): boolean {
   return TYPING.has(target.tagName) || (target as HTMLElement).isContentEditable;
 }
 
+const MODIFIERS = new Set(["shift", "control", "alt", "meta", "os"]);
+
+function steps(combo: string): Combo[] {
+  return combo
+    .replace(/\s*\+\s*/g, "+")
+    .trim()
+    .split(/\s+/)
+    .filter((step) => step !== "")
+    .map(parseCombo);
+}
+
+function pressed(event: KeyboardEvent, wanted: Combo): boolean {
+  return (
+    event.key.toLowerCase() === wanted.key &&
+    event.ctrlKey === wanted.ctrl &&
+    event.metaKey === wanted.meta &&
+    event.shiftKey === wanted.shift &&
+    event.altKey === wanted.alt
+  );
+}
+
 /**
  * Bind a keyboard shortcut.
  *
@@ -96,9 +119,14 @@ function isTyping(target: EventTarget | null): boolean {
  * `"mod+k"` does not fire on `mod+shift+k`. That exactness is what lets two
  * shortcuts share a key.
  *
+ * Combos separated by spaces are a sequence: `"g p"` fires on G and then P,
+ * pressed within `sequenceTimeout` of each other. Another key in between
+ * starts it over; a modifier going down on its own does not.
+ *
  * ```ts
  * shortcut("mod+k", () => palette.open());
  * shortcut("escape", () => dialog.close(), { whileTyping: true });
+ * shortcut("g p", () => navigate("/projects"));
  * ```
  */
 export function shortcut(
@@ -107,24 +135,34 @@ export function shortcut(
   options?: ShortcutOptions,
 ): Clear {
   const preventDefault = options?.preventDefault !== false;
+  let reached = 0;
+  let at = 0;
 
   return on(options?.target ?? (isServer ? null : window), "keydown", (event: KeyboardEvent) => {
     if (event.repeat && options?.repeat !== true) return;
-    const wanted = parseCombo(access(combo));
-    if (wanted.key === "") return;
-    if (event.key.toLowerCase() !== wanted.key) return;
-    if (
-      event.ctrlKey !== wanted.ctrl ||
-      event.metaKey !== wanted.meta ||
-      event.shiftKey !== wanted.shift ||
-      event.altKey !== wanted.alt
-    ) {
-      return;
+    const wanted = steps(access(combo));
+    if (wanted.length === 0 || wanted.some((step) => step.key === "")) return;
+    if (reached > 0 && event.timeStamp - at > (options?.sequenceTimeout ?? 1000)) reached = 0;
+    let step = wanted[reached] as Combo;
+    if (!pressed(event, step)) {
+      if (MODIFIERS.has(event.key.toLowerCase())) return;
+      reached = 0;
+      step = wanted[0] as Combo;
+      if (!pressed(event, step)) return;
     }
-    if (!options?.whileTyping && wanted.key.length === 1 && !wanted.ctrl && !wanted.meta) {
-      if (isTyping(event.target)) return;
+    if (!options?.whileTyping && step.key.length === 1 && !step.ctrl && !step.meta) {
+      if (isTyping(event.target)) {
+        reached = 0;
+        return;
+      }
     }
     if (preventDefault) event.preventDefault();
+    if (reached < wanted.length - 1) {
+      reached++;
+      at = event.timeStamp;
+      return;
+    }
+    reached = 0;
     handler(event);
   });
 }

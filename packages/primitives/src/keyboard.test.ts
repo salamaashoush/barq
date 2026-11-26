@@ -193,4 +193,67 @@ describe("shortcut", () => {
     flush();
     expect(calls).toBe(1);
   });
+
+  test("a sequence fires on its keys in order, and starts over on another key", () => {
+    let calls = 0;
+    const dispose = createRoot((d) => {
+      shortcut("g p", () => calls++);
+      return d;
+    });
+    key({ key: "g" });
+    key({ key: "p" });
+    flush();
+    expect(calls).toBe(1);
+
+    key({ key: "p" });
+    key({ key: "g" });
+    key({ key: "x" });
+    key({ key: "p" });
+    flush();
+    expect(calls).toBe(1);
+
+    key({ key: "g" });
+    key({ key: "g" });
+    key({ key: "Shift" });
+    key({ key: "p" });
+    flush();
+    expect(calls).toBe(2);
+    dispose();
+  });
+
+  test("a sequence's steps take modifiers, and a step reached too late starts it over", async () => {
+    let calls = 0;
+    const dispose = createRoot((d) => {
+      shortcut("mod + k  ctrl+s", () => calls++, { sequenceTimeout: 20 });
+      return d;
+    });
+    const mod = parseCombo("mod");
+    key({ key: "k", ctrlKey: mod.ctrl, metaKey: mod.meta });
+    key({ key: "s", ctrlKey: true });
+    flush();
+    expect(calls).toBe(1);
+
+    key({ key: "k", ctrlKey: mod.ctrl, metaKey: mod.meta });
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    key({ key: "s", ctrlKey: true });
+    flush();
+    expect(calls).toBe(1);
+    dispose();
+  });
+
+  test("a sequence of bare keys waits while someone types", () => {
+    const input = document.createElement("input");
+    document.body.append(input);
+    let calls = 0;
+    const dispose = createRoot((d) => {
+      shortcut("g p", () => calls++);
+      return d;
+    });
+    key({ key: "g" });
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "p", bubbles: true }));
+    flush();
+    expect(calls).toBe(0);
+    input.remove();
+    dispose();
+  });
 });
