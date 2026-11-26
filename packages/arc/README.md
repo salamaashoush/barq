@@ -712,6 +712,16 @@ import { ResponsiveTabs } from "@barqjs/arc";
   router, tabs with `href` are routes of their own: the one whose path the
   page is on is selected, a tab comes back with the search it was left with,
   and `shared` names the parameters every tab carries on, such as a window.
+  Tabs that are open documents: `onClose` puts a close button on each, and a
+  middle click or Delete closes the focused one, its neighbour selected
+  first; `onReorder` moves tabs by dragging, by Ctrl+Shift+Page Up and Page
+  Down (or Alt+Shift and an arrow, in the reading direction) and from the
+  menu, announcing the new place; `onPinnedChange` pins them, pinned tabs
+  staying first and out of the closes that take several. A right-click, a
+  held touch or Shift+F10 opens a tab's menu: Close, Close others, Close the
+  ones after, Close all, Pin, Move earlier and Move later. An item's `dirty`
+  draws a dot and adds "Unsaved changes" to its name, and `title` is the
+  tooltip, a file's path.
 - `BottomNavigation`: a phone's tab bar of three to five destinations, a
   navigation landmark along the bottom clear of the home indicator. Each item
   is a router link (`to`, current while the location is under it), a plain
@@ -1002,7 +1012,26 @@ with `value`, `defaultValue` and `onChange` outside one.
   while its id is in `loadingKeys`; `hasMore` puts a row at the end of a
   level that asks `onLoadMore` for the rest. With `dragAndDropHooks` from
   aria's `dragAndDrop()`, rows drag to reorder or into another, by pointer,
-  touch or a drag button the keyboard reaches.
+  touch or a drag button the keyboard reaches. `onRename` edits a label in
+  place: F2 on a row (or `renamingKey`) opens a field over it, Enter or
+  leaving it saves, Escape puts it back, `validateLabel` keeps it open with
+  the reason, and focus returns to the row. A node's `end` sits at the row's
+  end: a status, unsaved changes.
+- `FileExplorer`: a workspace's files over a `virtualFs()`, on `TreeView`.
+  New file and New folder add a row in the chosen folder whose name is typed
+  in place; F2 renames, Delete (or ⌘⌫) deletes after `confirm()`, rows drag
+  onto a folder to move there, and a right-click, a held touch or Shift+F10
+  opens the same actions. A name already in the folder, or one with a
+  slash, is refused with the reason. `activePath` is the open file, its
+  folders opened; `dirtyPaths` marks files with a dot; `onCreate`, `onMove`
+  and `onDelete` tell the app after `fs` changed, so it can move its tabs.
+- `virtualFs(tree)`: files and folders in memory, reactive (`list`, `read`,
+  `files` and `toJSON` follow every change) and answering at once, before a
+  flush. `write`, `mkdir`, `move`, `rename` and `remove` change it, a refused
+  change throwing a `VirtualFsError` whose `code` says why, and `toJSON` and
+  `load` turn it into a plain object and back, for a link that shares a
+  workspace. `parentOf`, `nameOf`, `joinPath` and `isValidName` work on
+  paths.
 - `KanbanBoard`: columns of cards that move between them, tasks by status
   or leads by stage, each column `@barqjs/aria`'s grid list with its drag
   and drop. A card drags by pointer or touch, or from its drag button by
@@ -1877,6 +1906,26 @@ page pays only for the languages it shows.
   terminal commands, with a note above. `group` shares the choice between
   tab sets and remembers it. The code is the caller's, so options that
   rewrite a command are its state; `shellQuote` quotes a value that needs it.
+- `EditorTabs`: an editor's open documents, `ResponsiveTabs` with its
+  document behaviour on: the row scrolls, tabs close, move and pin
+  (`onClose`, `onReorder`, `onPinnedChange`), `dirty` tabs carry a dot, and
+  every document's editor stays mounted while its tab is open, so its undo
+  history and scroll survive switching. `empty` is what shows with none open.
+  Beside a `FileExplorer` and a `Repl`, the splits are `@barqjs/ui`'s
+  `ResizablePanelGroup`, whose `autoSaveId` keeps their sizes across visits.
+
+  ```tsx
+  <EditorTabs
+    aria-label="Open files"
+    items={open().map((path) => ({ id: path, label: nameOf(path), title: path, dirty: unsaved(path) }))}
+    selectedKey={active()}
+    onSelectionChange={setActive}
+    onClose={(paths) => closeFiles(paths)}
+    onReorder={setOpen}
+  >
+    {(tab) => <CodeEditor label={tab.label} value={textOf(tab.id)} onChange={(text) => edit(tab.id, text)} />}
+  </EditorTabs>
+  ```
 - `languageForContentType` picks the language of a body from its type or how
   it starts, and `prettyJson` indents what parses and returns what does not.
 - `tokenCompletions` offers names after a trigger (`{{`, `process.env.`),
@@ -1947,6 +1996,29 @@ From `@barqjs/arc` itself, with no CodeMirror:
   `RedactedText` draws them, and only the lines in view drawn in a long log.
   `height` is the whole log's, its toolbar included, and `100%` fills a
   container that has one, a resizable panel's.
+  `AnsiText` draws a string's colour codes anywhere, and `ansiColours` on an
+  ancestor colours them in arc's tones.
+- `Repl`: read, run, print. `onSubmit(text, signal)` answers with outputs
+  (`result`, `stdout`, `stderr`, `error`, `info`) streamed from an async
+  iterable, all at once, or as a promise; a throw prints an error. Enter
+  runs once `isComplete` says the input is whole (`bracketsBalanced` by
+  default) and adds a line while it is not, Shift+Enter always adds one, Up
+  and Down walk the history from the first and last line, kept under
+  `storageKey`. Stop or Ctrl+C aborts the run's `AbortSignal`, Ctrl+L
+  clears, and the transcript, a log a screen reader hears politely, copies
+  as text. `language` highlights each input, `banner` and `actions` add to
+  it, `fill` fills a split pane, `input` swaps the textarea for an editor
+  through `ReplInputField.keyDown`, and `handle` gives the app `run`,
+  `print`, `clear`, `stop` and `focus`.
+
+  ```tsx
+  <Repl
+    storageKey="toy"
+    onSubmit={async function* (code, signal) {
+      for await (const line of worker.run(code, { signal })) yield { kind: "stdout", text: line };
+    }}
+  />
+  ```
 - `JsonSchemaFields`: a JSON Schema's fields to read, required first, each
   with its type in words, values and default; nesting and `oneOf` variants
   open in place and a cycle ends. `jsonSchemaExample` writes a value shaped
