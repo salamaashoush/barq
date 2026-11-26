@@ -290,7 +290,16 @@ const LINK = new Set(["href", "hrefLang", "target", "rel", "download", "ping", "
  * `tabIndex={-1}` on itself or a focus scope has nowhere to put focus, and
  * Escape — whose handler is on the overlay — then never reaches it.
  */
-const GLOBAL_ATTRS = new Set(["dir", "lang", "hidden", "inert", "translate", "tabIndex", "title"]);
+const GLOBAL_ATTRS = new Set([
+  "dir",
+  "lang",
+  "hidden",
+  "inert",
+  "translate",
+  "tabIndex",
+  "title",
+  "draggable",
+]);
 
 const GLOBAL_EVENTS = new Set([
   // The focus four. A collection here moves REAL DOM focus through its items
@@ -344,7 +353,7 @@ export interface FilterDOMPropsOptions {
   labelable?: boolean;
   /** Include the `<a>` attributes. */
   isLink?: boolean;
-  /** Include `dir`, `lang`, `hidden`, `inert`, `translate`. */
+  /** Include `dir`, `lang`, `hidden`, `inert`, `translate`, `tabIndex`, `title`, `draggable`. */
   global?: boolean;
   /** Include the global DOM events. Defaults to `global`. */
   events?: boolean;
@@ -791,6 +800,8 @@ export interface StyleProps extends GlobalEvents {
   translate?: "yes" | "no";
   tabIndex?: number;
   title?: string;
+  /** Whether the browser's own drag starts from it: an item reordered by dragging. */
+  draggable?: boolean;
   /** Anything `data-*`, which is how a design system marks the elements it styles. */
   readonly [attribute: `data-${string}`]: unknown;
 }
