@@ -169,7 +169,8 @@ describe("BlockEditor", () => {
     await caretIn(editor, 2);
     await user.click(screen.getByRole("button", { name: "Insert a block" }));
     await settle();
-    expect(screen.getByText("Feedback")).toBeDefined();
+    const headings = [...document.querySelectorAll('[data-slot="command-group-label"]')];
+    expect(headings.map((one) => one.textContent)).toContain("Feedback");
     await user.click(screen.getByRole("option", { name: "Rating" }));
     await settle();
     const block = await waitFor(() => screen.getByRole("button", { name: "0 stars" }));

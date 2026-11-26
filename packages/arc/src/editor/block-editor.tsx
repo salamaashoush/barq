@@ -1,5 +1,6 @@
 import { For, Show, createMemo, createSignal } from "@barqjs/core";
 import { variants } from "@barqjs/css";
+import type { PressEvent } from "@barqjs/aria/interactions";
 import { announce } from "@barqjs/aria/live";
 import { useLexicalEditor } from "@barqjs/lexical";
 import { GripVertical } from "@barqjs/lucide/icons/grip-vertical";
@@ -34,13 +35,12 @@ import {
   $getSelection,
   $isElementNode,
   $isRangeSelection,
-  $parseSerializedNode,
+  type ElementNode,
   COMMAND_PRIORITY_LOW,
   KEY_DOWN_COMMAND,
   type LexicalEditor,
   type LexicalNode,
   type NodeKey,
-  type SerializedLexicalNode,
   mergeRegister,
 } from "lexical";
 
@@ -49,17 +49,27 @@ import { arcLayer as arc } from "../layer.ts";
 import { type Customisable, parts } from "../lib/parts.ts";
 import { gap, interaction, layout, place, rounded, space, target, zIndex } from "../style/index.ts";
 import {
+  $blockKind,
   $textBlockOf,
+  $turnInto,
   TEXT_BLOCK_TYPES,
   type TextBlockType,
-  setTextBlock,
+  duplicateBlock,
+  editorConversions,
+  removeBlock,
   shortcutLabel,
   textBlockLabel,
 } from "./commands.ts";
 import { labelOf } from "./blocks.tsx";
 import { $rootBlockOf } from "./containers.tsx";
 import { $clipboardTarget, copyTarget, cutTarget, pasteAt } from "./paste.ts";
-import { type BlockMenuChoice, type Label, editorExtensions } from "./extension.ts";
+import {
+  type BlockConversion,
+  type BlockMenuChoice,
+  type Label,
+  editorExtensions,
+  keysMatch,
+} from "./extension.ts";
 import { editorSignal, useRegistration } from "./hooks.ts";
 import { RichTextEditor, type RichTextEditorProps } from "./rich-text-editor.tsx";
 import { type SlashCommand, SlashCommandMenu, editorCommands } from "./typeahead.tsx";
@@ -92,6 +102,8 @@ export const blockEditorStyles = variants({
       backgroundColor: tokens.ring,
     }),
     picker: arc({ width: "min(20rem, calc(100vw - 2rem))", padding: "0px" }),
+    chips: arc(layout.row, layout.wrap, gap[1], place.paddedLine),
+    chip: arc(rounded.full),
   },
 });
 
@@ -102,8 +114,8 @@ interface ActiveBlock {
   top: number;
   index: number;
   count: number;
-  /** A text block's type, which Turn into offers to change. */
-  text: TextBlockType | null;
+  /** A text style or a kind of block of an extension's, which Turn into offers to change. */
+  kind: string | null;
   /** What the extensions' block menus offer this block, each with what it has now. */
   choices: readonly OfferedChoice[];
 }
@@ -117,17 +129,6 @@ interface OfferedChoice {
   choice: BlockMenuChoice;
   value: string;
   options: readonly OfferedOption[];
-}
-
-interface NodeWithChildren {
-  children?: SerializedLexicalNode[];
-}
-
-/** A node and everything under it as JSON, children included, for a copy. */
-function $deepJSON(node: LexicalNode): SerializedLexicalNode {
-  const json = node.exportJSON() as SerializedLexicalNode & NodeWithChildren;
-  if ($isElementNode(node)) json.children = node.getChildren().map($deepJSON);
-  return json;
 }
 
 /**
@@ -171,23 +172,12 @@ function moveTo(
   });
 }
 
-function duplicate(editor: LexicalEditor, key: NodeKey): void {
-  editor.update(() => {
-    const node = $getNodeByKey(key);
-    if (node === null) return;
-    node.insertAfter($parseSerializedNode($deepJSON(node)));
-  });
-}
-
-function remove(editor: LexicalEditor, key: NodeKey): void {
-  editor.update(() => {
-    const node = $getNodeByKey(key);
-    if (node === null) return;
-    const next = node.getNextSibling() ?? node.getPreviousSibling();
-    node.remove();
-    if ($getRoot().getChildrenSize() === 0) $getRoot().append($createParagraphNode());
-    (next ?? $getRoot().getFirstChild())?.selectStart();
-  });
+/** Whether the range selection is inside `node`. */
+function $isSelectionIn(node: ElementNode): boolean {
+  const selection = $getSelection();
+  if (!$isRangeSelection(selection)) return false;
+  const anchor = selection.anchor.getNode();
+  return anchor.is(node) || anchor.getParents().some((one) => one.is(node));
 }
 
 /** Runs a picker's command on a new line after the block with `key`. */
@@ -264,6 +254,9 @@ function BlockPlaceholders(props: BlockPlaceholdersProps) {
   const editor = useLexicalEditor();
   const messages = useArcMessages();
   let marked = new Set<HTMLElement>();
+  const placeholders = editorExtensions(editor).flatMap((extension) =>
+    extension.placeholder === undefined ? [] : [extension.placeholder],
+  );
   function word(block: TextBlockType): string {
     const all = messages();
     const own: Record<TextBlockType, string> = {
@@ -290,8 +283,15 @@ function BlockPlaceholders(props: BlockPlaceholdersProps) {
           : null;
       // The editor's own placeholder speaks for a document with nothing in it.
       const lone = props.documentPlaceholder && root.getChildrenSize() === 1;
-      function consider(node: LexicalNode): void {
-        if (!$isElementNode(node) || node.getTextContentSize() > 0) return;
+      function consider(node: ElementNode): void {
+        if (node.getTextContentSize() > 0) return;
+        for (const own of placeholders) {
+          const label = own(node);
+          if (label !== null) {
+            out.set(node.getKey(), labelOf(label, messages()));
+            return;
+          }
+        }
         const block = $textBlockOf(node);
         if (block === null) return;
         const holdsCaret =
@@ -299,10 +299,13 @@ function BlockPlaceholders(props: BlockPlaceholdersProps) {
         if (block === "paragraph" && (!holdsCaret || lone)) return;
         out.set(node.getKey(), word(block));
       }
-      for (const child of root.getChildren()) {
-        if ($isListNode(child)) for (const item of child.getChildren()) consider(item);
-        else consider(child);
+      // Every block, those inside containers too; a table's cells are left to their table.
+      function walk(node: LexicalNode): void {
+        if (!$isElementNode(node) || node.isInline() || node.getType() === "table") return;
+        if (!$isListNode(node)) consider(node);
+        for (const child of node.getChildren()) walk(child);
       }
+      for (const child of root.getChildren()) walk(child);
       return out;
     });
     const next = new Set<HTMLElement>();
@@ -316,7 +319,11 @@ function BlockPlaceholders(props: BlockPlaceholdersProps) {
     marked = next;
   }
   useRegistration(() =>
-    mergeRegister(editor.registerUpdateListener(mark), editor.registerEditableListener(mark)),
+    mergeRegister(
+      editor.registerUpdateListener(mark),
+      editor.registerEditableListener(mark),
+      editor.registerRootListener(mark),
+    ),
   );
   return null;
 }
@@ -334,14 +341,22 @@ function BlockHandles(props: BlockHandlesProps) {
   const editor = useLexicalEditor();
   const messages = useArcMessages();
   const [active, setActive] = editorSignal<ActiveBlock | null>(null);
-  const [menu, setMenu] = createSignal(false, { ownedWrite: true });
+  const [menu, setMenuSignal] = createSignal(false, { ownedWrite: true });
+  // Read where it is written, so kept beside the staged signal.
+  let menuOpen = false;
+  function setMenu(open: boolean): void {
+    menuOpen = open;
+    setMenuSignal(open);
+  }
   const [picker, setPicker] = createSignal(false, { ownedWrite: true });
   const [drop, setDrop] = createSignal<number | null>(null, { ownedWrite: true });
+  const [search, setSearch] = createSignal("", { ownedWrite: true });
   const [scroller, setScroller] = editorSignal<HTMLElement | null>(null);
   let dragged = false;
   let pinned = false;
 
   const blockMenu = editorExtensions(editor).flatMap((extension) => extension.blockMenu ?? []);
+  const conversions = editorConversions(editorExtensions(editor));
   function measure(key: NodeKey): ActiveBlock | null {
     const element = editor.getElementByKey(key);
     const body = scroller();
@@ -355,7 +370,7 @@ function BlockHandles(props: BlockHandlesProps) {
           element.getBoundingClientRect().top - body.getBoundingClientRect().top + body.scrollTop,
         index: node.getIndexWithinParent(),
         count: $getRoot().getChildrenSize(),
-        text: $textBlockOf(node),
+        kind: $blockKind(node, conversions),
         choices: blockMenu.flatMap((choice) => {
           const offered = choice.$read(node);
           return offered === null ? [] : [{ choice, ...offered }];
@@ -365,8 +380,12 @@ function BlockHandles(props: BlockHandlesProps) {
   }
 
   function follow(key: NodeKey | null): void {
-    if (pinned) return;
+    if (pinned || menuOpen) return;
     setActive(key === null ? null : measure(key));
+  }
+
+  function refresh(key: NodeKey): void {
+    setActive(measure(key));
   }
 
   function caretBlock(): NodeKey | null {
@@ -417,20 +436,42 @@ function BlockHandles(props: BlockHandlesProps) {
           const found = blockAt(event.clientY);
           if (found !== null) follow(found.key);
         }
+        // A right click on a block opens its menu; Shift, a field or a link keep the browser's own.
+        function onContext(event: MouseEvent): void {
+          if (event.shiftKey || !editor.isEditable()) return;
+          const clicked = event.target as Element | null;
+          if ((clicked?.closest("input, textarea, select, a[href]") ?? null) !== null) return;
+          const found = blockAt(event.clientY);
+          if (found === null) return;
+          event.preventDefault();
+          follow(found.key);
+          setMenu(true);
+        }
         previous?.removeEventListener("pointermove", onPointer);
+        previous?.removeEventListener("contextmenu", onContext);
         root?.addEventListener("pointermove", onPointer);
+        root?.addEventListener("contextmenu", onContext);
         setScroller(root?.parentElement ?? null);
       }),
       editor.registerCommand(
         KEY_DOWN_COMMAND,
         (event) => {
           const mod = event.metaKey || event.ctrlKey;
-          if (mod && event.shiftKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
+          const moving =
+            event.altKey && event.shiftKey && !mod && (event.key === "ArrowUp" || event.key === "ArrowDown");
+          if ((mod && event.shiftKey && !event.altKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) || moving) {
             const key = caretBlock();
             if (key === null) return false;
             event.preventDefault();
             follow(key);
             move(event.key === "ArrowUp" ? -1 : 1);
+            return true;
+          }
+          if (keysMatch(event, "Mod+d")) {
+            const key = caretBlock();
+            if (key === null) return false;
+            event.preventDefault();
+            duplicateBlock(editor, key);
             return true;
           }
           if (mod && event.key === "/") {
@@ -507,6 +548,17 @@ function BlockHandles(props: BlockHandlesProps) {
     };
   }
 
+  // Only the list scrolls to a group, never the page behind the picker.
+  function jumpTo(from: EventTarget | null, group: string): void {
+    const box = (from as Element | null)?.closest('[data-slot="block-picker"]') ?? null;
+    const list = box?.querySelector<HTMLElement>('[data-slot="command-list"]') ?? null;
+    const heading = [
+      ...(box?.querySelectorAll<HTMLElement>('[data-slot="command-group-label"]') ?? []),
+    ].find((one) => one.textContent === group);
+    if (list !== null && heading !== undefined) list.scrollTop = heading.offsetTop - list.offsetTop;
+    box?.querySelector<HTMLElement>('[data-slot="command-input"]')?.focus();
+  }
+
   function indicatorTop(): number | null {
     const index = drop();
     const body = scroller();
@@ -537,7 +589,13 @@ function BlockHandles(props: BlockHandlesProps) {
                 data-slot="block-handle"
                 style={{ top: `${String(current().top)}px` }}
               >
-                <Popover isOpen={picker()} onOpenChange={setPicker}>
+                <Popover
+                  isOpen={picker()}
+                  onOpenChange={(open: boolean) => {
+                    setPicker(open);
+                    if (!open) setSearch("");
+                  }}
+                >
                   <PopoverTrigger>
                     <Button
                       variant="ghost"
@@ -550,7 +608,33 @@ function BlockHandles(props: BlockHandlesProps) {
                   </PopoverTrigger>
                   <PopoverContent class={props.cls.picker} align="start" data-slot="block-picker">
                     <Command label={messages().insertBlock} loop>
-                      <CommandInput placeholder={messages().searchBlocks} />
+                      <CommandInput
+                        placeholder={messages().searchBlocks}
+                        value={search()}
+                        onValueChange={setSearch}
+                      />
+                      <Show when={search() === "" && groups().length > 1}>
+                        <div
+                          class={props.cls.chips}
+                          role="group"
+                          aria-label={messages().blockGroups}
+                          data-slot="block-picker-groups"
+                        >
+                          <For each={groups()}>
+                            {(entry: [string, SlashCommand[]]) => (
+                              <Button
+                                variant="outline"
+                                size="xs"
+                                class={props.cls.chip}
+                                data-slot="block-picker-group"
+                                onPress={(event: PressEvent) => jumpTo(event.target, entry[0])}
+                              >
+                                {entry[0]}
+                              </Button>
+                            )}
+                          </For>
+                        </div>
+                      </Show>
                       <CommandList>
                         <CommandEmpty>{messages().noMatchingBlocks}</CommandEmpty>
                         <For each={groups()}>
@@ -588,6 +672,7 @@ function BlockHandles(props: BlockHandlesProps) {
                         return;
                       }
                       setMenu(open);
+                      if (!open) follow(caretBlock() ?? current().key);
                     }}
                   >
                     <DropdownMenuTrigger>
@@ -603,13 +688,20 @@ function BlockHandles(props: BlockHandlesProps) {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent aria-label={messages().blockActions} align="start">
-                      <Show when={current().text !== null}>
+                      <Show when={current().kind !== null}>
                         <DropdownMenuLabel>{messages().turnInto}</DropdownMenuLabel>
                         <DropdownMenuRadioGroup
-                          value={current().text ?? ""}
+                          value={current().kind ?? ""}
                           onValueChange={(value: string) => {
-                            editor.update(() => $getNodeByKey(current().key)?.selectStart());
-                            setTextBlock(editor, value as TextBlockType);
+                            const key = current().key;
+                            editor.update(() => {
+                              const node = $getNodeByKey(key);
+                              if (node === null) return;
+                              const turned = $turnInto(node, value, conversions);
+                              if ($isElementNode(turned) && !$isSelectionIn(turned)) {
+                                turned.selectEnd();
+                              }
+                            });
                             editor.focus();
                           }}
                         >
@@ -617,6 +709,13 @@ function BlockHandles(props: BlockHandlesProps) {
                             {(type: TextBlockType) => (
                               <DropdownMenuRadioItem value={type}>
                                 {textBlockLabel(type, messages())}
+                              </DropdownMenuRadioItem>
+                            )}
+                          </For>
+                          <For each={conversions}>
+                            {(conversion: BlockConversion) => (
+                              <DropdownMenuRadioItem value={conversion.id}>
+                                {labelOf(conversion.label, messages())}
                               </DropdownMenuRadioItem>
                             )}
                           </For>
@@ -637,7 +736,7 @@ function BlockHandles(props: BlockHandlesProps) {
                                   const node = $getNodeByKey(key);
                                   if (node !== null) offered.choice.$choose(node, value);
                                 });
-                                follow(key);
+                                refresh(key);
                               }}
                             >
                               <For each={offered.options}>
@@ -695,27 +794,28 @@ function BlockHandles(props: BlockHandlesProps) {
                         {messages().pasteAsText}
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
-                      <DropdownMenuItem onSelect={() => duplicate(editor, current().key)}>
+                      <DropdownMenuItem onSelect={() => duplicateBlock(editor, current().key)}>
                         {messages().duplicate}
+                        <span aria-hidden="true">{shortcutLabel("Mod+D")}</span>
                       </DropdownMenuItem>
                       <DropdownMenuItem
                         isDisabled={current().index === 0}
                         onSelect={() => move(-1)}
                       >
                         {messages().moveUp}
-                        <span aria-hidden="true">{shortcutLabel("Mod+Shift+↑")}</span>
+                        <span aria-hidden="true">{shortcutLabel("Alt+Shift+↑")}</span>
                       </DropdownMenuItem>
                       <DropdownMenuItem
                         isDisabled={current().index >= current().count - 1}
                         onSelect={() => move(1)}
                       >
                         {messages().moveDown}
-                        <span aria-hidden="true">{shortcutLabel("Mod+Shift+↓")}</span>
+                        <span aria-hidden="true">{shortcutLabel("Alt+Shift+↓")}</span>
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
                       <DropdownMenuItem
                         variant="destructive"
-                        onSelect={() => remove(editor, current().key)}
+                        onSelect={() => removeBlock(editor, current().key)}
                       >
                         {messages().delete}
                       </DropdownMenuItem>
