@@ -155,6 +155,8 @@ export { imageExtension } from "./picture-extension.tsx";
 export {
   $isFileNode,
   FILE_DISPLAYS,
+  CaptionPopover,
+  type CaptionPopoverProps,
   FileBlock,
   FileCard,
   type FileCardProps,
@@ -176,6 +178,26 @@ export {
   replaceFile,
 } from "./file-block.tsx";
 export { type StoredFilesOptions, storedFilesExtension } from "./stored-files.ts";
+export {
+  $isRecordingNode,
+  MAX_MARKERS,
+  MAX_MARKER_TITLE,
+  type Marker,
+  MarkerList,
+  type RecordingData,
+  RecordingBlock,
+  RecordingFigure,
+  type RecordingFigureProps,
+  type RecordingOptions,
+  type RecordingServices,
+  chaptersOf,
+  clockSeconds,
+  insertRecordings,
+  markedAt,
+  recordingExtension,
+  recordingHtml,
+  recordingStyles,
+} from "./recording.tsx";
 export {
   CompareBlock,
   CompareFigure,

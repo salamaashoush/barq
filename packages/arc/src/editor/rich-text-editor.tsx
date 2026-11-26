@@ -384,7 +384,12 @@ function Uploads(props: UploadsProps) {
     upload: (file, context) => props.upload(file, context),
     onUploaded: (item) => settleUpload(editor, item),
   });
-  provideEditorUploads(editor, { queue, maxSize: untrack(() => props.maxSize) });
+  provideEditorUploads(editor, {
+    queue,
+    send: (file) =>
+      props.upload(file, { onProgress: () => undefined, signal: new AbortController().signal }),
+    maxSize: untrack(() => props.maxSize),
+  });
   return <>{props.children}</>;
 }
 

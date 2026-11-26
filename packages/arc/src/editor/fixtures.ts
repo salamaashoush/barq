@@ -36,6 +36,7 @@ const WRITING = [
   '<figure data-gallery><img src="https://example.com/river.png" alt="A river"><img src="https://example.com/bridge.png" alt="A bridge" title="The old bridge"></figure>',
   '<figure data-compare><img src="https://example.com/before.png" alt="The field in May"><img src="https://example.com/after.png" alt="The field in June"></figure>',
   '<a data-file href="https://example.com/report.pdf" data-name="report.pdf" data-mime="application/pdf" data-bytes="48213">report.pdf</a>',
+  '<video data-media src="https://example.com/tour.mp4" controls data-mime="video/mp4" data-caption="A tour" data-markers="[{&quot;at&quot;:0,&quot;title&quot;:&quot;Start&quot;}]"></video>',
   "مرحبا بالعالم، هذا سطر بالعربية",
 ].join("\n\n");
 

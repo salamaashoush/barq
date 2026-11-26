@@ -39,6 +39,7 @@ import {
   isTableRowDivider,
 } from "@lexical/markdown";
 import { RichTextExtension } from "@lexical/rich-text";
+import { mergeRegister } from "@lexical/utils";
 import {
   $createTableCellNode,
   $createTableNode,
@@ -60,7 +61,9 @@ import {
   $isParagraphNode,
   $isTextNode,
   BEFORE_INPUT_COMMAND,
+  COMMAND_PRIORITY_CRITICAL,
   COMMAND_PRIORITY_LOW,
+  KEY_DOWN_COMMAND,
   type LexicalEditor,
   configExtension,
 } from "lexical";
@@ -147,6 +150,18 @@ function $typeAfterSelectedBlock(event: InputEvent): boolean {
 }
 
 /**
+ * A key pressed in a control a block draws inside the document (a field, a
+ * slider, a player's button) is the control's: the editor's own keys, which
+ * would move its selection or run a shortcut, leave it alone.
+ */
+function isKeyForBlockControl(event: KeyboardEvent): boolean {
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) return false;
+  const block = target.closest("[data-lexical-decorator]");
+  return block !== null && block !== target && !target.isContentEditable;
+}
+
+/**
  * Rich text itself: paragraphs, headings, lists and check lists, quotes,
  * code blocks highlighted as `CodeBlock` highlights them, links, the marks,
  * the keys Lexical leaves to an app and the markdown they are written in.
@@ -154,7 +169,10 @@ function $typeAfterSelectedBlock(event: InputEvent): boolean {
 export const richTextExtension = defineEditorExtension({
   name: "arc/rich-text",
   register: (editor) =>
-    editor.registerCommand(BEFORE_INPUT_COMMAND, $typeAfterSelectedBlock, COMMAND_PRIORITY_LOW),
+    mergeRegister(
+      editor.registerCommand(BEFORE_INPUT_COMMAND, $typeAfterSelectedBlock, COMMAND_PRIORITY_LOW),
+      editor.registerCommand(KEY_DOWN_COMMAND, isKeyForBlockControl, COMMAND_PRIORITY_CRITICAL),
+    ),
   lexical: [
     RichTextExtension,
     ListExtension,

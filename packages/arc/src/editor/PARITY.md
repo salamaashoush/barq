@@ -169,7 +169,7 @@ Borderline calls are justified where they are made.
 ## Import
 
 - **HTML as a document, headless**: generic; done, paste.test.tsx; html-import.ts, html-import.spec.ts.
-- **Stored files addressed in imported HTML** (`<scheme>-file:` links, files and recordings): generic; pending, phase 4 for recordings (pictures and files done through `storedFilesExtension({ scheme })`, file-block.test.tsx); nodes/stored.ts, html-import.spec.ts.
+- **Stored files addressed in imported HTML** (`<scheme>-file:` links, files and recordings): generic; done, file-block.test.tsx, recording.test.tsx (through `storedFilesExtension({ scheme })`, each block holding the file by its id); nodes/stored.ts, html-import.spec.ts.
 - **Word: headings, lists, tables, links, pictures where the caret is**: generic; done, docx-import.test.tsx; plugins/word.tsx.
 - **Word: footnotes and endnotes as footnotes**: generic; done, docx-import.test.tsx; plugins/word.tsx.
 - **Word: equations to LaTeX** (fractions, powers, roots, sums, brackets, matrices, functions, limits, accents): generic; done, docx-import.test.tsx; omml.ts, docx.ts, docx.spec.ts.
@@ -202,10 +202,10 @@ Borderline calls are justified where they are made.
 - **Gallery: grid, viewer, reorder, up to twenty-four**: generic; done, pictures.test.tsx (read on arc's `Gallery` and `Lightbox`; reordered by a finger's drag, by Alt with an arrow in the reading direction, and by Earlier and Later); nodes/pictures.tsx, pictures-view.tsx, gallery.spec.tsx.
 - **Before and after comparison slider**: generic (image comparison is common in docs); done, pictures.test.tsx (a range control a keyboard, a screen reader and a finger move alike, left to right in either language; one side alone stands named); nodes/pictures.tsx.
 - **File block: card or PDF preview, new version keeping its first id, viewer**: generic; done, file-block.test.tsx (a new version from the card or the block menu keeps the first file as `origin`; the viewer shows pictures, PDFs and text, recordings on `MediaPlayer`); nodes/media.tsx, files.tsx, file-viewer.tsx.
-- **Video and audio block with captions, transcript, chapters, audio description**: generic; pending, phase 4 (the player is arc's `MediaPlayer`); nodes/rich.tsx, media-view.tsx, player.tsx.
+- **Video and audio block with captions, transcript, chapters, audio description**: generic; done, recording.test.tsx, media-player.test.tsx (stored as the source's `media` node, played on arc's `MediaPlayer`, which now reads a description aloud, pausing at each line, and `descriptions` tracks the same way; captions, description and transcript written in `TextTracksEditor` beside it); nodes/rich.tsx, media-view.tsx, player.tsx.
 - **Captions, audio description and transcript written beside the recording**: generic; done, text-tracks.test.tsx; captions.tsx.
 - **Captions drafted from speech by a service**: generic; done, text-tracks.test.tsx; captions.tsx.
-- **Chapter markers set at the player's time**: generic; pending, phase 4; markers.tsx.
+- **Chapter markers set at the player's time**: generic; done, recording.test.tsx (marked where the player stands, named, moved by a clock typed in any script's digits or to the player's time; the named ones are the player's chapters); markers.tsx.
 - **Voice and video recorders, screen with camera, trim**: generic; pending, phase 4 (arc's `ClipRecorder` records audio and video); recorder.tsx, video-recorder.tsx.
 - **Embeds: fourteen providers, click to load, chapters for two**: generic; done for YouTube and Vimeo (media.test.tsx), pending the other providers and click-to-load in phase 4; nodes/rich.tsx, plugins/embed.tsx.
 - **Upload queue: progress, cancel, retry, resumed after reload, warned on leaving**: generic; done for progress, retry and remove (media.test.tsx), pending resume and the leave warning in phase 4; plugins/media.tsx.
@@ -274,7 +274,7 @@ example in the README and extension.test.tsx is such a block.
 ## Counts
 
 - 196 lines in all: 173 generic, 23 domain.
-- Generic: 129 done, 44 pending; a line done in part counts as pending.
+- Generic: 132 done, 41 pending; a line done in part counts as pending.
 
 ## Phases
 

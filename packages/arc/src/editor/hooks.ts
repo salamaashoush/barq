@@ -35,3 +35,13 @@ export function useDialogCommand(
   );
   return [open, setOpen];
 }
+
+/**
+ * A field a block draws inside the document hears its own `input` events:
+ * Lexical stops each at its root, before barq's delegated `onInput` would.
+ */
+export function ownInput(
+  handler: (element: HTMLInputElement) => void,
+): (element: HTMLInputElement) => void {
+  return (element) => element.addEventListener("input", () => handler(element));
+}

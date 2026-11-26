@@ -852,6 +852,17 @@ export interface ArcMessages {
   fileDisplay: string;
   fileShowCard: string;
   fileShowPages: string;
+  recording: string;
+  video: string;
+  audio: string;
+  markers: string;
+  addMarker: string;
+  markersNone: string;
+  markerTime: (time: string) => string;
+  markerName: (time: string) => string;
+  markerNamePlaceholder: string;
+  markerToNow: string;
+  removeMarker: (time: string) => string;
   cut: string;
   paste: string;
   pasteAsText: string;
@@ -1978,6 +1989,17 @@ export const ENGLISH: ArcMessages = {
   fileDisplay: "Show as",
   fileShowCard: "A card",
   fileShowPages: "A card and its pages",
+  recording: "Video or audio",
+  video: "Video",
+  audio: "Audio",
+  markers: "Chapters",
+  addMarker: "Mark this moment",
+  markersNone: "Play the video and mark where each part starts; a named moment is a chapter.",
+  markerTime: (time) => `Moment at ${time}`,
+  markerName: (time) => `Name of the moment at ${time}`,
+  markerNamePlaceholder: "What starts here",
+  markerToNow: "Move to where the player is",
+  removeMarker: (time) => `Remove the moment at ${time}`,
   cut: "Cut",
   paste: "Paste",
   pasteAsText: "Paste as plain text",

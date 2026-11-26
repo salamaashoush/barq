@@ -245,7 +245,6 @@ export interface FileViewerProps {
 export function FileViewer(props: FileViewerProps) {
   const messages = useArcMessages();
   const locale = useLocale();
-  const titleId = createUniqueId();
   const s = fileViewerStyles();
   function family(): FileFamily {
     return fileFamily(props.file.name, props.file.mime);
@@ -272,14 +271,9 @@ export function FileViewer(props: FileViewerProps) {
   }
   return (
     <Dialog isOpen={props.open} onOpenChange={props.onOpenChange}>
-      <DialogContent
-        class={s.root}
-        data-slot="file-viewer"
-        closeLabel={messages().close}
-        aria-labelledby={titleId}
-      >
+      <DialogContent class={s.root} data-slot="file-viewer" closeLabel={messages().close}>
         <div class={s.head}>
-          <DialogTitle class={s.title} id={titleId}>
+          <DialogTitle class={s.title}>
             <bdi>{props.file.name}</bdi>
           </DialogTitle>
           <span class={type.meta}>{fileMeta(props.file, locale().locale)}</span>
@@ -461,12 +455,13 @@ export function replaceFile(editor: LexicalEditor, key: NodeKey, file: File): vo
   }));
 }
 
-interface CaptionPopoverProps {
+export interface CaptionPopoverProps {
   caption: string;
   onSave: (caption: string) => void;
 }
 
-function CaptionPopover(props: CaptionPopoverProps) {
+/** A block's caption, written in a popover from a button under it. */
+export function CaptionPopover(props: CaptionPopoverProps) {
   const messages = useArcMessages();
   const id = createUniqueId();
   const [open, setOpen] = createSignal(false, { ownedWrite: true });

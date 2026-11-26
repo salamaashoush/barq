@@ -18,6 +18,7 @@ import { footnoteExtension } from "./footnote.tsx";
 import { markdownDialogExtension } from "./markdown-dialog.tsx";
 import { formattingExtension } from "./formatting.tsx";
 import { pasteExtension } from "./paste.ts";
+import { recordingExtension } from "./recording.tsx";
 import { imageExtension } from "./picture-extension.tsx";
 import { picturesExtension } from "./pictures.tsx";
 import { PageBreakBlock } from "./page-break.tsx";
@@ -38,6 +39,7 @@ export const documentPreset: readonly EditorExtension[] = [
   imageExtension(),
   picturesExtension(),
   fileExtension(),
+  recordingExtension(),
   embedExtension(),
   mentionExtension,
   calloutExtension,

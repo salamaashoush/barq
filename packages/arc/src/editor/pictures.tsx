@@ -39,6 +39,7 @@ import {
 import { blockOptions } from "./block-options.ts";
 import { type Block, type BlockProps, defineBlock } from "./blocks.tsx";
 import { $insertBlock } from "./commands.ts";
+import { ownInput } from "./hooks.ts";
 import { type EditorExtension, defineEditorExtension } from "./extension.ts";
 import { type MediaAddressed, editorUploads, mediaAddress, useEditorMedia } from "./media.tsx";
 import { attributesOf } from "./picture.tsx";
@@ -679,8 +680,6 @@ export function CompareForm(props: CompareFormProps) {
 export interface CompareFigureProps {
   pictures: readonly SetPicture[];
   options: PicturesOptions | undefined;
-  /** Keeps the slider's keys from the editor around it. */
-  ownKeys: boolean;
   actions?: JSX.Element;
 }
 
@@ -766,12 +765,7 @@ export function CompareFigure(props: CompareFigureProps) {
             data-slot="editor-compare-slider"
             aria-label={messages().compareSlider}
             aria-valuetext={messages().compareShown(label(0), split())}
-            onInput={(event: Event) =>
-              setSplit(Number((event.currentTarget as HTMLInputElement).value))
-            }
-            onKeyDown={(event: KeyboardEvent) => {
-              if (props.ownKeys) event.stopPropagation();
-            }}
+            ref={ownInput((slider) => setSplit(Number(slider.value)))}
           />
         </figure>
       </Show>
@@ -791,7 +785,6 @@ function CompareView(props: BlockProps<PicturesData>) {
     <CompareFigure
       pictures={props.data.pictures}
       options={options()}
-      ownKeys={inEditor}
       actions={
         <Show when={props.editable}>
           <div class={cls(options()).actions}>
@@ -970,7 +963,6 @@ export function picturesExtension(options: PicturesOptions = {}): EditorExtensio
         <CompareFigure
           pictures={(node.pictures as SetPicture[] | undefined) ?? []}
           options={options}
-          ownKeys={false}
         />
       ),
     },

@@ -20,6 +20,8 @@ export const mediaStyles = variants({
 /** The upload queue an editor's pictures and files go through. */
 export interface EditorUploads {
   queue: UploadQueueApi;
+  /** Sends one file outside the queue and resolves with its address: a recording's captions, written as they are saved. */
+  send: (file: File) => Promise<string>;
   /** The largest picture accepted, in bytes. */
   maxSize?: number;
 }

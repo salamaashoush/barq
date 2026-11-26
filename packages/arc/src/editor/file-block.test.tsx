@@ -217,9 +217,10 @@ describe("a file as read", () => {
     render(() => <RichTextRenderer value={stored(REPORT)} />);
     const open = screen.getByRole("button", { name: "Open report.pdf (PDF · 48.2 kB)" });
     expect(open.getAttribute("aria-haspopup")).toBe("dialog");
-    await user.click(open);
+    open.click();
+
     await settle();
-    const dialog = screen.getByRole("dialog", { name: "report.pdf" });
+    const dialog = await screen.findByRole("dialog", { name: "report.pdf" });
     const viewer = within(dialog);
     expect(dialog.querySelector('iframe[title="report.pdf"]')?.getAttribute("src")).toBe(
       REPORT.src,

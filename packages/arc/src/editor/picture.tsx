@@ -713,6 +713,7 @@ function escapeAttribute(value: string): string {
 
 function unescapeAttribute(value: string): string {
   return value
+    .replaceAll("&#10;", "\n")
     .replaceAll("&quot;", '"')
     .replaceAll("&lt;", "<")
     .replaceAll("&gt;", ">")
