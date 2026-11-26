@@ -42,6 +42,12 @@ export interface ArcMessages {
   nextPage: string;
   page: (page: number, pages: number) => string;
   pagination: string;
+  details: string;
+  previousRecord: string;
+  nextRecord: string;
+  recordPosition: (position: number, count: number) => string;
+  backToList: string;
+  selectItemOf: (name: string) => string;
   resizeColumn: string;
   nothingHere: string;
   filters: string;
@@ -1067,6 +1073,12 @@ export const ENGLISH: ArcMessages = {
   nextPage: "Next page",
   page: (page, pages) => `Page ${String(page)} of ${String(pages)}`,
   pagination: "Pages",
+  details: "Details",
+  previousRecord: "Previous",
+  nextRecord: "Next",
+  recordPosition: (position, count) => `${String(position)} of ${String(count)}`,
+  backToList: "Back to the list",
+  selectItemOf: (name) => `Select ${name}`,
   resizeColumn: "Resize column",
   nothingHere: "Nothing here yet",
   filters: "Filters",

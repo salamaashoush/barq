@@ -41,6 +41,12 @@ export {
 } from "./message-list.tsx";
 export { ThreadPanel, type ThreadPanelProps, threadPanelStyles } from "./thread-panel.tsx";
 export {
+  ConversationLayout,
+  type ConversationLayoutProps,
+  type ConversationLayoutRenders,
+  conversationLayoutStyles,
+} from "./conversation-layout.tsx";
+export {
   type Conversation,
   type ConversationGroup,
   ConversationList,

@@ -698,6 +698,12 @@ export {
   detailSheetVariants,
 } from "./components/detail-sheet.tsx";
 export {
+  RecordPager,
+  type RecordPagerProps,
+  type RecordSteps,
+  recordPagerStyles,
+} from "./components/record-pager.tsx";
+export {
   EmptyState,
   type EmptyStateKind,
   type EmptyStatePlacement,
@@ -802,7 +808,33 @@ export {
   type Crumb,
   type RouteCrumb,
 } from "./components/breadcrumbs.tsx";
-export { PageHeader, type PageHeaderProps, pageHeaderStyles } from "./components/page-header.tsx";
+export {
+  type HeaderAlert,
+  type HeaderFact,
+  PageHeader,
+  type PageHeaderProps,
+  type PageHeaderRenders,
+  pageHeaderStyles,
+} from "./components/page-header.tsx";
+export {
+  PanelToolbar,
+  type PanelToolbarProps,
+  type PanelToolbarRenders,
+  panelToolbarStyles,
+} from "./components/panel-toolbar.tsx";
+export {
+  RecordLayout,
+  type RecordLayoutProps,
+  RecordSection,
+  type RecordSectionProps,
+  recordLayoutStyles,
+  recordSectionStyles,
+} from "./components/record-layout.tsx";
+export {
+  ListDetailLayout,
+  type ListDetailLayoutProps,
+  listDetailStyles,
+} from "./components/list-detail.tsx";
 export {
   SelectionBar,
   type SelectionAction,
@@ -1159,6 +1191,11 @@ export {
   listStyles,
   useDateSections,
 } from "./components/item-list.tsx";
+export {
+  MasterDetailList,
+  type MasterDetailListProps,
+  masterDetailListStyles,
+} from "./components/master-detail-list.tsx";
 export { Image, type ImageProps, type ImageStatus, imageStyles } from "./components/image.tsx";
 export {
   type TreeNode,
