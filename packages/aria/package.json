@@ -253,6 +253,11 @@
       "barq": "./src/otp.ts",
       "bun": "./src/otp.ts"
     },
+    "./trigger-typeahead": {
+      "types": "./src/trigger-typeahead.ts",
+      "barq": "./src/trigger-typeahead.ts",
+      "bun": "./src/trigger-typeahead.ts"
+    },
     "./overlay-arrow": {
       "types": "./src/overlay-arrow.tsx",
       "barq": "./src/overlay-arrow.tsx",

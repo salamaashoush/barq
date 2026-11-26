@@ -1847,3 +1847,12 @@ export {
   overflowItems,
   overflowingKeys,
 } from "./overflow.ts";
+export {
+  applyTrigger,
+  type TriggerInsert,
+  type TriggerMatch,
+  triggerMatch,
+  triggerTypeahead,
+  type TriggerTypeahead,
+  type TriggerTypeaheadOptions,
+} from "./trigger-typeahead.ts";
