@@ -983,6 +983,8 @@ export function setHtml(element: Element, _name: string, value: unknown, prev?: 
 
 let inert: Document | null = null;
 
+const LEADING_NEWLINE = new Set(["pre", "listing", "textarea"]);
+
 /**
  * Whether `html`, parsed where `element` stands, gives the children it already
  * has. The server wrote the author's bytes and the browser serialises what it
@@ -991,7 +993,14 @@ let inert: Document | null = null;
  * an element of the same namespace as the context, it is the write itself.
  */
 function parsesTo(element: Element, html: string): boolean {
-  const own = element.innerHTML;
+  let own = element.innerHTML;
+  // A newline straight after `<pre>`, `<listing>` or `<textarea>` is not
+  // content: the server writes one so content of its own starting with a
+  // newline keeps it, and a parser that holds on to it has still parsed the
+  // same content.
+  if (LEADING_NEWLINE.has(element.localName) && own.startsWith("\n") && !html.startsWith("\n")) {
+    own = own.slice(1);
+  }
   if (own === html) return true;
   inert ??= document.implementation.createHTMLDocument("");
   const probe = inert.createElementNS(element.namespaceURI, element.localName);
