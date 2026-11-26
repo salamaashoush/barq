@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { createSignal, flush } from "@barqjs/core";
+import { collectCss } from "@barqjs/css";
 import {
   accessibleName,
   cleanup,
@@ -22,6 +23,25 @@ function slot(name: string): HTMLElement {
 }
 
 describe("Checkbox", () => {
+  test("its tick follows its own state, not a selected row it sits in", () => {
+    render(() => (
+      <div data-selected="">
+        <Checkbox aria-label="Select the row" />
+      </div>
+    ));
+    const indicator = slot("checkbox-indicator");
+    const sheet = collectCss();
+    const shown = [...indicator.classList].filter((name) =>
+      sheet.includes(`.${name}{display:grid}`),
+    );
+    expect(shown.length).toBeGreaterThan(0);
+    for (const name of shown) {
+      for (const rule of sheet.split("}").filter((one) => one.includes(`.${name}{`))) {
+        expect(rule).toMatch(/\] > \.|\]>\./);
+      }
+    }
+  });
+
   test("the box and its indicator say checked or unchecked", async () => {
     render(() => <Checkbox aria-label="Accept" />);
     expect(slot("checkbox").getAttribute("data-state")).toBe("unchecked");

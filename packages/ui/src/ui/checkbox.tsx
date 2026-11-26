@@ -113,10 +113,12 @@ const indicator = ui({
     width: "calc(var(--spacing) * 3.5)",
     height: "calc(var(--spacing) * 3.5)",
   },
-  "[data-indeterminate] &": {
+  // The box's own state, not an ancestor's: a checkbox in a selected row of a
+  // list is not itself ticked.
+  "[data-indeterminate] > &": {
     display: "grid",
   },
-  "[data-selected] &": {
+  "[data-selected] > &": {
     display: "grid",
   },
 });
