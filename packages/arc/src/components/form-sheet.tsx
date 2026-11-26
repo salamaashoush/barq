@@ -1,21 +1,18 @@
 import { type Child, Show, createUniqueId, provide, untrack } from "@barqjs/core";
 import { variants } from "@barqjs/css";
-import { type AnyFormApi, useSelector } from "@barqjs/form";
+import type { AnyFormApi } from "@barqjs/form";
 import { Button } from "@barqjs/ui/button";
 
 import { arcLayer as arc } from "../layer.ts";
+import { FormLoading, formSurface } from "../lib/form-surface.tsx";
 import { type Customisable, parts } from "../lib/parts.ts";
 import { openState } from "../lib/search-state.ts";
-import { gap, layout } from "../style/index.ts";
+import { gap, layout, type } from "../style/index.ts";
 import { DetailSheet, type DetailSheetClasses, type DetailSheetSize } from "./detail-sheet.tsx";
 import { useArcMessages } from "./messages.ts";
 import { arcFormContext } from "./form.tsx";
 import { maybeRouter } from "./link.ts";
-import {
-  type DiscardLabels,
-  UnsavedChangesGuard,
-  confirmDiscard,
-} from "./unsaved-changes-guard.tsx";
+import { type DiscardLabels, UnsavedChangesGuard } from "./unsaved-changes-guard.tsx";
 
 export interface FormSheetProps extends Customisable<Slots & DetailSheetClasses> {
   /** The form, from `useArcForm`. */
@@ -42,6 +39,15 @@ export interface FormSheetProps extends Customisable<Slots & DetailSheetClasses>
   closeOnSubmit?: boolean;
   /** What closing with unsaved changes asks. */
   discard?: DiscardLabels;
+  /**
+   * A line at the end of the foot about what is written so far: "Draft kept
+   * on this device", a `SaveStatus`. Read politely.
+   */
+  status?: Child;
+  /** The record is still loading: field skeletons in place of the fields, Save held. */
+  loading?: boolean;
+  /** Why the record did not load, in place of the fields. */
+  loadError?: Child;
 }
 
 export const formSheetStyles = variants({
@@ -50,6 +56,7 @@ export const formSheetStyles = variants({
     form: arc(layout.column, gap[5]),
     cancel: arc({}),
     submit: arc({}),
+    status: arc(type.meta, layout.pushEnd, { alignSelf: "center" }),
   },
 });
 
@@ -69,7 +76,11 @@ type Slots = ReturnType<typeof formSheetStyles>;
  * Closing it with unsaved changes, by Cancel, Escape or the close button,
  * asks through `confirm()` first, and so does leaving the page while it is
  * open. It stays open while it submits and closes once a submission
- * succeeds. `form.SubmitButton` and `form.FormError` work inside it.
+ * succeeds; one that fails moves focus to the first field it marked.
+ * `form.SubmitButton` and `form.FormError` work inside it. `status` is a
+ * line in the foot about the draft; `loading` and `loadError` stand in for
+ * the fields while the record it edits is fetched. `FormDialog` is the same
+ * form in a dialog.
  */
 export function FormSheet(props: FormSheetProps) {
   const form = untrack(() => props.form);
@@ -86,28 +97,14 @@ export function FormSheet(props: FormSheetProps) {
     return parts(formSheetStyles(), props.classes);
   }
 
-  const state = useSelector(form.store, (current) => ({
-    isDirty: current.isDirty,
-    isSubmitting: current.isSubmitting,
-    canSubmit: current.canSubmit,
-  }));
-
-  async function requestClose(): Promise<void> {
-    if (state().isSubmitting) return;
-    if (state().isDirty) {
-      if (!(await confirmDiscard(props.discard, messages()))) return;
-      form.reset();
-    }
-    setOpen(false);
-  }
-
-  async function submit(): Promise<void> {
-    await form.handleSubmit();
-    // A submission the server refused still completes; the errors it set on
-    // the form are what say it failed, and they have to stay in view.
-    if (form.state.isSubmitSuccessful && form.state.isValid && props.closeOnSubmit !== false) {
-      setOpen(false);
-    }
+  const { state, requestClose, submit } = formSurface(form, {
+    setOpen,
+    discard: () => props.discard,
+    messages,
+    closeOnSubmit: () => props.closeOnSubmit !== false,
+  });
+  function ready(): boolean {
+    return props.loading !== true && props.loadError === undefined;
   }
 
   return (
@@ -140,12 +137,17 @@ export function FormSheet(props: FormSheetProps) {
               form={formId}
               variant={props.tone === "danger" ? "destructive" : "default"}
               isPending={state().isSubmitting}
-              isDisabled={!state().canSubmit}
+              isDisabled={!state().canSubmit || !ready()}
               class={cls().submit}
               data-slot="form-sheet-submit"
             >
               {props.submitLabel ?? messages().save}
             </Button>
+            <Show when={props.status !== undefined}>
+              <span class={cls().status} aria-live="polite" data-slot="form-sheet-status">
+                {props.status}
+              </span>
+            </Show>
           </>
         }
       >
@@ -153,17 +155,23 @@ export function FormSheet(props: FormSheetProps) {
           id={formId}
           class={cls().form}
           noValidate
+          aria-busy={props.loading === true ? "true" : undefined}
           data-slot="form-sheet-form"
           onSubmit={(event: Event) => {
             event.preventDefault();
-            void submit();
+            if (ready()) void submit(event.currentTarget as HTMLFormElement);
           }}
         >
-          {provide(
-            arcFormContext,
-            () => form,
-            () => props.children,
-          )}
+          <Show
+            when={ready()}
+            fallback={<FormLoading error={props.loadError} messages={messages()} />}
+          >
+            {provide(
+              arcFormContext,
+              () => form,
+              () => props.children,
+            )}
+          </Show>
         </form>
       </DetailSheet>
       <Show when={hasRouter}>
