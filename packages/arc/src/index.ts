@@ -1309,6 +1309,18 @@ export {
   type DescriptionListProps,
   descriptionListStyles,
 } from "./components/description-list.tsx";
+export {
+  type ChoiceProperty,
+  type DateProperty,
+  type PeopleProperty,
+  type PropertyField,
+  PropertyList,
+  type PropertyListProps,
+  type PropertyOption,
+  type TextProperty,
+  type ValueProperty,
+  propertyListStyles,
+} from "./components/property-list.tsx";
 export { StatGroup, type StatGroupProps, statGroupStyles } from "./components/stat-group.tsx";
 export { Tile, type TileProps, tileStyles } from "./components/tile.tsx";
 export {
@@ -1330,6 +1342,12 @@ export {
   masterDetailListStyles,
 } from "./components/master-detail-list.tsx";
 export { Image, type ImageProps, type ImageStatus, imageStyles } from "./components/image.tsx";
+export {
+  type OutlineNode,
+  OutlineView,
+  type OutlineViewProps,
+  outlineViewStyles,
+} from "./components/outline-view.tsx";
 export {
   type TreeNode,
   TreeView,
