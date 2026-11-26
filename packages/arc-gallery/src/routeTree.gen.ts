@@ -32,6 +32,7 @@ import { Route as FoundationsRoute } from "./routes/foundations";
 import { Route as InputsRoute } from "./routes/inputs";
 import { Route as LayoutsRoute } from "./routes/layouts";
 import { Route as MediaRoute } from "./routes/media";
+import { Route as MetricsRoute } from "./routes/metrics";
 import { Route as NavigationRoute } from "./routes/navigation";
 import { Route as NotificationsRoute } from "./routes/notifications";
 import { Route as OverlaysRoute } from "./routes/overlays";
@@ -100,6 +101,7 @@ export const routeTree: AnyRouteDefinition[] = [
       { ...InputsRoute.options, id: "/inputs", path: "inputs", src: "/src/routes/inputs.tsx" },
       { ...LayoutsRoute.options, id: "/layouts", path: "layouts", src: "/src/routes/layouts.tsx" },
       { ...MediaRoute.options, id: "/media", path: "media", src: "/src/routes/media.tsx" },
+      { ...MetricsRoute.options, id: "/metrics", path: "metrics", src: "/src/routes/metrics.tsx" },
       {
         ...NavigationRoute.options,
         id: "/navigation",
@@ -174,6 +176,7 @@ export interface FileRoutesById {
   "/inputs": typeof InputsRoute;
   "/layouts": typeof LayoutsRoute;
   "/media": typeof MediaRoute;
+  "/metrics": typeof MetricsRoute;
   "/navigation": typeof NavigationRoute;
   "/notifications": typeof NotificationsRoute;
   "/overlays": typeof OverlaysRoute;
@@ -208,6 +211,7 @@ export interface FileRouteTypes {
     | "/inputs"
     | "/layouts"
     | "/media"
+    | "/metrics"
     | "/navigation"
     | "/notifications"
     | "/overlays"
@@ -238,6 +242,7 @@ export interface FileRouteTypes {
     | "/inputs"
     | "/layouts"
     | "/media"
+    | "/metrics"
     | "/navigation"
     | "/notifications"
     | "/overlays"
