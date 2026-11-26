@@ -153,6 +153,25 @@ export {
 } from "./picture.tsx";
 export { imageExtension } from "./picture-extension.tsx";
 export {
+  CompareBlock,
+  CompareFigure,
+  type CompareFigureProps,
+  CompareForm,
+  GalleryBlock,
+  GalleryFigure,
+  type GalleryFigureProps,
+  GalleryForm,
+  MAX_GALLERY_PICTURES,
+  type PicturesData,
+  type PicturesOptions,
+  type SetKind,
+  type SetPicture,
+  picturesExtension,
+  picturesFormStyles,
+  picturesHtml,
+  picturesStyles,
+} from "./pictures.tsx";
+export {
   LabelledPicture,
   type LabelledPictureProps,
   MAX_PICTURE_LABELS,

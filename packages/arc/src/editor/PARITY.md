@@ -199,8 +199,8 @@ Borderline calls are justified where they are made.
 - **Image: four sizes, alignment, decorative, alt-missing warning, focus point**: generic; done, picture.test.tsx (sizes and alignment from the block menu, alignment kept as the node's `format` and written on the inline axis; the focus point by pointer and by the arrows, which keep the picture's own left and right); nodes/media.tsx, media.spec.ts.
 - **Image: credit line with licences**: generic; done, picture.test.tsx; picture-credit*.tsx, media.spec.ts.
 - **Labelled picture: numbered markers with descriptions**: generic (an annotated figure); done, picture.test.tsx (placed by drag and by the arrows, opened one at a time by the reader, listed on paper); picture-labels.tsx.
-- **Gallery: grid, viewer, reorder, up to twenty-four**: generic; pending, phase 4; nodes/pictures.tsx, pictures-view.tsx, gallery.spec.tsx.
-- **Before and after comparison slider**: generic (image comparison is common in docs); pending, phase 4; nodes/pictures.tsx.
+- **Gallery: grid, viewer, reorder, up to twenty-four**: generic; done, pictures.test.tsx (read on arc's `Gallery` and `Lightbox`; reordered by a finger's drag, by Alt with an arrow in the reading direction, and by Earlier and Later); nodes/pictures.tsx, pictures-view.tsx, gallery.spec.tsx.
+- **Before and after comparison slider**: generic (image comparison is common in docs); done, pictures.test.tsx (a range control a keyboard, a screen reader and a finger move alike, left to right in either language; one side alone stands named); nodes/pictures.tsx.
 - **File block: card or PDF preview, new version keeping its first id, viewer**: generic; pending, phase 4; nodes/media.tsx, files.tsx, file-viewer.tsx.
 - **Video and audio block with captions, transcript, chapters, audio description**: generic; pending, phase 4 (the player is arc's `MediaPlayer`); nodes/rich.tsx, media-view.tsx, player.tsx.
 - **Captions, audio description and transcript written beside the recording**: generic; done, text-tracks.test.tsx; captions.tsx.
@@ -274,7 +274,7 @@ example in the README and extension.test.tsx is such a block.
 ## Counts
 
 - 196 lines in all: 173 generic, 23 domain.
-- Generic: 125 done, 48 pending; a line done in part counts as pending.
+- Generic: 127 done, 46 pending; a line done in part counts as pending.
 
 ## Phases
 

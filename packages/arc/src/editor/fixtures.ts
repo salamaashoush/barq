@@ -33,6 +33,8 @@ const WRITING = [
   "| Name | Role |\n| --- | --- |\n| Sam | Owner |",
   "---",
   "![A river at dawn](https://example.com/river.png)",
+  '<figure data-gallery><img src="https://example.com/river.png" alt="A river"><img src="https://example.com/bridge.png" alt="A bridge" title="The old bridge"></figure>',
+  '<figure data-compare><img src="https://example.com/before.png" alt="The field in May"><img src="https://example.com/after.png" alt="The field in June"></figure>',
   "مرحبا بالعالم، هذا سطر بالعربية",
 ].join("\n\n");
 

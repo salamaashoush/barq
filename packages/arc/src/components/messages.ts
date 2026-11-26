@@ -820,6 +820,22 @@ export interface ArcMessages {
   pictureLabelText: (number: string) => string;
   pictureLabelTextPlaceholder: string;
   removePictureLabel: (number: string) => string;
+  gallery: string;
+  galleryAdd: string;
+  galleryEmpty: string;
+  editGallery: string;
+  galleryOrderHint: string;
+  pictureOf: (number: string, total: string) => string;
+  pictureEarlier: string;
+  pictureLater: string;
+  removePicture: string;
+  pictureAltMissing: string;
+  compareBefore: string;
+  compareAfter: string;
+  compareSlider: string;
+  compareShown: (before: string, percent: number) => string;
+  compareChoose: (side: string) => string;
+  editComparison: string;
   cut: string;
   paste: string;
   pasteAsText: string;
@@ -1808,6 +1824,22 @@ export const ENGLISH: ArcMessages = {
   pictureLabelText: (number) => `Label ${number} description`,
   pictureLabelTextPlaceholder: "More about it",
   removePictureLabel: (number) => `Remove label ${number}`,
+  gallery: "Gallery",
+  galleryAdd: "Add pictures",
+  galleryEmpty: "No pictures yet",
+  editGallery: "Edit gallery",
+  galleryOrderHint: "Drag a picture to a new place, or press Alt with an arrow key",
+  pictureOf: (number, total) => `Picture ${number} of ${total}`,
+  pictureEarlier: "Earlier",
+  pictureLater: "Later",
+  removePicture: "Remove picture",
+  pictureAltMissing: "No alt text yet",
+  compareBefore: "Before",
+  compareAfter: "After",
+  compareSlider: "Slide between before and after",
+  compareShown: (before, percent) => `${before} ${String(percent)}%`,
+  compareChoose: (side) => `Choose the ${side.toLowerCase()} picture`,
+  editComparison: "Edit comparison",
   cut: "Cut",
   paste: "Paste",
   pasteAsText: "Paste as plain text",

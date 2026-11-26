@@ -18,6 +18,7 @@ import { markdownDialogExtension } from "./markdown-dialog.tsx";
 import { formattingExtension } from "./formatting.tsx";
 import { pasteExtension } from "./paste.ts";
 import { imageExtension } from "./picture-extension.tsx";
+import { picturesExtension } from "./pictures.tsx";
 import { PageBreakBlock } from "./page-break.tsx";
 import { panelsExtension } from "./panels.tsx";
 import { sharedBlockExtension } from "./shared-block.tsx";
@@ -34,6 +35,7 @@ export const documentPreset: readonly EditorExtension[] = [
   tableExtension,
   dividerExtension,
   imageExtension(),
+  picturesExtension(),
   embedExtension(),
   mentionExtension,
   calloutExtension,

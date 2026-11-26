@@ -908,28 +908,44 @@ export function $isImageNode(node: LexicalNode | null | undefined): boolean {
   return $isBlockNode(node) && node.getType() === "image";
 }
 
-/** A block whose file is on its way, by the upload queue's id for it, with the address it will have. */
+/** A block, or a picture of a set, whose file is on its way, with the address it will have. */
 interface Uploading {
   uploadId?: string;
   src?: string;
+  pictures?: Uploading[];
 }
 
-/** Every picture still on its way whose upload finished: its address replaces the preview. */
+function waitsFor(data: Uploading | null, id: string): boolean {
+  return data?.uploadId === id || (data?.pictures?.some((one) => one.uploadId === id) ?? false);
+}
+
+function landed<Data extends Uploading>(data: Data, item: UploadItem): Data {
+  if (data.uploadId !== item.id) return data;
+  return {
+    ...data,
+    src: typeof item.result === "string" ? item.result : data.src,
+    uploadId: undefined,
+  };
+}
+
+/**
+ * Every block still waiting on an upload that finished, a set's pictures
+ * among them: its address replaces the preview it showed meanwhile.
+ */
 export function settleUpload(editor: LexicalEditor, item: UploadItem): void {
   const keys: NodeKey[] = editor.read(() =>
     $dfs()
       .map((entry) => entry.node)
-      .filter(
-        (node) => $isBlockNode(node) && (node.getData() as Uploading | null)?.uploadId === item.id,
-      )
+      .filter((node) => $isBlockNode(node) && waitsFor(node.getData() as Uploading | null, item.id))
       .map((node) => node.getKey()),
   );
   for (const key of keys) {
-    updateBlockData<Uploading>(editor, key, (data) => ({
-      ...data,
-      src: typeof item.result === "string" ? item.result : data.src,
-      uploadId: undefined,
-    }));
+    updateBlockData<Uploading>(editor, key, (data) => {
+      const own = landed(data, item);
+      return own.pictures === undefined
+        ? own
+        : { ...own, pictures: own.pictures.map((one) => landed(one, item)) };
+    });
   }
 }
 
