@@ -866,6 +866,13 @@ export interface ArcMessages {
   embedLoad: (site: string) => string;
   embedPrivacy: (site: string) => string;
   openOn: (site: string) => string;
+  uploadTooLarge: (name: string) => string;
+  uploadWrongType: (name: string) => string;
+  uploadEmpty: (name: string) => string;
+  uploadInfected: (name: string) => string;
+  uploadMismatch: (name: string) => string;
+  uploadUnchecked: (name: string) => string;
+  uploadNoRoom: (name: string) => string;
   cut: string;
   paste: string;
   pasteAsText: string;
@@ -2029,6 +2036,13 @@ export const ENGLISH: ArcMessages = {
   embedLoad: (site) => `Load from ${site}`,
   embedPrivacy: (site) => `${site} sees that you opened it, and may keep cookies.`,
   openOn: (site) => `Open on ${site}`,
+  uploadTooLarge: (name) => `${name} is too large to upload`,
+  uploadWrongType: (name) => `${name} is not a kind of file that can be uploaded here`,
+  uploadEmpty: (name) => `${name} is empty`,
+  uploadInfected: (name) => `${name} was refused: it may hold a virus`,
+  uploadMismatch: (name) => `${name} is not the kind of file its name says`,
+  uploadUnchecked: (name) => `${name} could not be checked for viruses; try again later`,
+  uploadNoRoom: (name) => `There is no room left for ${name}`,
   cut: "Cut",
   paste: "Paste",
   pasteAsText: "Paste as plain text",

@@ -57,7 +57,7 @@ Borderline calls are justified where they are made.
 - **Focus mode**: generic; done, find.test.tsx; Editor.tsx, plugins/document-status.tsx.
 - **Arabic digits for numbers the document draws**: generic; done, footnote.test.tsx; format.ts, view.tsx.
 - **Young readers' sizing**: domain (sized for early readers, chosen per course); arc gives `classes` and `theme`; Editor.tsx.
-- **Editor found by its field's id after a late upload**: generic; pending, phase 4; slots.ts.
+- **Editor found by its field's id after a late upload**: generic; done, uploads.test.tsx (`fieldId`: an editor started again for the field takes over the queue, and each file lands in the editor showing the field); slots.ts.
 - **Host services for media, mentions, comments, the assistant**: generic; done for uploads and mentions (media.test.tsx, typeahead.test.tsx), pending for the rest by their phases; context.tsx.
 - **Host services for studio, puzzles, bank and standards**: domain; arc gives `defineEditorExtension` with plugins and commands; context.tsx.
 - **Feature flags for questions, forms, gates, draws, starter, narration**: domain; arc gives presets and `customizeExtensions`; Editor.tsx, context.tsx.
@@ -208,8 +208,8 @@ Borderline calls are justified where they are made.
 - **Chapter markers set at the player's time**: generic; done, recording.test.tsx (marked where the player stands, named, moved by a clock typed in any script's digits or to the player's time; the named ones are the player's chapters); markers.tsx.
 - **Voice and video recorders, screen with camera, trim**: generic; pending, phase 4 (arc's `ClipRecorder` records audio and video); recorder.tsx, video-recorder.tsx.
 - **Embeds: fourteen providers, click to load, chapters for two**: generic; done, embeds.test.tsx, media.test.tsx (stored as the source's `provider` and `embedId`; an app adds a site as an `EmbedProvider`; a reader's frame loads only once chosen, a writer's at once; YouTube's and Vimeo's named markers are chapters, told to their players by message, and markers are set at the time their players report); nodes/rich.tsx, plugins/embed.tsx.
-- **Upload queue: progress, cancel, retry, resumed after reload, warned on leaving**: generic; done for progress, retry and remove (media.test.tsx), pending resume and the leave warning in phase 4; plugins/media.tsx.
-- **Upload errors mapped to words** (too large, wrong type, infected, quota): generic, the quota words domain; pending, phase 4; plugins/media.tsx.
+- **Upload queue: progress, cancel, retry, resumed after reload, warned on leaving**: generic; done, media.test.tsx (progress, retry, remove), uploads.test.tsx (uploads the app kept across a reload, through `EditorMedia.unfinished`, finished at the document's end; leaving asks first while one is on its way); plugins/media.tsx.
+- **Upload errors mapped to words** (too large, wrong type, infected, quota): generic, the quota words domain; done, uploads.test.tsx (a service's `file.*` codes read in arc's words, an app's own through `EditorMedia.uploadRefusal`; an empty file refused before it is sent); plugins/media.tsx.
 - **Media library chooser and keep-in-library**: generic (a media library slot); pending, phase 4; context.tsx, plugins/keep-in-media.tsx.
 - **Picture search over open collections**: generic; pending, phase 4; plugins/picture-search.tsx.
 - **Colouring-page pictures in picture search**: domain (line drawings for young learners); arc gives the search slot; plugins/picture-search.tsx.
@@ -274,7 +274,7 @@ example in the README and extension.test.tsx is such a block.
 ## Counts
 
 - 196 lines in all: 173 generic, 23 domain.
-- Generic: 133 done, 40 pending; a line done in part counts as pending.
+- Generic: 136 done, 37 pending; a line done in part counts as pending.
 
 ## Phases
 

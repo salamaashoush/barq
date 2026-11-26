@@ -2,7 +2,7 @@ import { createContext, getOwner, install, onCleanup, useContext } from "@barqjs
 import { useLexicalEditor } from "@barqjs/lexical";
 import type { LexicalEditor } from "lexical";
 
-import type { UploadQueueApi } from "../components/file-upload.tsx";
+import type { UploadContext, UploadQueueApi } from "../components/file-upload.tsx";
 
 /** The upload queue an editor's pictures and files go through. */
 export interface EditorUploads {
@@ -36,11 +36,24 @@ export function editorUploads(editor: LexicalEditor): EditorUploads | null {
 }
 
 /**
- * What an app lends the media blocks, in its editors and its renderers alike:
- * the address of a file it keeps, by the id a document stores.
+ * An upload begun before the page was reloaded, which the app kept so it can
+ * be finished: `resume` sends what the server still lacks and resolves with
+ * the file's address; `discard` gives it up.
  */
+export interface UnfinishedUpload {
+  file: File;
+  resume: (context: UploadContext) => Promise<string>;
+  discard: () => Promise<void>;
+}
+
+/** What an app lends the media blocks, in its editors and its renderers alike. */
 export interface EditorMedia {
+  /** The address of a file the app keeps, by the id a document stores. */
   fileUrl?: (fileId: string) => string;
+  /** Words for a refusal the app's service answers with a code of its own (a quota, say); arc's for the rest. */
+  uploadRefusal?: (code: string, file: File) => string | undefined;
+  /** Uploads begun before the page was reloaded, which an editor finishes and places at the end. */
+  unfinished?: () => Promise<UnfinishedUpload[]>;
 }
 
 const NO_MEDIA: EditorMedia = {};

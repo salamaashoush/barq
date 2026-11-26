@@ -21,7 +21,7 @@ import {
 } from "lexical";
 import { $convertFromMarkdownString } from "@lexical/markdown";
 
-import { type UploadContext, useUploadQueue } from "../components/file-upload.tsx";
+import type { UploadContext } from "../components/file-upload.tsx";
 import { useArcMessages } from "../components/messages.ts";
 import { proseStyles } from "../components/typography.tsx";
 import { arcLayer as arc } from "../layer.ts";
@@ -66,8 +66,7 @@ import {
   useDocumentDirection,
 } from "./direction.tsx";
 import { FloatingFormatToolbar, LinkEditor } from "./floating.tsx";
-import { provideEditorUploads } from "./media.tsx";
-import { settleUpload } from "./picture.tsx";
+import { EditorUploadsProvider } from "./uploads.tsx";
 import {
   type AutosaveOptions,
   QUIET_REPLACE_TAG,
@@ -185,6 +184,12 @@ export interface RichTextEditorProps
   upload?: (file: File, context: UploadContext) => Promise<string>;
   /** The largest picture accepted, in bytes. */
   maxImageSize?: number;
+  /**
+   * The field the editor shows, for a page that starts its editor again (a
+   * new document's, once first saved): files still on their way land in the
+   * editor showing the field when they are up.
+   */
+  fieldId?: string;
   /** Saves as typing pauses, with the status in the footer. */
   autosave?: AutosaveOptions;
   /** Lexical extensions of an app's own, beside the editor extensions. */
@@ -369,28 +374,6 @@ function Footer(props: FooterProps) {
       </Show>
     </div>
   );
-}
-
-interface UploadsProps {
-  upload: (file: File, context: UploadContext) => Promise<string>;
-  maxSize?: number;
-  children: Child;
-}
-
-/** The images an editor uploads, through arc's queue. */
-function Uploads(props: UploadsProps) {
-  const editor = useLexicalEditor();
-  const queue = useUploadQueue({
-    upload: (file, context) => props.upload(file, context),
-    onUploaded: (item) => settleUpload(editor, item),
-  });
-  provideEditorUploads(editor, {
-    queue,
-    send: (file) =>
-      props.upload(file, { onProgress: () => undefined, signal: new AbortController().signal }),
-    maxSize: untrack(() => props.maxSize),
-  });
-  return <>{props.children}</>;
 }
 
 interface EditorToolsProps {
@@ -595,9 +578,13 @@ export function RichTextEditor(props: RichTextEditorProps) {
           {props.upload === undefined ? (
             body()
           ) : (
-            <Uploads upload={props.upload} maxSize={props.maxImageSize}>
+            <EditorUploadsProvider
+              upload={props.upload}
+              maxSize={props.maxImageSize}
+              fieldId={props.fieldId}
+            >
               {body()}
-            </Uploads>
+            </EditorUploadsProvider>
           )}
         </>
       </LexicalComposer>
