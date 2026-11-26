@@ -7,6 +7,7 @@ import { useArcMessages } from "../components/messages.ts";
 import { type Customisable, parts } from "../lib/parts.ts";
 import { bg, edge, focus, gap, layout, rounded, space, truncate, type } from "../style/index.ts";
 import type { CodeLanguage } from "./languages.ts";
+import { type CodeLineMark, type CodeLineRenderer, type CodeRange, sliceLines } from "./lines.ts";
 import { codeVars } from "./options.ts";
 import { StaticCode } from "./static-code.tsx";
 import { codeSurface } from "./style.ts";
@@ -51,6 +52,18 @@ export interface HighlightProps {
   lineNumbers?: boolean;
   /** Wrap long lines instead of scrolling sideways. @default false */
   wrap?: boolean;
+  /** Lines to mark, counted from 1: where it failed, what changed, what to look at. */
+  marks?: readonly CodeLineMark[];
+  /** Only these lines of `code`, numbered as they are there. `rangeAround` makes one. */
+  range?: CodeRange;
+  /**
+   * `light` colours a few snippet languages (shell, TOML, YAML, JSON,
+   * TypeScript) with patterns and loads no grammar, for a page that must not
+   * carry an editor's parsers. @default "grammar"
+   */
+  highlighter?: "grammar" | "light";
+  /** Draws the lines itself, with the highlighter for what in them is code. */
+  renderLines?: CodeLineRenderer;
   class?: string;
   className?: string;
 }
@@ -74,6 +87,10 @@ export function Highlight(props: HighlightProps) {
       language={props.language}
       lineNumbers={props.lineNumbers === true}
       wrap={props.wrap === true}
+      marks={props.marks}
+      range={props.range}
+      highlighter={props.highlighter}
+      renderLines={props.renderLines}
       class={arc(codeSurface, props.class, props.className)}
     />
   );
@@ -88,6 +105,8 @@ export interface CodeBlockProps extends HighlightProps, Customisable<Slots> {
   copyable?: boolean;
   /** Names the copy button. @default the provider's `copyCode`, "Copy code" */
   copyLabel?: string;
+  /** What the button copies. @default the lines shown */
+  copyValue?: string;
   /** A CSS length, or pixels. Past it the code scrolls. */
   maxHeight?: string | number;
 }
@@ -115,6 +134,9 @@ export function CodeBlock(props: CodeBlockProps) {
   function copyable(): boolean {
     return props.copyable !== false;
   }
+  function copied(): string {
+    return props.copyValue ?? sliceLines(props.code, props.range);
+  }
   const messages = useArcMessages();
   function cls(): Slots {
     return parts(codeBlockStyles(), props.classes);
@@ -132,7 +154,7 @@ export function CodeBlock(props: CodeBlockProps) {
         fallback={
           <Show when={copyable()}>
             <span class={cls().copy} data-slot="code-block-copy">
-              <CopyButton value={props.code} label={props.copyLabel ?? messages().copyCode} />
+              <CopyButton value={copied()} label={props.copyLabel ?? messages().copyCode} />
             </span>
           </Show>
         }
@@ -142,7 +164,7 @@ export function CodeBlock(props: CodeBlockProps) {
             {title()}
           </span>
           <Show when={copyable()}>
-            <CopyButton value={props.code} label={props.copyLabel ?? messages().copyCode} />
+            <CopyButton value={copied()} label={props.copyLabel ?? messages().copyCode} />
           </Show>
         </figcaption>
       </Show>
@@ -151,6 +173,10 @@ export function CodeBlock(props: CodeBlockProps) {
         language={props.language}
         lineNumbers={props.lineNumbers === true}
         wrap={props.wrap === true}
+        marks={props.marks}
+        range={props.range}
+        highlighter={props.highlighter}
+        renderLines={props.renderLines}
         class={cls().body}
         tabIndex={0}
       />

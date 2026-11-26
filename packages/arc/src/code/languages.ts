@@ -134,3 +134,21 @@ registerLanguage("python", async () => (await import("@codemirror/lang-python"))
 registerLanguage("xml", async () => (await import("@codemirror/lang-xml")).xml(), ["svg"]);
 registerLanguage("yaml", async () => (await import("@codemirror/lang-yaml")).yaml(), ["yml"]);
 registerLanguage("sql", async () => (await import("@codemirror/lang-sql")).sql());
+registerLanguage(
+  "shell",
+  async () => {
+    const [{ LanguageSupport, StreamLanguage }, { shell }] = await Promise.all([
+      import("@codemirror/language"),
+      import("@codemirror/legacy-modes/mode/shell"),
+    ]);
+    return new LanguageSupport(StreamLanguage.define(shell));
+  },
+  ["sh", "bash", "zsh", "console"],
+);
+registerLanguage("toml", async () => {
+  const [{ LanguageSupport, StreamLanguage }, { toml }] = await Promise.all([
+    import("@codemirror/language"),
+    import("@codemirror/legacy-modes/mode/toml"),
+  ]);
+  return new LanguageSupport(StreamLanguage.define(toml));
+});

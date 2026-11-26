@@ -19,6 +19,7 @@ export const codeSurface = arc(type.mono, fg.default, {
   "--code-gutter-pad-end": "0.25rem",
   "--code-gutter-width":
     "max(var(--code-gutter-min), calc(var(--code-digits, 2) * 1ch + var(--code-gutter-pad-start) + var(--code-gutter-pad-end)))",
+  "--code-fold-width": "1rem",
   fontSize: "var(--code-font-size)",
   lineHeight: "var(--code-line-height)",
   "& .tok-keyword": { color: "var(--code-keyword)" },
@@ -37,6 +38,38 @@ export const codeSurface = arc(type.mono, fg.default, {
   "& .tok-inserted": { color: "var(--success-foreground)" },
   "& .tok-deleted": { color: "var(--danger-foreground)" },
   "& .tok-invalid": { color: "var(--danger-foreground)" },
+  "& [data-mark]": {
+    position: "relative",
+    backgroundColor: "var(--code-mark-fill)",
+  },
+  "& [data-mark]::after": {
+    content: '"" / attr(data-mark-label)',
+    position: "absolute",
+    insetBlock: "0",
+    insetInlineStart: "0",
+    width: "2px",
+    backgroundColor: "var(--code-mark-rule)",
+  },
+  "& [data-mark=neutral]": {
+    "--code-mark-fill": "color-mix(in oklab, var(--primary) 10%, transparent)",
+    "--code-mark-rule": "var(--primary)",
+  },
+  "& [data-mark=danger]": {
+    "--code-mark-fill": "var(--danger-subtle)",
+    "--code-mark-rule": "var(--danger)",
+  },
+  "& [data-mark=warning]": {
+    "--code-mark-fill": "var(--warning-subtle)",
+    "--code-mark-rule": "var(--warning)",
+  },
+  "& [data-mark=info]": {
+    "--code-mark-fill": "var(--info-subtle)",
+    "--code-mark-rule": "var(--info)",
+  },
+  "& [data-mark=success]": {
+    "--code-mark-fill": "var(--success-subtle)",
+    "--code-mark-rule": "var(--success)",
+  },
 });
 
 /**
@@ -55,10 +88,10 @@ const scroller = arc({
 export const staticCode = arc(layout.flush, scroller, {
   boxSizing: "border-box",
   paddingBlock: "var(--code-pad-y)",
-  font: "inherit",
+  fontFamily: "inherit",
   whiteSpace: "pre",
   tabSize: "var(--code-tab-size, 4)",
-  counterReset: "code-line",
+  counterReset: "code-line var(--code-line-start, 0)",
   "&[data-wrap]": {
     whiteSpace: "pre-wrap",
     overflowWrap: "anywhere",
@@ -75,6 +108,33 @@ export const staticCode = arc(layout.flush, scroller, {
   "&[data-numbered] [data-line]": {
     counterIncrement: "code-line",
     paddingInlineStart: "calc(var(--code-gutter-width) + var(--code-pad-x))",
+  },
+  "&[data-folding] [data-line]": {
+    paddingInlineStart: "calc(var(--code-fold-width) + var(--code-pad-x))",
+  },
+  "&[data-numbered][data-folding] [data-line]": {
+    paddingInlineStart:
+      "calc(var(--code-gutter-width) + var(--code-fold-width) + var(--code-pad-x))",
+  },
+  "&[data-numbered] [data-mark]::before": {
+    color: "var(--code-mark-rule)",
+    fontWeight: "var(--font-weight-semibold)",
+  },
+  "& [data-line][data-prompt]": {
+    paddingInlineStart: "calc(var(--code-pad-x) + 2ch)",
+  },
+  "& [data-prompt]::before": {
+    content: 'attr(data-prompt) / ""',
+    position: "absolute",
+    insetInlineStart: "var(--code-pad-x)",
+    color: "var(--faint-foreground)",
+    userSelect: "none",
+  },
+  "& [data-line][data-continued], & [data-line][data-output]": {
+    paddingInlineStart: "calc(var(--code-pad-x) + 2ch)",
+  },
+  "& [data-output]": {
+    color: "var(--muted-foreground)",
   },
   "&[data-numbered] [data-line]::before": {
     content: 'counter(code-line) / ""',

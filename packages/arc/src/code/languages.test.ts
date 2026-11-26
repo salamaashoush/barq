@@ -23,7 +23,9 @@ describe("the language registry", () => {
       "jsx",
       "markdown",
       "python",
+      "shell",
       "sql",
+      "toml",
       "tsx",
       "typescript",
       "xml",
@@ -35,6 +37,7 @@ describe("the language registry", () => {
     }
     expect(loadedLanguage("TS")).toBe(loadedLanguage("typescript"));
     expect(loadedLanguage("yml")).toBe(loadedLanguage("yaml"));
+    expect(loadedLanguage("bash")).toBe(loadedLanguage("shell"));
     expect(isKnownLanguage("md")).toBe(true);
     expect(isKnownLanguage("cobol")).toBe(false);
     expect(await loadLanguage("cobol")).toBeUndefined();
@@ -111,6 +114,13 @@ describe("what an app pays for", () => {
       (name) => name.startsWith("@codemirror/") || name.startsWith("@lezer/"),
     );
     expect(codemirror).toEqual([]);
+  });
+
+  test("the worker entry and the light highlighter reach no CodeMirror", () => {
+    for (const file of ["intelligence-worker.ts", "light-highlight.ts"]) {
+      const graph = importGraph(join(src, "code", file)).packages;
+      expect([...graph.keys()].filter((name) => name.startsWith("@codemirror/"))).toEqual([]);
+    }
   });
 
   test("the code entry imports every language only on demand", () => {

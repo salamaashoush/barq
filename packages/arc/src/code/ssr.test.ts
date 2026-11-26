@@ -10,6 +10,7 @@ import { installSeed } from "@barqjs/testing";
 import { hydrate } from "@barqjs/web";
 
 import { halves, serverProcess } from "../ssr-harness.ts";
+import { hydrates } from "../test-arc.ts";
 import { editorIn, queueSelectionChanges } from "./test-dom.ts";
 
 queueSelectionChanges();
@@ -60,6 +61,55 @@ describe("on a server, with no DOM", () => {
     expect(html).toContain('<span class="tok-keyword">let</span>');
     expect(html.match(/<span data-line>/g)?.length).toBe(2);
     expect(html).not.toContain("cm-editor");
+  });
+
+  test("CodeBlock writes an excerpt numbered from its first line, the marked line marked", async () => {
+    const { code, html, errors } = await serverProcess(
+      page(
+        ["CodeBlock"],
+        `<CodeBlock language="javascript" lineNumbers code={"a();\\nb();\\nc();\\nd();"} range={{ from: 2, to: 3 }} marks={[{ line: 3, tone: "danger", label: "Failed here" }]} />`,
+      ),
+    );
+    expect(errors).toBe("");
+    expect(code).toBe(0);
+    expect(html).toContain("--code-line-start: 1");
+    expect(html.match(/<span data-line/g)?.length).toBe(2);
+    expect(html).toContain(
+      'data-mark="danger" data-mark-label="Failed here"><span class="tok-function">c</span>',
+    );
+  });
+
+  test("TerminalBlock and CodeTabs write their commands with prompts, highlighted with no grammar", async () => {
+    const { code, html, errors } = await serverProcess(
+      page(
+        ["CodeTabs", "TerminalBlock"],
+        `<div>
+          <TerminalBlock highlighter="light" transcript code={"$ acme status\\nAll up"} />
+          <CodeTabs aria-label="Install" highlighter="light" items={[{ id: "bun", label: "bun", code: "bun add acme", terminal: true }, { id: "npm", label: "npm", code: "npm i acme", terminal: true }]} />
+        </div>`,
+      ),
+    );
+    expect(errors).toBe("");
+    expect(code).toBe(0);
+    expect(html).toContain(
+      '<span data-line data-prompt="$"><span class="tok-function">acme</span> status</span>',
+    );
+    expect(html).toContain(`<span data-line data-output="">All up</span>`);
+    expect(html).toContain('role="tablist"');
+    expect(html).toContain('<span class="tok-function">bun</span> add acme');
+  });
+
+  test("CodeEditor with folding and marks leaves room for the gutter and marks the static lines", async () => {
+    const { code, html, errors } = await serverProcess(
+      page(
+        ["CodeEditor"],
+        `<CodeEditor label="Body" folding marks={[{ line: 2, tone: "warning" }]} defaultValue={"a\\nb"} />`,
+      ),
+    );
+    expect(errors).toBe("");
+    expect(code).toBe(0);
+    expect(html).toContain("data-folding");
+    expect(html).toContain('<span data-line data-mark="warning">b</span>');
   });
 
   test("CodeDiff writes its frame for the browser to fill", async () => {
@@ -115,6 +165,39 @@ describe("hydrated", () => {
     expect(pre?.innerHTML).toBe(result.writtenMarkup ?? "");
     expect(pre?.querySelector(".tok-keyword")?.textContent).toBe("def");
     result.dispose();
+  });
+
+  test("a marked excerpt keeps the server's markup, node for node", async () => {
+    const result = await hydrated(`
+      import { CodeBlock } from ${entry};
+      export function Page() {
+        return <CodeBlock language="python" lineNumbers code={"a = 1\\nb = 2\\nc = 3"} range={{ from: 2, to: 3 }} marks={[{ line: 2, tone: "info" }]} />;
+      }
+    `);
+    expect(result.report.mismatches).toEqual([]);
+    expect(result.report.recovered).toBe(false);
+    const pre = result.container.querySelector("pre");
+    expect(pre).toBe(result.written);
+    expect(pre?.innerHTML).toBe(result.writtenMarkup ?? "");
+    expect(pre?.querySelector('[data-mark="info"]')?.textContent).toBe("b = 2");
+    result.dispose();
+  });
+
+  test("TerminalBlock, CodeTabs and a light Highlight hydrate with every node kept", async () => {
+    const result = await hydrates(`
+      import { CodeTabs, Highlight, TerminalBlock } from ${entry};
+      export function Page() {
+        return (
+          <div>
+            <TerminalBlock highlighter="light" code={"bun add acme\\nbun run dev"} />
+            <CodeTabs aria-label="Install" highlighter="light" items={[{ id: "bun", label: "bun", code: "bun add acme", terminal: true }, { id: "json", label: "Config", code: '{"a": 1}', language: "json" }]} />
+            <Highlight highlighter="light" language="yaml" code={"name: acme"} />
+          </div>
+        );
+      }
+    `);
+    expect(result.container.querySelectorAll("[data-prompt]").length).toBe(3);
+    result.unmount();
   });
 
   test("CodeEditor adopts the static code, then the editor takes its place line for line", async () => {

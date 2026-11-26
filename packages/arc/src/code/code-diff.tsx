@@ -343,6 +343,7 @@ export function CodeDiff(props: CodeDiffProps) {
     <div
       class={arc(codeSurface, codeFrame, cls().root, props.class, props.className)}
       data-slot="code-diff"
+      dir="ltr"
       data-layout={props.layout ?? "split"}
       data-readonly={readOnly() ? "" : undefined}
       style={codeVars({

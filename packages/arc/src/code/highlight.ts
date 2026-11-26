@@ -1,6 +1,8 @@
 import type { LanguageSupport } from "@codemirror/language";
 import { type Highlighter, highlightCode, tagHighlighter, tags as t } from "@lezer/highlight";
 
+import { escapeHtml, linesHtml } from "./lines.ts";
+
 /**
  * Syntax tags to stable class names, for the editor and the static renderer
  * alike. A `HighlightStyle` would generate its class names in the order its
@@ -58,22 +60,18 @@ export const codeHighlighter: Highlighter = tagHighlighter([
 /** Past this many characters code is shown plain: parsing it would stall the page for text nobody reads whole. */
 const LIMIT = 200_000;
 
-const ESCAPES: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;" };
-
-function escape(text: string): string {
-  return text.replace(/[&<>]/g, (one) => ESCAPES[one] ?? one);
-}
-
 /**
- * `code` as HTML: one `<span data-line>` per line, joined by newlines, with a
- * `<span class="tok-…">` around each highlighted run. Pure, so a server writes
- * it. Without a language, or past the size limit, the lines are plain.
+ * `code` as one string of HTML per line, a `<span class="tok-…">` around each
+ * highlighted run. The whole text is parsed at once, so a comment or a string
+ * that spans lines keeps its colour on each. Pure, so a server writes it.
+ * Without a language, or past the size limit, the lines are plain.
  */
-export function highlightHtml(code: string, language?: LanguageSupport): string {
+export function highlightLines(code: string, language?: LanguageSupport): string[] {
   const lines: string[] = [];
   let line = "";
   function putText(text: string, classes: string): void {
-    line += classes === "" ? escape(text) : `<span class="${classes}">${escape(text)}</span>`;
+    line +=
+      classes === "" ? escapeHtml(text) : `<span class="${classes}">${escapeHtml(text)}</span>`;
   }
   function putBreak(): void {
     lines.push(line);
@@ -88,12 +86,13 @@ export function highlightHtml(code: string, language?: LanguageSupport): string 
     highlightCode(code, language.language.parser.parse(code), codeHighlighter, putText, putBreak);
     putBreak();
   }
-  return lines.map((one) => `<span data-line>${one}</span>`).join("\n");
+  return lines;
 }
 
-/** How many lines `code` has, as an editor counts them. */
-export function lineCount(code: string): number {
-  let count = 1;
-  for (let at = code.indexOf("\n"); at !== -1; at = code.indexOf("\n", at + 1)) count++;
-  return count;
+/**
+ * `code` as HTML: one `<span data-line>` per line of `highlightLines`,
+ * joined by newlines.
+ */
+export function highlightHtml(code: string, language?: LanguageSupport): string {
+  return linesHtml(highlightLines(code, language).map((html) => ({ html })));
 }

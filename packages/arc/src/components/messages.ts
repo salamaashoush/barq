@@ -14,6 +14,42 @@ export interface ArcMessages {
   copied: string;
   copyFailed: string;
   copyCode: string;
+  terminal: string;
+  templateTokens: string;
+  secret: string;
+  variable: string;
+  unknownTokens: (names: readonly string[]) => string;
+  schemaRequired: string;
+  schemaDeprecated: string;
+  schemaOneOf: string;
+  schemaDefault: string;
+  schemaShowProperties: (count: number) => string;
+  schemaShowShapes: (count: number) => string;
+  schemaVariantsIntro: string;
+  schemaArrayOf: (item: string) => string;
+  schemaMapOf: (value: string) => string;
+  schemaOrNull: (type: string) => string;
+  schemaEither: (types: readonly string[]) => string;
+  schemaAny: string;
+  schemaOneOfSeveral: string;
+  schemaVariant: string;
+  log: string;
+  logLevels: string;
+  logSearch: string;
+  logFollow: string;
+  logJumpToLatest: string;
+  copyLog: string;
+  logError: string;
+  logWarning: string;
+  logInfo: string;
+  logLog: string;
+  logDebug: string;
+  logExpand: string;
+  logCollapse: string;
+  logLoading: string;
+  logEmpty: string;
+  logNoMatches: string;
+  logMatches: (count: number) => string;
   original: string;
   modified: string;
   breadcrumb: string;
@@ -1140,6 +1176,46 @@ export const ENGLISH: ArcMessages = {
   copied: "Copied",
   copyFailed: "Could not copy",
   copyCode: "Copy code",
+  terminal: "Terminal",
+  templateTokens: "Names",
+  secret: "Secret",
+  variable: "Variable",
+  unknownTokens: (names) =>
+    names.length === 1
+      ? `${names[0] ?? ""} is not defined here.`
+      : `${names.join(", ")} are not defined here.`,
+  schemaRequired: "Required",
+  schemaDeprecated: "Deprecated",
+  schemaOneOf: "One of",
+  schemaDefault: "Default",
+  schemaShowProperties: (count) =>
+    count === 1 ? "Show 1 property" : `Show ${String(count)} properties`,
+  schemaShowShapes: (count) => `Show its ${String(count)} shapes`,
+  schemaVariantsIntro: "And one of these shapes:",
+  schemaArrayOf: (item) => `array of ${item}`,
+  schemaMapOf: (value) => `map of ${value}`,
+  schemaOrNull: (type) => `${type} or null`,
+  schemaEither: (types) => types.join(" or "),
+  schemaAny: "any",
+  schemaOneOfSeveral: "one of several",
+  schemaVariant: "Variant",
+  log: "Log",
+  logLevels: "Levels",
+  logSearch: "Search the log",
+  logFollow: "Follow",
+  logJumpToLatest: "Jump to the latest",
+  copyLog: "Copy the log",
+  logError: "error",
+  logWarning: "warn",
+  logInfo: "info",
+  logLog: "log",
+  logDebug: "debug",
+  logExpand: "Show formatted",
+  logCollapse: "Hide formatted",
+  logLoading: "Loading the log…",
+  logEmpty: "Nothing logged",
+  logNoMatches: "No lines match",
+  logMatches: (count) => (count === 1 ? "1 line matches" : `${String(count)} lines match`),
   original: "Original",
   modified: "Modified",
   breadcrumb: "Breadcrumb",

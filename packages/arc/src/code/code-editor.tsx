@@ -18,7 +18,13 @@ import {
   completionKeymap,
 } from "@codemirror/autocomplete";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
-import { bracketMatching, indentOnInput, indentUnit } from "@codemirror/language";
+import {
+  bracketMatching,
+  foldGutter,
+  foldKeymap,
+  indentOnInput,
+  indentUnit,
+} from "@codemirror/language";
 import { highlightSelectionMatches, searchKeymap } from "@codemirror/search";
 import { Compartment, EditorState, type Extension, Prec } from "@codemirror/state";
 import {
@@ -36,8 +42,10 @@ import {
 import { arcLayer as arc } from "../layer.ts";
 import { type Customisable, parts } from "../lib/parts.ts";
 import { layout } from "../style/index.ts";
+import { lineMarks } from "./editor-marks.ts";
 import { codeTheme } from "./editor-theme.ts";
 import { type CodeLanguage, loadLanguage, loadedLanguage } from "./languages.ts";
+import type { CodeLineMark } from "./lines.ts";
 import {
   type ExtensionSource,
   changeReport,
@@ -73,6 +81,10 @@ export interface CodeEditorProps extends Customisable<Slots> {
   lineNumbers?: boolean;
   /** Wrap long lines instead of scrolling sideways. @default false */
   wrap?: boolean;
+  /** A gutter that folds blocks, beside the line numbers. Ctrl+Shift+[ and ] fold from the keyboard. @default false */
+  folding?: boolean;
+  /** Lines to mark, counted from 1, as `CodeBlock` marks them: an error, the line a run stopped on. */
+  marks?: readonly CodeLineMark[];
   /** A CSS length, or pixels. */
   minHeight?: string | number;
   /** A CSS length, or pixels. Past it the editor scrolls. */
@@ -185,6 +197,14 @@ export function CodeEditor(props: CodeEditorProps) {
     (on) => (on ? [lineNumberGutter(), highlightActiveLineGutter()] : []),
   );
   option(
+    () => props.folding === true,
+    (on) => (on ? foldGutter() : []),
+  );
+  option(
+    () => props.marks,
+    (marks) => (marks === undefined || marks.length === 0 ? [] : lineMarks(marks)),
+  );
+  option(
     () => props.readOnly === true,
     (readOnly) => EditorState.readOnly.of(readOnly),
   );
@@ -287,6 +307,7 @@ export function CodeEditor(props: CodeEditorProps) {
             ...defaultKeymap,
             ...searchKeymap,
             ...historyKeymap,
+            ...foldKeymap,
             ...completionKeymap,
             indentWithTab,
           ]),
@@ -331,6 +352,7 @@ export function CodeEditor(props: CodeEditorProps) {
     <div
       class={arc(codeSurface, codeFrame, cls().root, props.class, props.className)}
       data-slot="code-editor"
+      dir="ltr"
       data-readonly={props.readOnly === true ? "" : undefined}
       data-invalid={props.invalid === true ? "" : undefined}
       data-mounted={mounted() ? "" : undefined}
@@ -346,6 +368,8 @@ export function CodeEditor(props: CodeEditorProps) {
           language={props.language}
           lineNumbers={props.lineNumbers ?? true}
           wrap={props.wrap === true}
+          folding={props.folding === true}
+          marks={props.marks}
           placeholder={props.placeholder}
         />
       </Show>
