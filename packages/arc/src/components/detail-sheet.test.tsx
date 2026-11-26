@@ -161,3 +161,77 @@ describe("DetailSheet", () => {
     view.unmount();
   });
 });
+
+describe("DetailSheet stepping", () => {
+  const ROWS = ["DLV-1", "DLV-2", "DLV-3"];
+
+  function Deliveries() {
+    const [at, setAt] = createSignal(0);
+    return (
+      <DetailSheet
+        open
+        heading={ROWS[at()]}
+        steps={{
+          position: at() + 1,
+          count: ROWS.length,
+          onPrevious: at() > 0 ? () => setAt(at() - 1) : undefined,
+          onNext: at() < ROWS.length - 1 ? () => setAt(at() + 1) : undefined,
+        }}
+      >
+        <input aria-label="Note" />
+      </DetailSheet>
+    );
+  }
+
+  test("reads on through the rows beside the heading, with J and K, without closing", async () => {
+    render(() => <Deliveries />);
+    await settle();
+    const dialog = screen.getByRole("dialog", { name: "DLV-1" });
+    const heading = dialog.querySelector('[data-slot="detail-sheet-heading"]') as HTMLElement;
+    expect(heading.querySelector('[data-slot="record-pager"]')).not.toBeNull();
+    expect(screen.getByRole("status").textContent).toBe("1 of 3");
+    expect(screen.getByRole("button", { name: "Previous" }).hasAttribute("disabled")).toBe(true);
+    await waitFor(() =>
+      expect(document.activeElement?.getAttribute("data-slot")).toBe("detail-sheet-body"),
+    );
+
+    await user.click(screen.getByRole("button", { name: "Next" }));
+    await settle();
+    expect(screen.getByRole("dialog", { name: "DLV-2" })).toBeDefined();
+    await user.keyboard("j");
+    await settle();
+    expect(screen.getByRole("dialog", { name: "DLV-3" })).toBeDefined();
+    expect(screen.getByRole("status").textContent).toBe("3 of 3");
+    await user.keyboard("k");
+    await settle();
+    expect(screen.getByRole("dialog", { name: "DLV-2" })).toBeDefined();
+
+    await user.click(screen.getByRole("textbox", { name: "Note" }));
+    await user.keyboard("j");
+    await settle();
+    expect(screen.getByRole("dialog", { name: "DLV-2" })).toBeDefined();
+    expect(await ariaViolations(document.body)).toEqual([]);
+  });
+
+  test("J does nothing once the sheet is closed", async () => {
+    const [open, setOpen] = createSignal(true);
+    const steps: string[] = [];
+    render(() => (
+      <DetailSheet open={open()} heading="Row" steps={{ onNext: () => steps.push("next") }} />
+    ));
+    await settle();
+    await user.keyboard("j");
+    expect(steps).toEqual(["next"]);
+    setOpen(false);
+    await settle();
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await user.keyboard("j");
+    expect(steps).toEqual(["next"]);
+  });
+
+  test("a sheet with no steps draws no pager", async () => {
+    render(() => <DetailSheet open heading="Alone" />);
+    await settle();
+    expect(document.querySelector('[data-slot="record-pager"]')).toBeNull();
+  });
+});
