@@ -13,7 +13,6 @@ import {
 import { isAppleDevice } from "@barqjs/aria/platform";
 import { shortcut } from "@barqjs/primitives/keyboard";
 import { persisted } from "@barqjs/primitives/storage";
-import { useRouter } from "@barqjs/router";
 import {
   CommandDialog,
   CommandEmpty,
@@ -45,7 +44,7 @@ import {
 } from "./remote-search.ts";
 
 import type { NavIcon } from "./app-shell.tsx";
-import type { LinkTarget } from "./link.ts";
+import { type LinkTarget, maybeRouter } from "./link.ts";
 
 /** One entry of the palette: a place to go (`to`), a thing to do (`onSelect`), or both. */
 export interface CommandMenuAction extends Partial<LinkTarget> {
@@ -276,7 +275,7 @@ export interface CommandMenuProps extends Customisable<Slots> {
  * to it with `useCommands`, for as long as it is on the page.
  */
 export function CommandMenu(props: CommandMenuProps) {
-  const router = useRouter();
+  const router = maybeRouter();
   const messages = useArcMessages();
   function cls(): Slots {
     return parts(commandMenuStyles(), props.classes);
@@ -344,7 +343,16 @@ export function CommandMenu(props: CommandMenuProps) {
   if (combo !== false) shortcut(combo ?? "mod+k", () => setOpen(!isOpen()));
 
   function groups(): CommandMenuGroup[] {
-    return merged(props.groups ?? [], registered());
+    const all = merged(props.groups ?? [], registered());
+    if (router !== undefined) return all;
+    return all
+      .map((group) => ({
+        ...group,
+        actions: group.actions.filter(
+          (action) => action.to === undefined || action.onSelect !== undefined,
+        ),
+      }))
+      .filter((group) => group.actions.length > 0);
   }
 
   function bound(): CommandMenuAction[] {
@@ -372,7 +380,7 @@ export function CommandMenu(props: CommandMenuProps) {
   }
 
   function go(target: Partial<LinkTarget>): void {
-    if (target.to === undefined) return;
+    if (target.to === undefined || router === undefined) return;
     void router.navigate({
       to: target.to,
       params: target.params,

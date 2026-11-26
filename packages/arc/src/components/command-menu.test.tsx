@@ -3,7 +3,7 @@ import { createSignal, flush } from "@barqjs/core";
 import { Folder } from "@barqjs/lucide/icons/folder";
 import { parseCombo } from "@barqjs/primitives/keyboard";
 import { type AnyRouteDefinition, Outlet } from "@barqjs/router";
-import { ariaViolations, screen, tick, user, waitFor, within } from "@barqjs/testing";
+import { ariaViolations, render, screen, tick, user, waitFor, within } from "@barqjs/testing";
 import { touch } from "@barqjs/ui/shared-touch";
 import { renderRoute } from "@barqjs/testing/router";
 
@@ -144,6 +144,33 @@ describe("CommandMenu", () => {
     await settle();
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(view.state.location().pathname).toBe("/");
+    view.unmount();
+  });
+
+  test("outside a router it opens, leaves out route-only actions and runs the rest", async () => {
+    const done: string[] = [];
+    const view = render(() => (
+      <CommandMenu
+        groups={[
+          {
+            heading: "Go",
+            actions: [
+              { label: "Projects", to: "/projects" },
+              { label: "Billing", to: "/billing", onSelect: () => done.push("billing") },
+              { label: "Sign out", onSelect: () => done.push("sign out") },
+            ],
+          },
+          { heading: "Pages", actions: [{ label: "Settings", to: "/settings" }] },
+        ]}
+      />
+    ));
+    openCommandMenu();
+    await settle();
+    expect(options()).toEqual(["Billing", "Sign out"]);
+    await user.click(screen.getByRole("option", { name: "Billing" }));
+    await settle();
+    expect(done).toEqual(["billing"]);
+    expect(screen.queryByRole("dialog")).toBeNull();
     view.unmount();
   });
 
