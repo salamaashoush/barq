@@ -111,9 +111,8 @@ describe("hydrated", () => {
     expect(result.report.recovered).toBe(false);
     const pre = result.container.querySelector("pre");
     expect(pre).toBe(result.written);
-    // A browser's parser drops the newline a server writes after `<pre>` and
-    // happy-dom's keeps it; either way the markup after it is the server's.
-    expect(pre?.innerHTML.replace(/^\n/, "")).toBe(result.writtenMarkup?.replace(/^\n/, "") ?? "");
+    // The server's nodes are kept, so the markup is exactly what it wrote.
+    expect(pre?.innerHTML).toBe(result.writtenMarkup ?? "");
     expect(pre?.querySelector(".tok-keyword")?.textContent).toBe("def");
     result.dispose();
   });
