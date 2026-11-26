@@ -9,7 +9,6 @@ import { FormInput } from "@barqjs/lucide/icons/form-input";
 import { Hash } from "@barqjs/lucide/icons/hash";
 import { House } from "@barqjs/lucide/icons/house";
 import { Image } from "@barqjs/lucide/icons/image";
-import { KeyRound } from "@barqjs/lucide/icons/key-round";
 import { Layers } from "@barqjs/lucide/icons/layers";
 import { LayoutDashboard } from "@barqjs/lucide/icons/layout-dashboard";
 import { ListFilter } from "@barqjs/lucide/icons/list-filter";
@@ -18,6 +17,7 @@ import { MessageSquareMore } from "@barqjs/lucide/icons/message-square-more";
 import { MessagesSquare } from "@barqjs/lucide/icons/messages-square";
 import { MessageSquareWarning } from "@barqjs/lucide/icons/message-square-warning";
 import { MousePointerClick } from "@barqjs/lucide/icons/mouse-pointer-click";
+import { PanelsTopLeft } from "@barqjs/lucide/icons/panels-top-left";
 import { Palette } from "@barqjs/lucide/icons/palette";
 import { Settings } from "@barqjs/lucide/icons/settings";
 import { Shapes } from "@barqjs/lucide/icons/shapes";
@@ -40,11 +40,11 @@ import { catalog as formatting } from "../examples/formatting/catalog.ts";
 import { catalog as forms } from "../examples/forms/catalog.ts";
 import { catalog as foundations } from "../examples/foundations/catalog.ts";
 import { catalog as inputs } from "../examples/inputs/catalog.ts";
+import { catalog as layouts } from "../examples/layouts/catalog.ts";
 import { catalog as media } from "../examples/media/catalog.ts";
 import { catalog as navigation } from "../examples/navigation/catalog.ts";
 import { catalog as notifications } from "../examples/notifications/catalog.ts";
 import { catalog as overlays } from "../examples/overlays/catalog.ts";
-import { catalog as secrets } from "../examples/secrets/catalog.ts";
 import { catalog as settings } from "../examples/settings/catalog.ts";
 import { catalog as views } from "../examples/views/catalog.ts";
 import type { GroupCatalog } from "./types.ts";
@@ -85,10 +85,10 @@ export const SECTIONS: readonly Section[] = [
   {
     label: "Patterns",
     groups: [
+      { catalog: layouts, icon: PanelsTopLeft },
       { catalog: forms, icon: ClipboardList },
       { catalog: auth, icon: LockKeyhole },
       { catalog: settings, icon: Settings },
-      { catalog: secrets, icon: KeyRound },
       { catalog: notifications, icon: Bell },
       { catalog: collaboration, icon: MessageSquareMore },
     ],
