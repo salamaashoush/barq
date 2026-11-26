@@ -3,7 +3,8 @@ import type { GroupCatalog } from "../../gallery/types.ts";
 export const catalog: GroupCatalog = {
   slug: "code",
   title: "Code",
-  description: "A code editor, diffs and highlighted blocks.",
+  description:
+    "A code editor, diffs, highlighted blocks, terminal commands, setup tabs, logs and schemas.",
   examples: [
     {
       id: "code-editor",
@@ -32,6 +33,62 @@ export const catalog: GroupCatalog = {
       description:
         "Code to read and copy, with a filename, line numbers and a height limit, and Highlight, the code alone.",
       covers: ["CodeBlock", "Highlight"],
+    },
+    {
+      id: "code-excerpt",
+      title: "Marked lines, excerpts and bodies",
+      description:
+        "The lines around a failure numbered as in the file, a body highlighted by its content type, and editors that fold with a line marked.",
+      covers: [
+        "CodeBlock",
+        "rangeAround",
+        "languageForContentType",
+        "prettyJson",
+        "CodeEditor",
+        "lineMarks",
+      ],
+    },
+    {
+      id: "terminal",
+      title: "Terminal commands",
+      description:
+        "A prompt a copy leaves out, continued lines, a transcript with its output, and the light highlighter.",
+      covers: ["TerminalBlock", "lightHighlightLines", "Highlight"],
+    },
+    {
+      id: "code-tabs",
+      title: "Setup snippets",
+      description:
+        "Install commands per platform rewritten by an option, the reader's own values swapped in, and tabs that share a remembered choice.",
+      covers: [
+        "CodeTabs",
+        "shellQuote",
+        "SnippetValuesProvider",
+        "SnippetValue",
+        "useSnippetValues",
+        "readerOrigin",
+      ],
+    },
+    {
+      id: "editor-tools",
+      title: "Completion, checking and template tokens",
+      description:
+        "A language service's completion, docs and diagnostics, names after a trigger, and a text field that references variables and secrets.",
+      covers: ["codeIntelligence", "workerIntelligence", "tokenCompletions", "TemplateTokenField"],
+    },
+    {
+      id: "console-log",
+      title: "Console log",
+      description:
+        "Levelled lines filtered by level and text, JSON opened in place, colour codes, a live stream that follows, and the loading and error states.",
+      covers: ["ConsoleLogView"],
+    },
+    {
+      id: "json-schema",
+      title: "JSON schema fields",
+      description:
+        "A schema's fields with types, values and defaults, nesting and variants opened in place, and an example value from it.",
+      covers: ["JsonSchemaFields", "jsonSchemaExample"],
     },
   ],
 };
