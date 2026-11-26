@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { fileURLToPath } from "node:url";
 import { createSignal } from "@barqjs/core";
+import { collectCss } from "@barqjs/css";
 import { ariaViolations, render, screen, user } from "@barqjs/testing";
 
 import type { TabItem } from "../components/responsive-tabs.tsx";
@@ -39,6 +40,15 @@ describe("EditorTabs", () => {
     user.click(screen.getByRole("tab", { name: "util.toy, Unsaved changes" }));
     await settle();
     expect(screen.getByRole("textbox", { name: "util.toy" })).toBeDefined();
+  });
+
+  test("a kept document's panel is hidden, and its flex layout does not undo that", async () => {
+    render(() => <Editor />);
+    await settle();
+    const panels = [...document.querySelectorAll('[data-slot="responsive-tabs-panel"]')];
+    expect(panels).toHaveLength(2);
+    expect(panels.filter((panel) => panel.hasAttribute("hidden"))).toHaveLength(1);
+    expect(collectCss()).toMatch(/\[hidden\]\{display:none\}/);
   });
 
   test("closing the last document shows what is there with none open", async () => {

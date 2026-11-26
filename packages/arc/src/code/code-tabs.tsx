@@ -204,7 +204,11 @@ export function CodeTabs(props: CodeTabsProps) {
 export const editorTabsStyles = variants({
   slots: {
     root: arc(layout.column, layout.minZero, { height: "100%" }),
-    panel: arc(layout.column, layout.grow, layout.minZero),
+    // A kept document's panel is `hidden`, and `display: flex` here would
+    // otherwise draw every document at once, one under another.
+    panel: arc(layout.column, layout.grow, layout.minZero, layout.minZeroBlock, {
+      "&[hidden]": { display: "none" },
+    }),
     empty: arc(layout.column, layout.grow, layout.minZero),
   },
 });
