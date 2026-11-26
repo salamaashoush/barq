@@ -1419,6 +1419,19 @@ export {
   severityName,
 } from "./components/problems-panel.tsx";
 export {
+  TEST_STATUSES,
+  type TestCounts,
+  type TestFailure,
+  type TestNode,
+  TestResults,
+  type TestResultsProps,
+  type TestStatus,
+  testCounts,
+  testDurationText,
+  testResultsStyles,
+  testStatus,
+} from "./components/test-results.tsx";
+export {
   StatusBar,
   StatusBarItem,
   type StatusBarItemProps,
@@ -1427,6 +1440,16 @@ export {
   type StatusTask,
   statusBarStyles,
 } from "./components/status-bar.tsx";
+export {
+  CHECK_VERDICTS,
+  type CheckResult,
+  CheckResults,
+  type CheckResultsProps,
+  type CheckVerdict,
+  type CheckVerdictLook,
+  checkResultsStyles,
+  counterexampleText,
+} from "./components/check-results.tsx";
 export {
   Workbench,
   type WorkbenchFill,
