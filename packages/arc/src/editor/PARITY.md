@@ -164,7 +164,7 @@ Borderline calls are justified where they are made.
 - **Paste: an embeddable address on an empty line, or embed code, embeds**: generic; done, paste.test.tsx; plugins/paste.ts, plugins/embed.tsx.
 - **Paste: markdown from a chat or an assistant**: generic; done, paste.test.tsx; plugins/paste.ts.
 - **Paste: HTML through every extension, pictures and embeds as blocks**: generic; done, paste.test.tsx; html-import.ts.
-- **Paste: a Wikimedia Commons link becomes a credited picture**: generic; pending, phase 4; plugins/paste.ts, plugins/media.tsx.
+- **Paste: a Wikimedia Commons link becomes a credited picture**: generic; done, media-library.test.tsx (a file page, a picture opened from an article or the picture itself, its author, licence and page the credit); plugins/paste.ts, plugins/media.tsx.
 
 ## Import
 
@@ -210,8 +210,8 @@ Borderline calls are justified where they are made.
 - **Embeds: fourteen providers, click to load, chapters for two**: generic; done, embeds.test.tsx, media.test.tsx (stored as the source's `provider` and `embedId`; an app adds a site as an `EmbedProvider`; a reader's frame loads only once chosen, a writer's at once; YouTube's and Vimeo's named markers are chapters, told to their players by message, and markers are set at the time their players report); nodes/rich.tsx, plugins/embed.tsx.
 - **Upload queue: progress, cancel, retry, resumed after reload, warned on leaving**: generic; done, media.test.tsx (progress, retry, remove), uploads.test.tsx (uploads the app kept across a reload, through `EditorMedia.unfinished`, finished at the document's end; leaving asks first while one is on its way); plugins/media.tsx.
 - **Upload errors mapped to words** (too large, wrong type, infected, quota): generic, the quota words domain; done, uploads.test.tsx (a service's `file.*` codes read in arc's words, an app's own through `EditorMedia.uploadRefusal`; an empty file refused before it is sent); plugins/media.tsx.
-- **Media library chooser and keep-in-library**: generic (a media library slot); pending, phase 4; context.tsx, plugins/keep-in-media.tsx.
-- **Picture search over open collections**: generic; pending, phase 4; plugins/picture-search.tsx.
+- **Media library chooser and keep-in-library**: generic (a media library slot); done, media-library.test.tsx (`EditorMedia.library`: Insert opens it, each choice the block of its kind; a picture's block menu keeps it with its words); context.tsx, plugins/keep-in-media.tsx.
+- **Picture search over open collections**: generic; done, media-library.test.tsx (`EditorMedia.pictures`: found by words, put in with their credit, copied first through `take`); plugins/picture-search.tsx.
 - **Colouring-page pictures in picture search**: domain (line drawings for young learners); arc gives the search slot; plugins/picture-search.tsx.
 - **People shown in a picture, by consent**: domain (learner photo consent); arc gives a block-menu choice; plugins/SelectionToolbar.tsx.
 - **No skipping, watch tracking, a question at the video's time**: domain (learner progress); arc gives the player's `onTimeUpdate` and commands; nodes/rich.tsx, player.tsx.
@@ -274,7 +274,7 @@ example in the README and extension.test.tsx is such a block.
 ## Counts
 
 - 196 lines in all: 173 generic, 23 domain.
-- Generic: 136 done, 37 pending; a line done in part counts as pending.
+- Generic: 139 done, 34 pending; a line done in part counts as pending.
 
 ## Phases
 

@@ -124,7 +124,13 @@ export {
 export {
   type EditorMedia,
   type EditorUploads,
+  type KeptPicture,
   type MediaAddressed,
+  type MediaChoice,
+  type MediaChoiceKind,
+  type MediaLibrary,
+  type OpenPicture,
+  type PictureSearch,
   type UnfinishedUpload,
   mediaAddress,
   provideEditorMedia,
@@ -174,6 +180,18 @@ export {
   pictureStyles,
 } from "./picture.tsx";
 export { imageExtension } from "./picture-extension.tsx";
+export {
+  $blockForChoice,
+  type CommonsFile,
+  OPEN_PICTURE_SEARCH_COMMAND,
+  PictureSearchDialog,
+  chooseFromLibrary,
+  commonsFile,
+  commonsInfoUrl,
+  commonsPicture,
+  mediaLibraryExtension,
+  pictureSearchStyles,
+} from "./media-library.tsx";
 export {
   $isFileNode,
   FILE_DISPLAYS,

@@ -873,6 +873,15 @@ export interface ArcMessages {
   uploadMismatch: (name: string) => string;
   uploadUnchecked: (name: string) => string;
   uploadNoRoom: (name: string) => string;
+  mediaLibrary: string;
+  pictureSearch: string;
+  pictureSearchWords: string;
+  picturesFound: (count: number) => string;
+  noPicturesFound: string;
+  keepInLibrary: string;
+  keptInLibrary: string;
+  keepInLibraryFailed: string;
+  commonsFailed: string;
   cut: string;
   paste: string;
   pasteAsText: string;
@@ -2048,6 +2057,15 @@ export const ENGLISH: ArcMessages = {
   uploadMismatch: (name) => `${name} is not the kind of file its name says`,
   uploadUnchecked: (name) => `${name} could not be checked for viruses; try again later`,
   uploadNoRoom: (name) => `There is no room left for ${name}`,
+  mediaLibrary: "From the library",
+  pictureSearch: "Find a picture",
+  pictureSearchWords: "What it shows",
+  picturesFound: (count) => (count === 1 ? "1 picture found" : `${String(count)} pictures found`),
+  noPicturesFound: "No pictures found",
+  keepInLibrary: "Keep in the library",
+  keptInLibrary: "Kept in the library",
+  keepInLibraryFailed: "The picture could not be kept in the library",
+  commonsFailed: "That picture could not be brought in",
   cut: "Cut",
   paste: "Paste",
   pasteAsText: "Paste as plain text",

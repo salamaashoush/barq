@@ -43,7 +43,7 @@ import {
   spotMarker,
   spotPicture,
 } from "./picture-labels.tsx";
-import { mediaAddress, useEditorMedia, useEditorUploads } from "./media.tsx";
+import { type PictureCredit, mediaAddress, useEditorMedia, useEditorUploads } from "./media.tsx";
 import { blockGap } from "./theme.ts";
 
 /** How wide a picture, a recording or an embed is drawn, as a share of the column on a wide screen. */
@@ -54,17 +54,7 @@ export type ImageSize = (typeof IMAGE_SIZES)[number];
 export const BLOCK_ALIGNMENTS = ["start", "center", "end"] as const;
 export type BlockAlignment = (typeof BLOCK_ALIGNMENTS)[number];
 
-/**
- * A picture's credit, as an open licence asks it be kept with the picture:
- * who made it, under which licence, and the page it came from.
- */
-export interface PictureCredit {
-  author: string;
-  licence: string;
-  licenceUrl?: string;
-  /** The page the picture was taken from. */
-  source?: string;
-}
+export type { PictureCredit } from "./media.tsx";
 
 /** Where a picture's subject sits, in percent across and down, so a crop of it keeps it in view. */
 export interface PictureFocus {

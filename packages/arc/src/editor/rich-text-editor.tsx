@@ -66,6 +66,7 @@ import {
   useDocumentDirection,
 } from "./direction.tsx";
 import { FloatingFormatToolbar, LinkEditor } from "./floating.tsx";
+import { EditorMediaHost } from "./media.tsx";
 import { EditorUploadsProvider } from "./uploads.tsx";
 import {
   type AutosaveOptions,
@@ -476,6 +477,7 @@ export function RichTextEditor(props: RichTextEditorProps) {
   function body(): Child {
     return (
       <>
+        <EditorMediaHost />
         <Show when={tools()}>
           {(list: () => readonly EditorTool[]) => <EditorTools tools={list()} />}
         </Show>

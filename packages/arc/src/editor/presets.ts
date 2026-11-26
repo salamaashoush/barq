@@ -16,6 +16,7 @@ import { fileExtension } from "./file-block.tsx";
 import { findExtension } from "./find-panel.tsx";
 import { footnoteExtension } from "./footnote.tsx";
 import { markdownDialogExtension } from "./markdown-dialog.tsx";
+import { mediaLibraryExtension } from "./media-library.tsx";
 import { formattingExtension } from "./formatting.tsx";
 import { pasteExtension } from "./paste.ts";
 import { recordingExtension } from "./recording.tsx";
@@ -40,6 +41,7 @@ export const documentPreset: readonly EditorExtension[] = [
   picturesExtension(),
   fileExtension(),
   recordingExtension(),
+  mediaLibraryExtension,
   embedExtension(),
   mentionExtension,
   calloutExtension,
