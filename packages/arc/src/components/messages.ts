@@ -799,6 +799,26 @@ export interface ArcMessages {
   hiddenOptions: (count: number) => string;
   fillBothOrNeither: string;
   lowContrast: (against: string, ratio: string, minimum: string) => string;
+  holdsAnError: string;
+  rowOf: (position: number) => string;
+  rowAdded: (row: string) => string;
+  rowRemoved: (row: string) => string;
+  rowMoved: (row: string, position: number, total: number) => string;
+  moveRowUpOf: (row: string) => string;
+  moveRowDownOf: (row: string) => string;
+  removeRowOf: (row: string) => string;
+  editRecordOf: (record: string) => string;
+  addRecord: string;
+  editRecord: string;
+  records: string;
+  addressCountry: string;
+  addressLine1: string;
+  addressLine2: string;
+  addressCity: string;
+  addressRegion: (kind: string) => string;
+  addressPostal: (kind: string) => string;
+  uploadsPending: string;
+  attachedFiles: string;
 }
 
 export const ENGLISH: ArcMessages = {
@@ -1672,6 +1692,39 @@ export const ENGLISH: ArcMessages = {
   fillBothOrNeither: "Fill in both, or leave both empty.",
   lowContrast: (against, ratio, minimum) =>
     `Against ${against} this reads at ${ratio}:1, under the ${minimum}:1 text needs.`,
+  holdsAnError: "Holds an error",
+  rowOf: (position) => `Row ${String(position)}`,
+  rowAdded: (row) => `${row} added`,
+  rowRemoved: (row) => `${row} removed`,
+  rowMoved: (row, position, total) => `${row} moved to ${String(position)} of ${String(total)}`,
+  moveRowUpOf: (row) => `Move ${row} up`,
+  moveRowDownOf: (row) => `Move ${row} down`,
+  removeRowOf: (row) => `Remove ${row}`,
+  editRecordOf: (record) => `Edit ${record}`,
+  addRecord: "Add",
+  editRecord: "Edit",
+  records: "Records",
+  addressCountry: "Country or region",
+  addressLine1: "Street address",
+  addressLine2: "Apartment, suite or building",
+  addressCity: "City",
+  addressRegion: (kind) =>
+    (
+      {
+        state: "State",
+        province: "Province",
+        county: "County",
+        prefecture: "Prefecture",
+        emirate: "Emirate",
+        governorate: "Governorate",
+      } as Readonly<Record<string, string>>
+    )[kind] ?? "Region",
+  addressPostal: (kind) =>
+    (
+      { zip: "ZIP code", postcode: "Postcode", pin: "PIN code" } as Readonly<Record<string, string>>
+    )[kind] ?? "Postal code",
+  uploadsPending: "Wait for the files to finish uploading.",
+  attachedFiles: "Attached files",
 };
 
 const MessagesContext = createContext<ArcMessages>(ENGLISH, "ArcMessages");

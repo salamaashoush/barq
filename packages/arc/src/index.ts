@@ -177,6 +177,47 @@ export {
   useUploadQueue,
 } from "./components/file-upload.tsx";
 export {
+  FileField,
+  type FileFieldProps,
+  type StoredFile,
+  fileFieldStyles,
+} from "./components/file-field.tsx";
+export {
+  type Address,
+  AddressFields,
+  type AddressFieldsProps,
+  type AddressFormat,
+  type AddressPart,
+  addressFieldsStyles,
+  addressFormat,
+} from "./components/address-fields.tsx";
+export {
+  RepeaterField,
+  type RepeaterFieldProps,
+  type RepeaterRow,
+  repeaterFieldStyles,
+} from "./components/repeater-field.tsx";
+export {
+  CollectionField,
+  type CollectionFieldProps,
+  type CollectionRecordForm,
+  collectionFieldStyles,
+} from "./components/collection-field.tsx";
+export {
+  OptionGroup,
+  type OptionGroupProps,
+  optionGroupStyles,
+} from "./components/option-group.tsx";
+export {
+  FieldRule,
+  type FieldRuleMap,
+  type FieldRuleProps,
+  type FieldRuleState,
+  type FieldRules,
+  fieldRules,
+  useFieldRule,
+} from "./components/field-rules.tsx";
+export {
   ActionBar,
   type ActionBarProps,
   type BarAction,

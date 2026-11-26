@@ -44,6 +44,9 @@ import { DateRangeField } from "./date-range-field.tsx";
 import { MultiSegmentedField, SegmentedField } from "./segmented-control.tsx";
 import { CurrencyField, PercentField, UnitField } from "./number-fields.tsx";
 import { OptionalLimitField, PairedNumberField } from "./limit-fields.tsx";
+import { AddressFields } from "./address-fields.tsx";
+import { FileField } from "./file-field.tsx";
+import { RepeaterField } from "./repeater-field.tsx";
 import { PhoneField } from "./phone-field.tsx";
 import { RangeSlider } from "./range-slider.tsx";
 import { Rating } from "./rating.tsx";
@@ -778,6 +781,9 @@ const arcFieldComponents = {
   ChecklistField,
   OptionalLimitField,
   PairedNumberField,
+  RepeaterField,
+  AddressFields,
+  FileField,
 };
 
 const arcFormComponents = { SubmitButton, FormError };
