@@ -22,7 +22,7 @@ import { numberFieldStyles } from "./number-fields.tsx";
 import { Sentence } from "./sentence.tsx";
 
 /** A number box narrow enough to sit inside a sentence. */
-const inline = arc({ width: "var(--limit-width, 7rem)", flex: "none" });
+const inline = arc({ width: "var(--limit-width, 9rem)", flex: "none" });
 
 interface AmountProps {
   value: number | null;

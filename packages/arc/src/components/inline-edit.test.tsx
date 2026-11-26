@@ -156,7 +156,7 @@ describe("InlineEdit", () => {
 
 const PEOPLE: InlineOption[] = [
   { value: "salama", label: "Salama" },
-  { value: "omar", label: "Omar" },
+  { value: "ada", label: "Ada" },
 ];
 
 function trigger(): HTMLElement {
@@ -183,11 +183,11 @@ describe("InlineSelect", () => {
     expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual([
       "Nobody",
       "Salama",
-      "Omar",
+      "Ada",
     ]);
-    await user.click(screen.getByRole("option", { name: "Omar" }));
+    await user.click(screen.getByRole("option", { name: "Ada" }));
     await settle();
-    expect(owner()).toBe("omar");
+    expect(owner()).toBe("ada");
     await user.click(trigger());
     await settle();
     await user.click(screen.getByRole("option", { name: "Nobody" }));
@@ -210,7 +210,7 @@ describe("InlineSelect", () => {
     expect(trigger().textContent).toContain("Someone");
     await user.click(trigger());
     await settle();
-    await user.click(screen.getByRole("option", { name: "Omar" }));
+    await user.click(screen.getByRole("option", { name: "Ada" }));
     await settle();
     await settle();
     expect(trigger().textContent).toContain("Someone");
@@ -222,7 +222,7 @@ describe("inline editing on the server", () => {
   test("hydrates what the server wrote", async () => {
     const result = await hydrates(`
       import { InlineEdit, InlineSelect } from "<arc>";
-      const PEOPLE = [{ value: "a", label: "Salama" }, { value: "b", label: "Omar" }];
+      const PEOPLE = [{ value: "a", label: "Salama" }, { value: "b", label: "Ada" }];
       export function Page() {
         return (
           <div>

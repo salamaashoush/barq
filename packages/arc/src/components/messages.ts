@@ -825,7 +825,6 @@ export interface ArcMessages {
   removeRowOf: (row: string) => string;
   editRecordOf: (record: string) => string;
   addRecord: string;
-  editRecord: string;
   records: string;
   addressCountry: string;
   addressLine1: string;
@@ -1760,7 +1759,6 @@ export const ENGLISH: ArcMessages = {
   removeRowOf: (row) => `Remove ${row}`,
   editRecordOf: (record) => `Edit ${record}`,
   addRecord: "Add",
-  editRecord: "Edit",
   records: "Records",
   addressCountry: "Country or region",
   addressLine1: "Street address",

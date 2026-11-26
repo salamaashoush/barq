@@ -57,7 +57,7 @@ export interface CollectionFieldProps<T extends object>
   recordLabel: (record: T) => string;
   /** On a phone each record is a card. @default the first column as its title */
   card?: DataTableCard<T>;
-  /** The sheet's heading. @default the provider's `addRecord` or `editRecord` */
+  /** The sheet's heading. @default the provider's `addRecord`, or `editRecordOf` the record */
   heading?: (isNew: boolean) => Child;
   /** @default "md" */
   sheetSize?: "sm" | "md" | "lg" | "xl";
@@ -158,8 +158,12 @@ export function CollectionField<T extends object>(props: CollectionFieldProps<T>
     ];
   }
   function heading(): Child {
-    const isNew = editing() === null;
-    return props.heading?.(isNew) ?? (isNew ? messages().addRecord : messages().editRecord);
+    const at = editing();
+    const record = at === null ? undefined : records()[at];
+    if (props.heading !== undefined) return props.heading(at === null);
+    return record === undefined
+      ? messages().addRecord
+      : messages().editRecordOf(props.recordLabel(record));
   }
   function canAdd(): boolean {
     return props.isDisabled !== true && (props.max === undefined || records().length < props.max);

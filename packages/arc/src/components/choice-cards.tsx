@@ -38,8 +38,9 @@ export const choiceCardsStyles = variants({
         "repeat(auto-fill, minmax(min(100%, var(--choice-card-min, 14rem)), 1fr))",
     }),
     card: arc(target.size, { cursor: "pointer", overflow: "hidden" }),
-    media: arc(edge.bottom, bg.muted, {
+    media: arc(edge.bottom, bg.muted, layout.fill, {
       display: "block",
+      alignSelf: "stretch",
       aspectRatio: "var(--choice-card-media-ratio, 16 / 9)",
       overflow: "hidden",
       "& > img": { display: "block", width: "100%", height: "100%", objectFit: "cover" },

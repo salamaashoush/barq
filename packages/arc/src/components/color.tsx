@@ -119,7 +119,7 @@ function ContrastWarning(props: ContrastWarningProps) {
   });
   return (
     <p class={props.class} data-slot="color-contrast" role="status">
-      <For each={failures()}>{(failure: string) => <span>{failure} </span>}</For>
+      <For each={failures()}>{(failure: string) => <span dir="auto">{failure} </span>}</For>
     </p>
   );
 }
