@@ -11,6 +11,15 @@ export const place = {
   cover: arc({ position: "absolute", inset: "0" }),
   /** Held halfway down its positioned parent: a control at one edge of a field or a stage. */
   middle: arc({ position: "absolute", top: "50%", translate: "0 -50%" }),
+  /** A picture or a video filling its frame, cropped to it: a card's cover, a thumbnail. */
+  media: arc({
+    "& > :is(img, video, picture)": {
+      display: "block",
+      width: "100%",
+      height: "100%",
+      objectFit: "cover",
+    },
+  }),
   /** The whole of its parent's box, both ways: an image in its frame. */
   fill: arc({ width: "100%", height: "100%" }),
   /** A block across its parent: an SVG or an image laid out as a line. */

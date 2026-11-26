@@ -14,7 +14,7 @@ import {
   fieldStyles,
 } from "../lib/field.tsx";
 import { type Customisable, parts } from "../lib/parts.ts";
-import { bg, edge, fg, gap, glyph, layout, target } from "../style/index.ts";
+import { bg, edge, fg, gap, glyph, layout, place, target } from "../style/index.ts";
 
 export interface ChoiceOption {
   value: string;
@@ -38,12 +38,11 @@ export const choiceCardsStyles = variants({
         "repeat(auto-fill, minmax(min(100%, var(--choice-card-min, 14rem)), 1fr))",
     }),
     card: arc(target.size, { cursor: "pointer", overflow: "hidden" }),
-    media: arc(edge.bottom, bg.muted, layout.fill, {
+    media: arc(edge.bottom, bg.muted, layout.fill, place.media, {
       display: "block",
       alignSelf: "stretch",
       aspectRatio: "var(--choice-card-media-ratio, 16 / 9)",
       overflow: "hidden",
-      "& > img": { display: "block", width: "100%", height: "100%", objectFit: "cover" },
     }),
     body: arc({ alignItems: "flex-start" }),
     icon: arc(layout.inlineCentre, layout.noShrink, fg.muted, glyph.md),

@@ -19,6 +19,7 @@ import {
   interaction,
   layout,
   motion,
+  place,
   space,
   surface,
   type,
@@ -36,14 +37,7 @@ export const tileStyles = variants({
       layout.column,
       { "[data-disabled]": { opacity: "0.6" } },
     ),
-    media: arc(layout.noShrink, layout.clip, bg.muted, {
-      "& > :is(img, video, picture)": {
-        display: "block",
-        width: "100%",
-        height: "100%",
-        objectFit: "cover",
-      },
-    }),
+    media: arc(layout.noShrink, layout.clip, bg.muted, place.media),
     body: arc(layout.column, layout.minZero, layout.grow, gap[1.5], { padding: space.x4 }),
     header: arc(layout.row, gap[2], { alignItems: "flex-start" }),
     heading: arc(layout.column, layout.minZero, layout.grow, gap[1]),
