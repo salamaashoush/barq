@@ -1653,9 +1653,11 @@ adds no presets over them; `ComboChart` covers stacked bars.
 ## Code
 
 ```tsx
-import { CodeBlock, CodeDiff, CodeEditor } from "@barqjs/arc/code";
+import { CodeBlock, CodeDiff, CodeEditor, TerminalBlock } from "@barqjs/arc/code";
 
 <CodeEditor label="Query" language="sql" value={query()} onChange={setQuery} />;
+
+<TerminalBlock code={"bun add @barqjs/arc\nbun run dev"} />;
 
 <CodeDiff original={saved()} modified={draft()} language="json" layout="unified" />;
 
@@ -1687,9 +1689,53 @@ page pays only for the languages it shows.
   a server writes them highlighted and the browser adopts that markup without
   loading the language.
 - Languages: `javascript`, `jsx`, `typescript`, `tsx`, `json`, `html`, `css`,
-  `markdown`, `python`, `xml`, `yaml` and `sql`, with aliases such as `ts`
-  and `yml`. `registerLanguage` adds an app's own, a legacy mode included, and
-  `language` also takes a `LanguageSupport` built by hand.
+  `markdown`, `python`, `xml`, `yaml`, `sql`, `shell` and `toml`, with
+  aliases such as `ts`, `yml` and `bash`. `registerLanguage` adds an app's
+  own, a legacy mode included, and `language` also takes a `LanguageSupport`
+  built by hand.
+- Marked lines and excerpts: `marks` on `CodeBlock`, `Highlight` and
+  `CodeEditor` gives lines a tone's fill, a rule and a label a screen reader
+  hears; `range` (`rangeAround(code, line)` makes one) shows only those lines,
+  numbered as in the file, and the copy holds what is shown. `folding` puts a
+  fold gutter in `CodeEditor`, with its keys. `highlightLines` is the
+  highlighting one line at a time.
+- `TerminalBlock`: commands with a prompt neither a copy nor a screen reader
+  picks up, continued lines set under them, and with `transcript` what the
+  commands printed, faint and left out of the copy.
+- `highlighter="light"` on `CodeBlock`, `Highlight` and `TerminalBlock`
+  colours shell, TOML, YAML, JSON and TypeScript with patterns into the same
+  token classes and loads no grammar, for a marketing page.
+- `CodeTabs`: the same thing done several ways, a tab each, plain code or
+  terminal commands, with a note above. `group` shares the choice between
+  tab sets and remembers it. The code is the caller's, so options that
+  rewrite a command are its state; `shellQuote` quotes a value that needs it.
+- `languageForContentType` picks the language of a body from its type or how
+  it starts, and `prettyJson` indents what parses and returns what does not.
+- Completion: `tokenCompletions` offers names after a trigger (`{{`,
+  `process.env.`), tagged by kind, closing what it opened. `codeIntelligence`
+  takes a language service (completion with docs, hover, diagnostics with a
+  gutter); `workerIntelligence` answers it from a worker started on the first
+  request, and `@barqjs/arc/code/worker` has the worker's half,
+  `serveIntelligence`, and `typescriptIntelligence` over a TypeScript
+  environment such as `@typescript/vfs` builds. A failed answer is an empty
+  one, so editing never waits on it.
+
+From `@barqjs/arc` itself, with no CodeMirror:
+
+- `ConsoleLogView`: levelled lines with time, level in words and source,
+  filtered by level and text, following the newest line while `live`,
+  colour codes drawn, a JSON line opened in place, redactions drawn as
+  `RedactedText` draws them, and only the lines in view drawn in a long log.
+- `JsonSchemaFields`: a JSON Schema's fields to read, required first, each
+  with its type in words, values and default; nesting and `oneOf` variants
+  open in place and a cycle ends. `jsonSchemaExample` writes a value shaped
+  like it.
+- `TemplateTokenField`: text that references variables and secrets as
+  `{{NAME}}`, offering the names after `{{` and warning about one it does
+  not know.
+- `SnippetValuesProvider`: values snippets show, the server's examples first
+  and the reader's own (`resolve`, `readerOrigin`) once the page is live;
+  `useSnippetValues` reads them and `SnippetValue` writes one in a sentence.
 
 The colours are the theme's `code-*` tokens and the metrics are custom
 properties (`--code-font-size`, `--code-line-height`, ...), so light, dark and
