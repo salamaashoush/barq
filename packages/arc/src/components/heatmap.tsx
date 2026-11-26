@@ -134,6 +134,7 @@ export function Heatmap(props: HeatmapProps) {
   return (
     <ChartFrame
       slot="heatmap"
+      height={props.height}
       cls={cls()}
       class={arc(cls().root, props.class, props.className)}
       id={props.id}

@@ -104,6 +104,7 @@ export function FunnelChart(props: FunnelChartProps) {
   return (
     <ChartFrame
       slot="funnel-chart"
+      height={props.height}
       cls={cls()}
       class={arc(cls().root, props.class, props.className)}
       id={props.id}

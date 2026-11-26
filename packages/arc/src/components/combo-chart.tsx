@@ -57,7 +57,7 @@ export const comboChartStyles = variants({
     ...chartFrameParts,
     ...chartTableParts,
     plot: arc({}),
-    legendFilter: arc({ alignSelf: "center" }),
+    legendFilter: arc(layout.fill),
     notes: arc(plainList, layout.column, gap[1], type.sm),
     note: arc(layout.row, gap[2], { alignItems: "baseline" }),
     marker: arc(
@@ -271,6 +271,7 @@ export function ComboChart(props: ComboChartProps) {
   return (
     <ChartFrame
       slot="combo-chart"
+      height={props.height}
       cls={cls()}
       class={arc(cls().root, props.class, props.className)}
       id={props.id}

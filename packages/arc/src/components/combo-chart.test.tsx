@@ -292,9 +292,10 @@ describe("ComboChart's marks", () => {
     expect(await ariaViolations(document.body)).toEqual([]);
   });
 
-  test("round ticks from zero in the axis's own format", async () => {
+  test("round ticks from zero in the axis's own format, in a box of the height asked", async () => {
     render(() => (
       <ComboChart
+        height={240}
         label="Latency"
         data={LATENCY}
         x="at"
@@ -311,6 +312,9 @@ describe("ComboChart's marks", () => {
       "0.75 sec",
       "1.00 sec",
     ]);
+    const box = document.querySelector<HTMLElement>('[data-slot="chart"]');
+    expect(box?.style.getPropertyValue("height")).toBe("240px");
+    expect(box?.style.getPropertyValue("aspect-ratio")).toBe("auto");
   });
 
   test("its legend filters: a chip per series hides it, and the caller may hold what is hidden", async () => {

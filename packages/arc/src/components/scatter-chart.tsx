@@ -123,6 +123,7 @@ export function ScatterChart(props: ScatterChartProps) {
   return (
     <ChartFrame
       slot="scatter-chart"
+      height={props.height}
       cls={cls()}
       class={arc(cls().root, props.class, props.className)}
       id={props.id}

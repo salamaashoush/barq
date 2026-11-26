@@ -117,6 +117,7 @@ export function DonutChart(props: DonutChartProps) {
   return (
     <ChartFrame
       slot="donut-chart"
+      height={props.height}
       cls={cls()}
       class={arc(cls().root, props.class, props.className)}
       id={props.id}

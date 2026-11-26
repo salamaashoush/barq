@@ -257,6 +257,8 @@ interface ChartFrameProps {
   table: ChartTableMode | undefined;
   data: ChartTableData;
   attributes?: Readonly<Record<string, string | undefined>>;
+  /** The drawing's height in px, which the box takes in place of its aspect ratio. */
+  height?: number;
   /** Inside ui's chart container: the plot, its tooltip, its legend. */
   children: Child;
   /** After the drawing and before the table. */
@@ -280,7 +282,15 @@ export function ChartFrame(props: ChartFrameProps) {
   }
   return (
     <div class={props.class} id={props.id} data-slot={props.slot} {...props.attributes}>
-      <ChartContainer class={props.cls.chart} config={props.config}>
+      <ChartContainer
+        class={props.cls.chart}
+        config={props.config}
+        style={
+          props.height === undefined
+            ? undefined
+            : { "aspect-ratio": "auto", height: `${String(props.height)}px` }
+        }
+      >
         {props.children}
       </ChartContainer>
       {props.after}
