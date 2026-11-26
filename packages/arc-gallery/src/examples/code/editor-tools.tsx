@@ -1,12 +1,13 @@
 import { createSignal } from "@barqjs/core";
 import { Grid, Stack, TemplateTokenField, Text } from "@barqjs/arc";
+import { CodeEditor, languageClient, portTransport, tokenCompletions } from "@barqjs/arc/code";
 import {
-  type CodeCompletionItem,
-  CodeEditor,
-  type CodeIntelligence,
-  codeIntelligence,
-  tokenCompletions,
-} from "@barqjs/arc/code";
+  type ServerContext,
+  type lsp,
+  offsetAt,
+  positionAt,
+  serveLanguageServer,
+} from "@barqjs/arc/code/worker";
 
 const TOKENS = [
   { name: "BASE_URL" },
@@ -15,15 +16,7 @@ const TOKENS = [
   { name: "REGION", description: "eu-west-1" },
 ];
 
-const COMPLETIONS: readonly CodeCompletionItem[] = [
-  { label: "goto", type: "method" },
-  { label: "click", type: "method" },
-  { label: "fill", type: "method" },
-  { label: "getByRole", type: "method" },
-  { label: "url", type: "method" },
-];
-
-const DOCS: Readonly<Record<string, string>> = {
+const METHODS: Readonly<Record<string, string>> = {
   goto: "goto(url: string): Promise<Response | null>",
   click: "click(selector: string): Promise<void>",
   fill: "fill(selector: string, value: string): Promise<void>",
@@ -31,36 +24,51 @@ const DOCS: Readonly<Record<string, string>> = {
   url: "url(): string",
 };
 
-/**
- * A language service answered in the page, standing in for the worker an
- * app would run: completion after `page.`, a signature for each, and a
- * problem wherever `TODO` is written.
- */
-const service: CodeIntelligence = {
-  completions: (text, pos) =>
-    Promise.resolve(text.slice(0, pos).match(/page\.\w*$/) === null ? [] : COMPLETIONS),
-  details: (_text, _pos, name) =>
-    Promise.resolve(
-      DOCS[name] === undefined
-        ? null
-        : { signature: DOCS[name] ?? "", documentation: "From the check API." },
-    ),
-  diagnostics: (text) => {
-    const found = [];
-    for (const match of text.matchAll(/TODO/g)) {
-      const from = match.index ?? 0;
-      found.push({
-        from,
-        to: from + 4,
-        severity: "warning" as const,
-        message: "Finish this before it runs.",
-      });
-    }
-    return Promise.resolve(found);
-  },
-};
+function problems(text: string): lsp.Diagnostic[] {
+  return [...text.matchAll(/TODO/g)].map((match) => ({
+    range: {
+      start: positionAt(text, match.index ?? 0),
+      end: positionAt(text, (match.index ?? 0) + 4),
+    },
+    severity: 2,
+    source: "Check API",
+    message: "Finish this before it runs.",
+  }));
+}
 
-const intelligence = codeIntelligence(service, { source: "Check API" });
+/**
+ * A language server in the page, standing in for the worker an app would
+ * run: completion after `page.`, each method's signature as it is picked,
+ * and a warning wherever `TODO` is written.
+ */
+function startServer() {
+  const channel = new MessageChannel();
+  serveLanguageServer(channel.port2, {
+    capabilities: { completionProvider: { triggerCharacters: ["."], resolveProvider: true } },
+    changed: (document, { notify }) =>
+      notify("textDocument/publishDiagnostics", {
+        uri: document.uri,
+        version: document.version,
+        diagnostics: problems(document.text),
+      }),
+    requests: {
+      "textDocument/completion": (params: lsp.CompletionParams, context: ServerContext) => {
+        const text = context.documents.get(params.textDocument.uri)?.text ?? "";
+        const before = text.slice(0, offsetAt(text, params.position));
+        if (/page\.\w*$/.exec(before) === null) return [];
+        return Object.keys(METHODS).map((name): lsp.CompletionItem => ({ label: name, kind: 2 }));
+      },
+      "completionItem/resolve": (item: lsp.CompletionItem): lsp.CompletionItem => ({
+        ...item,
+        detail: METHODS[item.label],
+        documentation: "From the check API.",
+      }),
+    },
+  });
+  return portTransport(channel.port1);
+}
+
+const client = languageClient({ transport: startServer, languageId: "typescript" });
 const templates = tokenCompletions({
   trigger: "{{",
   close: "}}",
@@ -89,7 +97,7 @@ export default function EditorTools() {
             language="typescript"
             folding
             minHeight={200}
-            extensions={[intelligence, env]}
+            extensions={[client.document("file:///checks/health.ts"), env]}
             defaultValue={
               'test("health", async ({ page }) => {\n  await page.goto(process.env.BASE_URL);\n  // TODO assert the status\n});\n'
             }

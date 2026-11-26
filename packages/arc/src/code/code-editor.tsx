@@ -39,6 +39,7 @@ import {
   rectangularSelection,
 } from "@codemirror/view";
 
+import { useArcMessages } from "../components/messages.ts";
 import { arcLayer as arc } from "../layer.ts";
 import { type Customisable, parts } from "../lib/parts.ts";
 import { layout } from "../style/index.ts";
@@ -46,6 +47,7 @@ import { lineMarks } from "./editor-marks.ts";
 import { codeTheme } from "./editor-theme.ts";
 import { type CodeLanguage, loadLanguage, loadedLanguage } from "./languages.ts";
 import type { CodeLineMark } from "./lines.ts";
+import { editorOwner } from "./editor-owner.ts";
 import {
   type ExtensionSource,
   changeReport,
@@ -143,6 +145,7 @@ export function CodeEditor(props: CodeEditorProps) {
     return parts(codeEditorStyles(), props.classes);
   }
   const owner = getOwner();
+  const messages = useArcMessages();
   const descriptionId = createUniqueId();
   const [mounted, setMounted] = createSignal(false, { ownedWrite: true });
   let element: HTMLDivElement | undefined;
@@ -223,6 +226,10 @@ export function CodeEditor(props: CodeEditorProps) {
   option(
     () => JSON.stringify(attributes()),
     (json) => EditorView.contentAttributes.of(JSON.parse(json) as Record<string, string>),
+  );
+  option(
+    () => messages().codePhrases,
+    (phrases) => EditorState.phrases.of(phrases),
   );
   option(
     () => extensionOf(props.extensions),
@@ -312,6 +319,7 @@ export function CodeEditor(props: CodeEditorProps) {
             indentWithTab,
           ]),
           codeTheme,
+          editorOwner.of(owner),
           languages.of(support),
           ...initials.map((initial) => initial()),
           changes.listener,

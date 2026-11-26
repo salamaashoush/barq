@@ -73,8 +73,8 @@ export const catalog: GroupCatalog = {
       id: "editor-tools",
       title: "Completion, checking and template tokens",
       description:
-        "A language service's completion, docs and diagnostics, names after a trigger, and a text field that references variables and secrets.",
-      covers: ["codeIntelligence", "workerIntelligence", "tokenCompletions", "TemplateTokenField"],
+        "A language server's completion, docs and diagnostics, names after a trigger, and a text field that references variables and secrets.",
+      covers: ["languageClient", "serveLanguageServer", "tokenCompletions", "TemplateTokenField"],
     },
     {
       id: "console-log",

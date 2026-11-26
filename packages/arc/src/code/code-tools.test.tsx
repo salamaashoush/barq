@@ -9,16 +9,12 @@ import {
   currentCompletions,
   startCompletion,
 } from "@codemirror/autocomplete";
-import { forEachDiagnostic } from "@codemirror/lint";
 import { EditorState, type Extension } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 
 import { CodeBlock, Highlight } from "./code-block.tsx";
 import { CodeEditor } from "./code-editor.tsx";
 import { CodeTabs } from "./code-tabs.tsx";
-import { codeIntelligence, workerIntelligence } from "./intelligence.ts";
-import type { CodeIntelligence, IntelligenceResponse } from "./intelligence-protocol.ts";
-import { serveIntelligence, typescriptIntelligence } from "./intelligence-worker.ts";
 import { loadLanguage } from "./languages.ts";
 import { type CodeLineMark, rangeAround } from "./lines.ts";
 import { TerminalBlock } from "./terminal-block.tsx";
@@ -337,164 +333,5 @@ describe("tokenCompletions", () => {
     expect(currentCompletions(view?.state as EditorState).map((one) => one.label)).toEqual([
       "REGION",
     ]);
-  });
-});
-
-/** A worker in this process: two ends that post to each other. */
-function pair() {
-  const toWorker: ((event: MessageEvent) => void)[] = [];
-  const toPage: ((event: MessageEvent) => void)[] = [];
-  return {
-    page: {
-      postMessage: (message: unknown) => {
-        queueMicrotask(() => {
-          for (const listener of toWorker) listener(new MessageEvent("message", { data: message }));
-        });
-      },
-      addEventListener: (
-        _type: "message",
-        listener: (event: MessageEvent<IntelligenceResponse>) => void,
-      ) => {
-        toPage.push(listener as (event: MessageEvent) => void);
-      },
-    },
-    worker: {
-      postMessage: (message: unknown) => {
-        queueMicrotask(() => {
-          for (const listener of toPage) listener(new MessageEvent("message", { data: message }));
-        });
-      },
-      addEventListener: (_type: "message", listener: (event: MessageEvent) => void) => {
-        toWorker.push(listener);
-      },
-    },
-  };
-}
-
-describe("code intelligence", () => {
-  test("a worker's service answers each call with its scope, started on the first request", async () => {
-    const ends = pair();
-    const started: string[] = [];
-    let starts = 0;
-    serveIntelligence(ends.worker, (scope) => {
-      started.push(scope);
-      return {
-        completions: (text, pos) => Promise.resolve([{ label: `${scope}:${text.slice(0, pos)}` }]),
-        diagnostics: () => Promise.reject(new Error("checker down")),
-      };
-    });
-    const service = workerIntelligence(() => {
-      starts++;
-      return ends.page;
-    }, "test");
-    expect(starts).toBe(0);
-    expect(await service.completions("abc", 2)).toEqual([{ label: "test:ab" }]);
-    expect(await service.completions("x", 1)).toEqual([{ label: "test:x" }]);
-    expect(starts).toBe(1);
-    expect(started).toEqual(["test"]);
-    await expect(service.diagnostics?.("x") ?? Promise.resolve()).rejects.toThrow("checker down");
-    expect(await service.details?.("x", 0, "a")).toBeNull();
-  });
-
-  test("TypeScript's answers become completions, docs and diagnostics", async () => {
-    let updates = 0;
-    const environment = {
-      text: " ",
-      getSourceFile: () => ({ text: environment.text }),
-      updateFile: (_file: string, content: string) => {
-        updates++;
-        environment.text = content;
-      },
-      languageService: {
-        getCompletionsAtPosition: () => ({
-          entries: [
-            { name: "goto", kind: "method", sortText: "11" },
-            { name: "__private", kind: "property", sortText: "11" },
-            { name: "url", kind: "property", sortText: "15", insertText: "url()" },
-          ],
-        }),
-        getCompletionEntryDetails: () => ({
-          displayParts: [{ text: "goto(" }, { text: "url: string" }, { text: "): Promise<void>" }],
-          documentation: [{ text: "Opens a page." }],
-        }),
-        getQuickInfoAtPosition: () => ({
-          textSpan: { start: 2, length: 4 },
-          displayParts: [{ text: "const page: Page" }],
-        }),
-        getSyntacticDiagnostics: () => [],
-        getSemanticDiagnostics: () => [
-          {
-            start: 0,
-            length: 4,
-            category: 1,
-            messageText: {
-              messageText: "Type mismatch.",
-              next: [{ messageText: "Number is not a string." }],
-            },
-          },
-          { start: 5, length: 1, category: 0, messageText: "Unused." },
-        ],
-      },
-    };
-    const service = typescriptIntelligence(() => environment);
-    expect(await service.completions("page.go", 7)).toEqual([
-      { label: "goto", type: "method", apply: undefined, boost: 39 },
-      { label: "url", type: "property", apply: "url()", boost: 35 },
-    ]);
-    expect(environment.text).toBe("page.go");
-    await service.completions("page.go", 7);
-    expect(updates).toBe(1);
-    expect(await service.details?.("page.go", 7, "goto")).toEqual({
-      signature: "goto(url: string): Promise<void>",
-      documentation: "Opens a page.",
-    });
-    expect(await service.quickInfo?.("page.go", 3)).toEqual({
-      from: 2,
-      to: 6,
-      signature: "const page: Page",
-      documentation: "",
-    });
-    expect(await service.diagnostics?.("page.go")).toEqual([
-      { from: 0, to: 4, severity: "error", message: "Type mismatch.\n  Number is not a string." },
-      { from: 5, to: 6, severity: "warning", message: "Unused." },
-    ]);
-  });
-
-  test("in an editor: completion from the service, its diagnostics underlined, a failure an empty answer", async () => {
-    const service: CodeIntelligence = {
-      completions: () => Promise.resolve([{ label: "goto", type: "method" }]),
-      diagnostics: () => Promise.resolve([{ from: 0, to: 4, severity: "error", message: "Nope." }]),
-      quickInfo: () => Promise.reject(new Error("down")),
-    };
-    let view: EditorView | undefined;
-    const { container } = render(() => (
-      <CodeEditor
-        label="Script"
-        defaultValue="page."
-        extensions={codeIntelligence(service, { source: "TypeScript", lintDelay: 0 })}
-        onView={(created) => {
-          view = created;
-        }}
-      />
-    ));
-    await editorIn(container);
-    const live = view as EditorView;
-    live.dispatch({ selection: { anchor: 5 } });
-    startCompletion(live);
-    await waitFor(() => {
-      if (currentCompletions(live.state).length === 0) throw new Error("no list");
-    });
-    expect(currentCompletions(live.state).map((one) => one.label)).toEqual(["goto"]);
-    await waitFor(() => {
-      let count = 0;
-      forEachDiagnostic(live.state, () => count++);
-      if (count === 0) throw new Error("not checked yet");
-    });
-    const found: string[] = [];
-    forEachDiagnostic(live.state, (diagnostic) =>
-      found.push(`${diagnostic.source ?? ""}: ${diagnostic.message}`),
-    );
-    expect(found).toEqual(["TypeScript: Nope."]);
-    expect(container.querySelector(".cm-gutter-lint")).not.toBeNull();
   });
 });

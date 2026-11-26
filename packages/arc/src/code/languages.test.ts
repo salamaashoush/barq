@@ -117,7 +117,7 @@ describe("what an app pays for", () => {
   });
 
   test("the worker entry and the light highlighter reach no CodeMirror", () => {
-    for (const file of ["intelligence-worker.ts", "light-highlight.ts"]) {
+    for (const file of ["worker.ts", "light-highlight.ts"]) {
       const graph = importGraph(join(src, "code", file)).packages;
       expect([...graph.keys()].filter((name) => name.startsWith("@codemirror/"))).toEqual([]);
     }

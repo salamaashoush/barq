@@ -15,6 +15,12 @@ export interface ArcMessages {
   copyFailed: string;
   copyCode: string;
   terminal: string;
+  /**
+   * CodeMirror's own words in a code editor, and those of its language
+   * server features, by their English phrase: "Quick fix", "Code actions",
+   * "New name". Empty in English, where each phrase is its own translation.
+   */
+  codePhrases: Readonly<Record<string, string>>;
   templateTokens: string;
   secret: string;
   variable: string;
@@ -1265,6 +1271,7 @@ export const ENGLISH: ArcMessages = {
   copyFailed: "Could not copy",
   copyCode: "Copy code",
   terminal: "Terminal",
+  codePhrases: {},
   templateTokens: "Names",
   secret: "Secret",
   variable: "Variable",

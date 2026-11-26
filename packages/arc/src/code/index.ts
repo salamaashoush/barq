@@ -25,19 +25,16 @@ export { lineMarks } from "./editor-marks.ts";
 export { codeTheme, diffChrome } from "./editor-theme.ts";
 export { codeHighlighter, highlightHtml, highlightLines } from "./highlight.ts";
 export {
-  type CodeIntelligenceOptions,
-  codeIntelligence,
-  type IntelligencePort,
-  workerIntelligence,
-} from "./intelligence.ts";
-export type {
-  CodeCompletionItem,
-  CodeDiagnostic,
-  CodeDiagnosticSeverity,
-  CodeDocs,
-  CodeIntelligence,
-  CodeQuickInfo,
-} from "./intelligence-protocol.ts";
+  type ClientStatus,
+  type LanguageClient,
+  type LanguageClientOptions,
+  type LanguageFeatures,
+  type ProgressTask,
+  type ServerMessage,
+  type ServerRequestHandler,
+  type TransportSource,
+  languageClient,
+} from "./language-client.ts";
 export {
   type CodeLanguage,
   type LanguageLoader,
@@ -59,6 +56,19 @@ export {
   linesHtml,
   rangeAround,
 } from "./lines.ts";
+export { openCodeActions, showCodeActions } from "./lsp-actions.ts";
+export { type PublishedDiagnostics } from "./lsp-context.ts";
+export { snippetTemplate } from "./lsp-completion.ts";
+export { formatCode } from "./lsp-format.ts";
+export {
+  goToDeclaration,
+  goToDefinition,
+  goToImplementation,
+  goToTypeDefinition,
+} from "./lsp-navigation.ts";
+export { type SemanticTokenClasses, semanticTokenClasses } from "./lsp-semantic.ts";
+export { symbolNodes } from "./lsp-symbols.ts";
+export { type MessagePortLike, type Transport, portTransport } from "./lsp-transport.ts";
 export { type ExtensionSource } from "./options.ts";
 export {
   TerminalBlock,
@@ -73,3 +83,4 @@ export {
   type TokenCompletionOptions,
   tokenCompletions,
 } from "./token-completions.ts";
+export type * as lsp from "vscode-languageserver-protocol";
