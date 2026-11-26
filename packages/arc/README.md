@@ -383,7 +383,14 @@ if (await confirm({ title: "Delete the check?", tone: "danger", confirmLabel: "D
 - `PageHeader`: the page's `<h1>`, a line about it, what sits above it and the
   actions beside it.
 - `StatCard`: one number, what it counts, how it moved in a tone, and an
-  optional `Sparkline` with its numbers in words for a screen reader.
+  optional `Sparkline` with its numbers in words for a screen reader. A
+  `meter` draws how full the number is against its limit as a `Meter` named
+  by the label; `descriptionTone` puts a dot in a tone before the line under
+  it; `valueTone` tones the number only when it is wrong, and `rating` says
+  how it rates in a word (a `MetricRating`) and tones it when fair or poor.
+  `aside` sits beside the number from the `sm` breakpoint. With `href` or
+  `onPress` the label is a link or a button stretched over the whole card,
+  and `loading` puts shapes in place of the number.
 - `Status`: a state in a word and a tone, as a dot, a tinted pill or a filled
   one, with an optional pulse that stops under reduced motion.
 - `confirm()`: a promise for the reader's answer, drawn by one `<ConfirmHost />`
@@ -910,8 +917,24 @@ with `value`, `defaultValue` and `onChange` outside one.
   fixes either), `columns` puts pairs side by side across a wide container,
   and `renders` gives a term or a value another element.
 - `StatGroup`: `StatCard`s read together, two across a narrow container,
-  three across a middling one and `columns` across a wide one; `joined` draws
-  them as one strip with a rule between each, `separate` as cards apart.
+  three across a middling one and `columns` across a wide one, the cards of
+  a short last row growing to fill it; `joined` draws them as one strip with
+  a rule between each, `separate` as cards apart, and `loading` loads every
+  card at once.
+- `ProfileCard`: a person at a glance, a region named by them: their avatar
+  with a presence dot, name, title, `PresenceStatus`, actions, contact rows,
+  the time where they are (written once the page hydrates, or for `now`),
+  and what they wrote about themselves; `variant="panel"` centres a larger
+  avatar for a side panel, with `loading` and `missing` states.
+- `LinkPreview`: what a link is before it is opened, its site, title, a line
+  and a picture. The title is one link stretched over the card that says it
+  opens a new tab; the picture and the site's icon are decorative, and
+  `onDismiss` adds a remove button of its own. `loading` shows shapes.
+- `TemplateGallery`: where something new starts. Category chips filter the
+  templates, the cards are `RadioCards` (a blank start first with `blank`),
+  and a pane beside them (under them in a narrow box) shows the chosen one
+  large and starts from it. `SaveTemplateDialog` keeps something as a
+  template, its name, a line and its category, in a `FormDialog`.
 - `Tile`: a card for one thing in a collection, with an `eyebrow`, a title, a
   `description`, a `footer`, `actions` and `media` on top or at the start,
   full bleed. With `href` or `onPress` its title is the link or the button,
@@ -1631,7 +1654,16 @@ The drawing takes its box's width and its aspect ratio's height, or
 - `DonutChart`: part of a whole, with the total or `centreValue` in the hole
   and each slice's share in the table.
 - `ComboChart`: bars, grouped or `stacked`, and lines over the same columns;
-  with `dualAxis` the lines read a second scale at the end.
+  with `dualAxis` the lines read a second scale at the end. A line may be
+  `dashed` (a p95 beside its p50), dashed in the legend too. `references`
+  are dashed rules to read the series against (a budget, a target) and
+  `bands` faint ranges (a healthy range), each named in the legend. A line's
+  `status` field names a point's status from `statuses`, a dot in its tone
+  named in the legend, the tooltip and a Status column of the table.
+  `annotations` are numbered on the plot, at a value or down a column, and
+  listed under it. `yTicks="nice"` ticks from zero on a round step, and
+  `yFormat` writes them as counts, durations or percentages in the locale.
+  `legend="filter"` is a `LegendFilter`, with `hidden` the caller's.
 - `ScatterChart`: two measures a point per record, coloured by a `group`
   field; with `size`, bubbles whose area follows a third.
 - `FunnelChart`: stages centred on one line, narrowing toward the outcome,
@@ -1646,9 +1678,80 @@ The drawing takes its box's width and its aspect ratio's height, or
   its trend with one.
 - `ChartDataTable`: the table every chart draws, on its own beside one of
   ui's charts.
+- `LegendFilter`: a legend that is also the filter, a toggle chip per series
+  or kind, pressed while shown, with a check as well as its swatch. In a
+  narrow box the chips fold into one button whose menu holds the same
+  choices as checkboxes, says how many are shown and shows all again.
+- `niceTicks` and `useAxisFormat`: three or four round steps from zero past
+  a maximum, so every label is distinct at any scale, and the words for
+  them in the locale: counts compact past ten thousand, durations in ms or
+  in seconds with the decimals the step needs, percentages.
 
 ui's `ChartBars` and `ChartLines` already have a legend and a tooltip, so arc
 adds no presets over them; `ComboChart` covers stacked bars.
+
+## Metrics and meters
+
+```tsx
+import { Meter, SegmentedBar, TallyProgress, UptimeBar, UsageList } from "@barqjs/arc";
+
+<UsageList
+  aria-label="This month"
+  items={[
+    { key: "minutes", label: "Browser minutes", used: 412, limit: 500 },
+    { key: "checks", label: "Checks", used: 38, limit: null },
+  ]}
+/>;
+
+<TallyProgress
+  label="Tests finished"
+  total={50}
+  segments={[
+    { key: "passed", label: "Passed", value: 40, tone: "success" },
+    { key: "failed", label: "Failed", value: 3, tone: "danger" },
+  ]}
+/>;
+
+<UptimeBar label="API" cells={days} startLabel="90 days ago" endLabel="Today" />;
+```
+
+Small readings that sit in a card, a row or a header, each said in words
+so neither a bar's length nor its tone is the only way to tell it.
+
+- `Meter`: a reading against its range as a bar, the `Gauge`'s linear
+  sibling: a meter on `@barqjs/aria` named by its label, its reading written
+  beside it and read as written ("412 of 500"), its tone changing at each
+  of `thresholds` (`gaugeTone`).
+- `UsageList`: what is used against what is allowed, a `Meter` each. An item
+  turns to a warning from `warnAt` of its limit and to danger at it, and
+  says so in words ("Near the limit", "Over the limit"); a `null` limit says
+  "no limit" and draws no bar. `usageState` is the rule on its own.
+- `SegmentedBar`: a whole split into shares in tones, a request's phases or
+  storage by kind, with a legend counting each (or giving its share); a
+  larger `total` leaves the rest of the track empty. Without its legend it
+  is an image whose name says every share.
+- `TallyProgress`: progress through a batch split by how each finished: a
+  progress bar reading "43 of 50 finished" (or "All 50 finished"), filled
+  by outcome over the empty track of those to come, with a count each.
+- `UptimeBar`: how something held up, a cell a day or a run in a tone, with
+  the share up beside its name and an optional key. The cells are one Tab
+  stop: the arrows (in the reading direction), Home and End walk them, and
+  the cell under the pointer, a finger or the focus shows its day, state,
+  share and notes in a tip, which each cell's name also says.
+  `uptimeState` and `thresholds` place a share.
+- `SignalMeter`: a connection's quality as four bars, a meter reading its
+  level in words ("Fair"), the level beside it with `showLabel`.
+- `MetricRating`: how a measure reads, a `Status` saying "Good", "Needs
+  improvement" or "Poor" in its tone; `rateMetric` places a value between
+  bounds, lower or higher better as they run.
+- `StagePath`: where a record stands along its stages, behind it ticked and
+  said completed, its own filled and current, those ahead plain, the
+  chevrons pointing the reading direction's way; an `outcome` shows where
+  and how it left the path. It only reads (`Stepper` is the path a person
+  walks) and scrolls sideways where the stages do not fit.
+- `CountUp`: a figure that counts up as it scrolls into view. The server
+  and the hydrating page write the final figure, reduced motion keeps it,
+  and a screen reader reads the final figure once.
 
 ## Code
 
@@ -2222,3 +2325,13 @@ first opens. Rich message content is drawn by `RichTextRenderer` from
   Regenerate, a copy of each reply and suggestions while it is empty. Its
   transcript is ui's `MessageScroller`; `composer` takes `ChatComposer` in
   place of its own.
+- `QuotedMessageCard`: a message quoted out of its conversation (a pinned or
+  saved one, a search result): its author and time, where it was sent as a
+  link of its own, its first three lines, a note kept with it and a footer.
+  With `href` or `onOpen` the whole card opens the message while the source
+  and the `actions` stay controls of their own.
+- `CustomStatusDialog`: where someone says what they are up to, in a
+  `FormDialog`: an emoji from `EmojiButton`, a few words, when it lapses
+  (`statusExpiry`), presets that fill all three in one press, and the status
+  now with a button that clears it. Saving with neither emoji nor words says
+  what is missing.
