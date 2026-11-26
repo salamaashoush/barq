@@ -797,7 +797,6 @@ export interface ArcMessages {
   search: string;
   add: string;
   hiddenOptions: (count: number) => string;
-  noLimit: string;
   fillBothOrNeither: string;
   lowContrast: (against: string, ratio: string, minimum: string) => string;
 }
@@ -1670,7 +1669,6 @@ export const ENGLISH: ArcMessages = {
   add: "Add",
   hiddenOptions: (count) =>
     count === 1 ? "Also 1 more you cannot see." : `Also ${String(count)} more you cannot see.`,
-  noLimit: "No limit",
   fillBothOrNeither: "Fill in both, or leave both empty.",
   lowContrast: (against, ratio, minimum) =>
     `Against ${against} this reads at ${ratio}:1, under the ${minimum}:1 text needs.`,
