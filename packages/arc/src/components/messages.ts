@@ -105,6 +105,50 @@ export interface ArcMessages {
   discardDescription: string;
   discard: string;
   keepEditing: string;
+  savedWhenOnline: string;
+  notSavedYet: string;
+  settingNotChanged: string;
+  alsoTurnedOn: (features: string) => string;
+  alsoTurnedOff: (features: string) => string;
+  needsFeature: (features: string) => string;
+  recordNotLoaded: string;
+  errorSummary: string;
+  errorSummaryItem: (label: string, message: string) => string;
+  unsavedChanges: string;
+  discardChanges: string;
+  calendarFeedLink: string;
+  calendarFeedCopy: string;
+  calendarFeedOpenIn: string;
+  calendarGoogle: string;
+  calendarApple: string;
+  calendarOutlook: string;
+  calendarFeedOnce: string;
+  calendarFeedMake: string;
+  calendarFeedMade: string;
+  calendarFeedLastRead: string;
+  calendarFeedNeverRead: string;
+  calendarFeedDelay: string;
+  calendarReset: string;
+  calendarResetTitle: string;
+  calendarResetDescription: string;
+  notificationKind: string;
+  preferenceAll: (group: string, channel: string) => string;
+  preferenceCell: (kind: string, channel: string) => string;
+  mixed: string;
+  clockZone: string;
+  clockLocalZone: string;
+  clockUtcHint: string;
+  clockHours: string;
+  clockTwelve: string;
+  clockTwentyFour: string;
+  weekStart: string;
+  weekStartLocale: string;
+  everyMinute: string;
+  hourly: string;
+  daily: string;
+  weekly: string;
+  everyInterval: (span: string) => string;
+  themeNotSaved: string;
   typeToConfirm: (text: string) => string;
   checkingDependents: string;
   blockedTitle: string;
@@ -935,6 +979,52 @@ export const ENGLISH: ArcMessages = {
   discardDescription: "What you changed here has not been saved.",
   discard: "Discard",
   keepEditing: "Keep editing",
+  savedWhenOnline: "Offline. Saves when you reconnect",
+  notSavedYet: "Not saved yet",
+  settingNotChanged: "The setting was not changed",
+  alsoTurnedOn: (features) => `Also turned on: ${features}`,
+  alsoTurnedOff: (features) => `Also turned off: ${features}`,
+  needsFeature: (features) => `Needs ${features}`,
+  recordNotLoaded: "This could not be loaded",
+  errorSummary: "There is a problem",
+  errorSummaryItem: (label, message) => (message === "" ? label : `${label}: ${message}`),
+  unsavedChanges: "Unsaved changes",
+  discardChanges: "Discard changes",
+  calendarFeedLink: "Calendar link",
+  calendarFeedCopy: "Copy the calendar link",
+  calendarFeedOpenIn: "Add to a calendar",
+  calendarGoogle: "Google Calendar",
+  calendarApple: "Apple Calendar",
+  calendarOutlook: "Outlook",
+  calendarFeedOnce:
+    "The link is shown this once. Anyone who has it sees this calendar, so keep it to yourself.",
+  calendarFeedMake: "Make a calendar link",
+  calendarFeedMade: "Link made",
+  calendarFeedLastRead: "Last read by a calendar",
+  calendarFeedNeverRead: "Not yet",
+  calendarFeedDelay: "Calendar apps check a subscription every few hours, so changes show up late.",
+  calendarReset: "Make a new link",
+  calendarResetTitle: "Make a new calendar link?",
+  calendarResetDescription:
+    "The current link stops working, and calendars subscribed to it stop updating.",
+  notificationKind: "Notification",
+  preferenceAll: (group, channel) => `All of ${group}: ${channel}`,
+  preferenceCell: (kind, channel) => `${kind}: ${channel}`,
+  mixed: "Mixed",
+  clockZone: "Time zone",
+  clockLocalZone: "Your time zone",
+  clockUtcHint: "One clock for everyone, as logs keep.",
+  clockHours: "Clock",
+  clockTwelve: "12-hour",
+  clockTwentyFour: "24-hour",
+  weekStart: "Week starts on",
+  weekStartLocale: "As your language has it",
+  everyMinute: "Every minute",
+  hourly: "Hourly",
+  daily: "Daily",
+  weekly: "Weekly",
+  everyInterval: (span) => `Every ${span}`,
+  themeNotSaved: "The theme was not saved to your account",
   typeToConfirm: (text) => `To confirm, type ${text}`,
   checkingDependents: "Checking what depends on it…",
   blockedTitle: "This can't be deleted yet",

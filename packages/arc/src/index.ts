@@ -335,6 +335,59 @@ export {
   settingsStyles,
 } from "./components/settings.tsx";
 export {
+  type FeatureToggle,
+  FeatureToggles,
+  type FeatureTogglesProps,
+  PlanGate,
+  type PlanGateProps,
+  type SettingLock,
+  SettingRow,
+  type SettingRowIds,
+  type SettingRowProps,
+  settingRowStyles,
+} from "./components/setting-row.tsx";
+export {
+  type Autosave,
+  type AutosaveOptions,
+  type SaveState,
+  SaveStatus,
+  type SaveStatusProps,
+  saveStatusStyles,
+  useAutosave,
+} from "./components/autosave.tsx";
+export {
+  type PreferenceChannel,
+  type PreferenceGroup,
+  type PreferenceKind,
+  PreferenceMatrix,
+  type PreferenceMatrixProps,
+  type PreferenceValue,
+  type Preferences,
+  preferenceMatrixStyles,
+} from "./components/preference-matrix.tsx";
+export {
+  CalendarFeed,
+  type CalendarFeedProps,
+  type CalendarFeedRecord,
+  calendarFeedStyles,
+  webcalUrl,
+} from "./components/calendar-feed.tsx";
+export {
+  type ClockPart,
+  ClockPreference,
+  type ClockPreferenceProps,
+  clockPreferenceStyles,
+} from "./components/clock.tsx";
+export {
+  type ReaderClock,
+  type WeekStart,
+  clockLocale,
+  parseReaderClock,
+  provideReaderClock,
+  serializeReaderClock,
+  useReaderClock,
+} from "./lib/reader-clock.ts";
+export {
   Wizard,
   type WizardField,
   type WizardProps,
@@ -586,6 +639,18 @@ export {
 } from "./components/page-skeleton.tsx";
 export { type Absence, Value, type ValueProps, valueStyles } from "./components/value.tsx";
 export { FormSheet, type FormSheetProps, formSheetStyles } from "./components/form-sheet.tsx";
+export { FormDialog, type FormDialogProps, formDialogStyles } from "./components/form-dialog.tsx";
+export {
+  ErrorSummary,
+  type ErrorSummaryProps,
+  FormActionBar,
+  type FormActionBarProps,
+  type FormProblem,
+  RecordFormPage,
+  type RecordFormPageProps,
+  type SecondarySubmit,
+  formPageStyles,
+} from "./components/form-page.tsx";
 export {
   type Align,
   Center,
@@ -740,10 +805,13 @@ export {
   statusVariants,
 } from "./components/status.tsx";
 export {
+  type ThemeAccountSync,
+  type ThemeAccountSyncOptions,
   ThemeToggle,
   type ThemeToggleLabels,
   type ThemeToggleProps,
   themeToggleStyles,
+  useThemeAccountSync,
 } from "./components/theme-toggle.tsx";
 export {
   type DiscardLabels,
@@ -869,6 +937,8 @@ export {
   type FormattedDateProps,
   FormattedNumber,
   type FormattedNumberProps,
+  Interval,
+  type IntervalProps,
   type Moment,
   RelativeTime,
   type RelativeTimeProps,
@@ -876,6 +946,8 @@ export {
   durationParts,
   durationText,
   formattedStyles,
+  intervalText,
+  useReaderZone,
 } from "./components/format.tsx";
 export {
   Countdown,
