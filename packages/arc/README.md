@@ -740,6 +740,83 @@ import { DangerZone, SettingsLayout, SettingsSection } from "@barqjs/arc";
   once it loads, and a choice made here is saved to it; a failed save keeps
   the choice on this device and says so.
 
+## Keys and secrets
+
+```tsx
+import {
+  ApiKeyManager,
+  OneTimeSecret,
+  PermissionScopePicker,
+  StoredSecretField,
+} from "@barqjs/arc";
+
+<ApiKeyManager
+  keys={keys.data}
+  scopeGroups={SCOPES}
+  onCreate={(draft) => api.createKey(draft)}
+  onRevoke={(key) => api.revokeKey(key.id)}
+/>;
+
+<form.AppField name="token">
+  {(field) => (
+    <field.StoredSecretField label="Token" stored={store.token} forgettable mustReenter={moved()} />
+  )}
+</form.AppField>;
+```
+
+The fields are `field.*` inside `form.AppField` and hold their own value
+with `value`, `defaultValue` and `onChange` outside one.
+
+- `SecretField`: a secret typed in, hidden with a button that shows it, kept
+  from autofill and the spelling check. `multiline` makes it a text area drawn
+  as dots for a key or a certificate; `"choose"` adds a switch for it, which a
+  paste of several lines turns on.
+- `StoredSecretField`: a secret the server keeps and never shows. Held as what
+  to send: `""` keeps it, a string replaces it and `null` forgets it. Its
+  placeholder and line say it is kept, how it ends and since when;
+  `forgettable` offers Forget with Keep it to undo, and `mustReenter`, once
+  where it is sent has changed, refuses a blank field with why.
+- `SecretReferenceField`: a stored secret picked by name and held as a
+  reference to it, `{{NAME}}` (`secretReference`, `referencedSecret`). A
+  reference to a secret no longer stored stays chosen, named missing and
+  invalid.
+- `FileOrPasteField`: text pasted in or read from a file chosen or dropped on
+  it, a certificate, JSON or a CSV, the file named beside the button; a file
+  `accept` or `maxSize` refuses is not read and says why.
+- `CopyableField`: a read-only value with a copy button inside its edge, an
+  identifier or an address, selected whole when focused.
+- `MaskedValue`: a value masked but for its end, a button that shows it (and
+  `reveal` fetches it only then), a copy button once known, and `hideAfter`.
+- `OneTimeSecret`: a secret shown once after it was made, its copy button,
+  when it stops working, and with `onDone` a box to tick before Done. In a
+  `FormDialog`'s `result` it is the key a dialog made. `handOffSecret` and
+  `takeSecret` carry one to the next page in this tab's memory, never in the
+  address.
+- `RedactedSecret` and `RedactedText`: where a secret was taken out of text, a
+  marker naming it and why, read as "Secret TOKEN"; `pattern` says what a
+  redaction looks like.
+- `PermissionScopePicker`: scopes to grant, grouped, a checkbox each with what
+  it allows (`audience="agent"` reads an agent's words); those beyond
+  `allowed` show disabled with why. `scopeSummary` says a set briefly, a scope
+  another implies left unsaid.
+- `CredentialBindingList`: where each secret something needs comes from, the
+  captured value saved, a stored secret or a value typed, with where it is
+  saved and what a row still lacks. `credentialBindings` fills in the
+  defaults.
+- `ApiKeyManager`: keys with what tells them apart, scopes, last use and
+  expiry, an expired one marked; Create with a free name, an expiry, scopes
+  and the secret shown once; Revoke asked first, with a box such as "Also
+  remove the runners" from `revokeOption`.
+- `ActiveSessionsList`: everywhere a person is signed in, this device marked,
+  Sign out on each and Sign out everywhere else, asked first.
+- `ConnectedAppsList`: applications acting for people, each one's access,
+  connection, last use and Disconnect asked first, one a policy blocks marked
+  with why; `policy` adds the switch that allows them and `endpoint` the
+  address they connect at.
+- `ConnectionTestDialog`: a dialog that tests a configured connection, with
+  one thing to read as well (`probe`), and keeps the outcome in a status line
+  for another try, never what it read.
+
 ## Data display
 
 - `Indicator`: a count or a dot in a tone, on its own or pinned to the top
