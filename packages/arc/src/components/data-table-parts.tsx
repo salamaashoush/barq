@@ -1,4 +1,4 @@
-import { type Child, For, Show, createSignal } from "@barqjs/core";
+import { type Child, For, Show, createMemo, createSignal } from "@barqjs/core";
 import { variants } from "@barqjs/css";
 import { numberFormatter } from "@barqjs/aria/i18n";
 import { Ellipsis } from "@barqjs/lucide/icons/ellipsis";
@@ -61,13 +61,16 @@ export function RowActions(props: RowActionsProps) {
   function cls(): ActionSlots {
     return parts(rowActionsStyles(), props.classes);
   }
+  // Read once: a caller's `rowActions` makes new objects on every call, and
+  // the inline action is told from the rest by identity.
+  const actions = createMemo(() => props.actions);
   function inline(): DataTableRowAction | undefined {
     if (props.menuOnly === true) return undefined;
-    return props.actions.find((action) => action.inline === true && action.tone !== "danger");
+    return actions().find((action) => action.inline === true && action.tone !== "danger");
   }
   function rest(): DataTableRowAction[] {
     const shown = inline();
-    return props.actions.filter((action) => action !== shown);
+    return actions().filter((action) => action !== shown);
   }
   async function run(action: DataTableRowAction): Promise<void> {
     setPending(action);
