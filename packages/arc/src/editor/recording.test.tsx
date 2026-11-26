@@ -250,9 +250,9 @@ describe("recording in the page", () => {
     const [editor, sent] = await mount();
     await user.click(screen.getByRole("button", { name: "Insert" }));
     await settle();
-    await user.click(screen.getByRole("menuitem", { name: "Record a video" }));
+    await user.click(screen.getByRole("menuitem", { name: "Record video" }));
     await settle();
-    const dialog = screen.getByRole("dialog", { name: "Record a video" });
+    const dialog = screen.getByRole("dialog", { name: "Record video" });
     expect(dialog.querySelector('[data-slot="clip-recorder"]')?.getAttribute("data-kind")).toBe(
       "video",
     );

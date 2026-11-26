@@ -882,6 +882,7 @@ export interface ArcMessages {
   keptInLibrary: string;
   keepInLibraryFailed: string;
   commonsFailed: string;
+  compareBlock: string;
   cut: string;
   paste: string;
   pasteAsText: string;
@@ -2066,6 +2067,7 @@ export const ENGLISH: ArcMessages = {
   keptInLibrary: "Kept in the library",
   keepInLibraryFailed: "The picture could not be kept in the library",
   commonsFailed: "That picture could not be brought in",
+  compareBlock: "Before and after",
   cut: "Cut",
   paste: "Paste",
   pasteAsText: "Paste as plain text",

@@ -789,7 +789,7 @@ function CompareView(props: BlockProps<PicturesData>) {
         <Show when={props.editable}>
           <div class={cls(options()).actions}>
             <SetDialog
-              heading={messages().compare}
+              heading={messages().compareBlock}
               trigger={messages().editComparison}
               pictures={props.data.pictures}
               setData={props.setData}
@@ -910,7 +910,7 @@ export const GalleryBlock: Block<PicturesData> = setBlock("gallery", {
 
 /** A before and after: two pictures over each other, a slider between them. */
 export const CompareBlock: Block<PicturesData> = setBlock("compare", {
-  label: (messages) => messages.compare,
+  label: (messages) => messages.compareBlock,
   icon: () => <Columns2 />,
   keywords: ["before", "after", "comparison", "slider"],
   component: CompareView,
@@ -943,7 +943,7 @@ export function picturesExtension(options: PicturesOptions = {}): EditorExtensio
       },
       {
         id: "compare",
-        label: (messages) => messages.compare,
+        label: (messages) => messages.compareBlock,
         group: (messages) => messages.mediaBlocks,
         icon: () => <Columns2 />,
         keywords: CompareBlock.keywords,
