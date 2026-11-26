@@ -3,18 +3,16 @@ import { variants } from "@barqjs/css";
 
 import { arcLayer as arc } from "../layer.ts";
 import { type Customisable, parts } from "../lib/parts.ts";
-import { bg, edge, layout, space } from "../style/index.ts";
+import { bg, edge, layout, place } from "../style/index.ts";
 
 export type WorkbenchFill = "viewport" | "parent";
 
 export const workbenchStyles = variants({
   slots: {
-    root: arc(layout.minZero, layout.clip, bg.page, {
-      display: "grid",
+    root: arc(layout.track, layout.minZero, layout.clip, bg.page, {
       gridTemplateRows: "auto minmax(0, 1fr) auto",
-      gridTemplateColumns: "minmax(0, 1fr)",
     }),
-    bar: arc(edge.bottom, layout.minZero, { paddingInline: space.x3, paddingBlock: space.x1_5 }),
+    bar: arc(edge.bottom, layout.minZero, place.paddedStrip),
     main: arc(layout.minZero, layout.minZeroBlock, layout.clip, {
       display: "grid",
       gridTemplate: "minmax(0, 1fr) / minmax(0, 1fr)",

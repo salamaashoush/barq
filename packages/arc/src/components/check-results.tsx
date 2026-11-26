@@ -134,7 +134,7 @@ export const checkResultsStyles = variants({
       whiteSpace: "pre",
       overflowX: "auto",
     }),
-    empty: arc({ padding: space.x4 }),
+    empty: arc(type.sm, fg.muted, { padding: space.x4 }),
   },
 });
 
@@ -294,7 +294,7 @@ export function CheckResults(props: CheckResultsProps) {
       <Show
         when={props.errorMessage === undefined}
         fallback={
-          <div class={cls().empty} role="alert" data-slot="check-results-error">
+          <div class={arc(cls().empty, fg.danger)} role="alert" data-slot="check-results-error">
             {props.errorMessage}
           </div>
         }

@@ -236,7 +236,7 @@ export const testResultsStyles = variants({
     }),
     source: arc({ alignSelf: "flex-start" }),
     hint: arc(type.meta),
-    empty: arc({ padding: space.x4 }),
+    empty: arc(type.sm, fg.muted, { padding: space.x4 }),
   },
 });
 
@@ -488,7 +488,7 @@ export function TestResults(props: TestResultsProps) {
       <Show
         when={props.errorMessage === undefined}
         fallback={
-          <div class={cls().empty} role="alert" data-slot="test-results-error">
+          <div class={arc(cls().empty, fg.danger)} role="alert" data-slot="test-results-error">
             {props.errorMessage}
           </div>
         }

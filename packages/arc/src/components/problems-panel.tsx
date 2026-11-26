@@ -156,7 +156,7 @@ export const problemsPanelStyles = variants({
       display: { default: "none", [on.cqMd]: "inline" },
     }),
     position: arc(type.meta, type.numeric, layout.noShrink, layout.pushEnd),
-    empty: arc({ padding: space.x4 }),
+    empty: arc(type.sm, fg.muted, { padding: space.x4 }),
   },
 });
 
@@ -422,7 +422,7 @@ export function ProblemsPanel(props: ProblemsPanelProps) {
       <Show
         when={props.errorMessage === undefined}
         fallback={
-          <div class={cls().empty} role="alert" data-slot="problems-panel-error">
+          <div class={arc(cls().empty, fg.danger)} role="alert" data-slot="problems-panel-error">
             {props.errorMessage}
           </div>
         }
