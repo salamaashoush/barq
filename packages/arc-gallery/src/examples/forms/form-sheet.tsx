@@ -45,6 +45,7 @@ const START: Customer[] = [
 export default function FormSheetExample() {
   const [customers, setCustomers] = createSignal(START);
   const [editing, setEditing] = createSignal<Customer | null>(null);
+  const [loading, setLoading] = createSignal(false);
 
   const form = useArcForm(() => ({
     defaultValues: { name: "", email: "", tier: null as string | null, notes: "" },
@@ -62,14 +63,17 @@ export default function FormSheetExample() {
     },
   }));
 
-  function edit(customer: Customer) {
+  async function edit(customer: Customer) {
+    setLoading(true);
+    setEditing(customer);
+    await new Promise((resolve) => setTimeout(resolve, 600));
     form.reset({
       name: customer.name,
       email: customer.email,
       tier: customer.tier,
       notes: customer.notes,
     });
-    setEditing(customer);
+    setLoading(false);
   }
 
   return (
@@ -80,7 +84,7 @@ export default function FormSheetExample() {
             title={customer.name}
             description={customer.email}
             actions={
-              <Button variant="outline" size="sm" onPress={() => edit(customer)}>
+              <Button variant="outline" size="sm" onPress={() => void edit(customer)}>
                 <Pencil aria-hidden="true" />
                 Edit
               </Button>
@@ -91,8 +95,10 @@ export default function FormSheetExample() {
       <FormSheet
         form={form}
         heading={`Edit ${editing()?.name ?? "customer"}`}
-        description="Changes apply to the next invoice. Try an @example.org address to see it refused."
+        description="Try an @example.org address to see it refused."
         open={editing() !== null}
+        loading={loading()}
+        status="Changes apply to the next invoice"
         onOpenChange={(open) => {
           if (!open) setEditing(null);
         }}
