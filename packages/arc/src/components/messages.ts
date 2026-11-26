@@ -852,6 +852,11 @@ export const ENGLISH: ArcMessages = {
   retryFailed: "Retry failed",
   filtersApplied: (count) =>
     count === 1 ? "1 filter applied" : `${String(count)} filters applied`,
+  noneChosen: string;
+  pickAtLeastOne: string;
+  search: string;
+  add: string;
+  hiddenOptions: (count: number) => string;
   clearFilter: "Clear filter",
   searchOptions: (label) => `Search ${label.toLocaleLowerCase("en")}`,
   anyTime: "Any time",
@@ -1674,3 +1679,9 @@ export function provideArcMessages(overrides: () => Partial<ArcMessages> | undef
 export function useArcMessages(): () => ArcMessages {
   return useContext(MessagesContext);
 }
+  noneChosen: "None chosen",
+  pickAtLeastOne: "Pick at least one.",
+  search: "Search",
+  add: "Add",
+  hiddenOptions: (count) =>
+    count === 1 ? "Also 1 more you cannot see." : `Also ${String(count)} more you cannot see.`,

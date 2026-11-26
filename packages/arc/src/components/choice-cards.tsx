@@ -14,7 +14,7 @@ import {
   fieldStyles,
 } from "../lib/field.tsx";
 import { type Customisable, parts } from "../lib/parts.ts";
-import { fg, gap, glyph, layout, target } from "../style/index.ts";
+import { bg, edge, fg, gap, glyph, layout, target } from "../style/index.ts";
 
 export interface ChoiceOption {
   value: string;
@@ -22,6 +22,11 @@ export interface ChoiceOption {
   description?: Child;
   /** Before the words: an icon, a logo, a small preview. */
   icon?: Child;
+  /**
+   * Across the top of the card, edge to edge: a screenshot, a theme drawn
+   * small, a layout. Decorative; the label names the option.
+   */
+  media?: Child;
   isDisabled?: boolean;
 }
 
@@ -32,7 +37,13 @@ export const choiceCardsStyles = variants({
       gridTemplateColumns:
         "repeat(auto-fill, minmax(min(100%, var(--choice-card-min, 14rem)), 1fr))",
     }),
-    card: arc(target.size, { cursor: "pointer" }),
+    card: arc(target.size, { cursor: "pointer", overflow: "hidden" }),
+    media: arc(edge.bottom, bg.muted, {
+      display: "block",
+      aspectRatio: "var(--choice-card-media-ratio, 16 / 9)",
+      overflow: "hidden",
+      "& > img": { display: "block", width: "100%", height: "100%", objectFit: "cover" },
+    }),
     body: arc({ alignItems: "flex-start" }),
     icon: arc(layout.inlineCentre, layout.noShrink, fg.muted, glyph.md),
     title: arc({}),
@@ -47,6 +58,15 @@ interface CardsProps extends Omit<ArcFieldProps, "classes">, Customisable<Slots>
   options: readonly ChoiceOption[];
   /** The narrowest a card gets before the grid drops a column. @default "14rem" */
   minCardWidth?: string;
+  /** The shape of each card's `media`, as an aspect ratio. @default "16 / 9" */
+  mediaRatio?: string;
+}
+
+function cardVars(props: CardsProps): Record<string, string> | undefined {
+  const vars: Record<string, string> = {};
+  if (props.minCardWidth !== undefined) vars["--choice-card-min"] = props.minCardWidth;
+  if (props.mediaRatio !== undefined) vars["--choice-card-media-ratio"] = props.mediaRatio;
+  return Object.keys(vars).length === 0 ? undefined : vars;
 }
 
 interface CardProps {
@@ -66,6 +86,11 @@ function Card(props: CardProps) {
   const title = `${id}-title`;
   return (
     <FieldLabel class={props.cls.card} for={id} data-slot="choice-card">
+      <Show when={props.option.media !== undefined}>
+        <span class={props.cls.media} data-slot="choice-card-media" aria-hidden="true">
+          {props.option.media}
+        </span>
+      </Show>
       <Field
         orientation="horizontal"
         class={props.cls.body}
@@ -128,9 +153,7 @@ export function RadioCards(props: RadioCardsProps) {
       <RadioGroup
         class={cls().group}
         data-slot="radio-cards-group"
-        style={
-          props.minCardWidth === undefined ? undefined : { "--choice-card-min": props.minCardWidth }
-        }
+        style={cardVars(props)}
         aria-labelledby={of.ids.label}
         aria-describedby={of.describedBy(props.description !== undefined)}
         value={of.value()}
@@ -201,9 +224,7 @@ export function CheckboxCards(props: CheckboxCardsProps) {
         class={cls().group}
         data-slot="checkbox-cards-group"
         role="group"
-        style={
-          props.minCardWidth === undefined ? undefined : { "--choice-card-min": props.minCardWidth }
-        }
+        style={cardVars(props)}
         aria-labelledby={of.ids.label}
         aria-describedby={of.describedBy(props.description !== undefined)}
       >

@@ -123,6 +123,29 @@ export {
   choiceCardsStyles,
 } from "./components/choice-cards.tsx";
 export {
+  CheckboxGroupField,
+  type CheckboxGroupFieldProps,
+  type ChoiceShortcut,
+  type GroupOption,
+  RadioGroupField,
+  type RadioGroupFieldProps,
+  choiceGroupStyles,
+} from "./components/choice-group.tsx";
+export {
+  ChecklistField,
+  type ChecklistFieldProps,
+  type ChecklistOption,
+  checklistFieldStyles,
+} from "./components/checklist-field.tsx";
+export {
+  type ThemeChoice,
+  ThemePicker,
+  type ThemePickerProps,
+  ThemePreview,
+  type ThemePreviewProps,
+  themePickerStyles,
+} from "./components/theme-picker.tsx";
+export {
   FileDropZone,
   type FileDropZoneProps,
   type FileLimits,

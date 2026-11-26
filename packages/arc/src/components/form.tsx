@@ -25,7 +25,7 @@ import {
   InputGroupInput,
   InputGroupText,
 } from "@barqjs/ui/input-group";
-import { Select, SelectItem } from "@barqjs/ui/select";
+import { Select, SelectGroup, SelectItem } from "@barqjs/ui/select";
 import { Switch } from "@barqjs/ui/switch";
 import { Textarea } from "@barqjs/ui/textarea";
 
@@ -37,6 +37,8 @@ import { type TextDirection, textDirection } from "../lib/text-direction.ts";
 import { control as chrome, layout } from "../style/index.ts";
 import { useArcMessages } from "./messages.ts";
 import { CheckboxCards, RadioCards } from "./choice-cards.tsx";
+import { ChecklistField } from "./checklist-field.tsx";
+import { CheckboxGroupField, RadioGroupField } from "./choice-group.tsx";
 import { ColorField, ColorPicker, ColorSwatches } from "./color.tsx";
 import { DateRangeField } from "./date-range-field.tsx";
 import { MultiSegmentedField, SegmentedField } from "./segmented-control.tsx";
@@ -308,6 +310,10 @@ export function CheckboxField(props: ArcFieldProps) {
 export interface FieldOption {
   value: string;
   label: string;
+  /** A faint line after the label in the list, left off the trigger: what a preset sets. */
+  hint?: string;
+  /** The heading it is listed under; groups keep the order they first appear in. */
+  group?: string;
   isDisabled?: boolean;
 }
 
@@ -315,38 +321,111 @@ export interface SelectFieldProps extends ArcFieldProps {
   options: readonly FieldOption[];
   /** @default "Select" */
   placeholder?: string;
+  /** An option first in the list that holds `null`: "None, use the network". */
+  noneLabel?: string;
+  /** What a held value no longer among the options reads as. @default the value itself */
+  unknownLabel?: (value: string) => string;
 }
 
-/** One of a few values, from a list. Held as the option's `value`, or `null`. */
+/** The key of the "none" option, which holds `null`. */
+const NONE = "__arc-none";
+
+interface SelectEntry {
+  id: string;
+  label: string;
+  hint?: string;
+  isDisabled?: boolean;
+  options?: readonly SelectEntry[];
+}
+
+function entryOf(option: FieldOption): SelectEntry {
+  return {
+    id: option.value,
+    label: option.label,
+    hint: option.hint,
+    isDisabled: option.isDisabled,
+  };
+}
+
+/** The options as the list draws them: ungrouped ones first, then a section per group. */
+function entriesOf(options: readonly FieldOption[]): SelectEntry[] {
+  const loose: SelectEntry[] = [];
+  const groups = new Map<string, SelectEntry[]>();
+  for (const option of options) {
+    if (option.group === undefined) {
+      loose.push(entryOf(option));
+      continue;
+    }
+    const run = groups.get(option.group) ?? [];
+    run.push(entryOf(option));
+    groups.set(option.group, run);
+  }
+  const sections = [...groups].map(([name, run]) => ({
+    id: `${NONE}-group-${name}`,
+    label: name,
+    options: run,
+  }));
+  return [...loose, ...sections];
+}
+
+/**
+ * One of a few values, from a list. Held as the option's `value`, or `null`.
+ *
+ * An option can carry a `hint` after its label and a `group` to be listed
+ * under; `noneLabel` adds a first option holding `null`, and a held value no
+ * longer among the options stays one, so a saved choice never reads blank.
+ */
 export function SelectField(props: SelectFieldProps) {
   const messages = useArcMessages();
   const of = control<string | null>();
-  function items() {
-    return props.options.map((option) => ({ id: option.value, ...option }));
+  function options(): FieldOption[] {
+    const held = of.field().state.value;
+    const extra: FieldOption[] = [];
+    if (props.noneLabel !== undefined) extra.push({ value: NONE, label: props.noneLabel });
+    if (
+      held !== null &&
+      held !== undefined &&
+      !props.options.some((option) => option.value === held)
+    ) {
+      extra.push({ value: held, label: props.unknownLabel?.(held) ?? held });
+    }
+    return [...extra, ...props.options];
+  }
+  function selected(): string | undefined {
+    const held = of.field().state.value ?? null;
+    if (held === null) return props.noneLabel === undefined ? undefined : NONE;
+    return held;
   }
   return (
     <Frame of={of} label={props.label} description={props.description} field={props}>
       <Select
-        items={items()}
+        items={entriesOf(options())}
+        getChildren={(entry: SelectEntry) => entry.options}
         id={of.ids.control}
         name={of.field().name}
-        value={of.field().state.value ?? undefined}
+        value={selected()}
         placeholder={props.placeholder ?? messages().selectPlaceholder}
         isDisabled={props.isDisabled}
         isRequired={props.isRequired}
         isInvalid={of.isInvalid()}
-        disabledKeys={props.options
+        disabledKeys={options()
           .filter((option) => option.isDisabled === true)
           .map((option) => option.value)}
         aria-labelledby={of.ids.label}
         aria-describedby={of.describedBy(props.description !== undefined)}
         onValueChange={(value: string) => {
-          of.change(value);
+          of.change(value === NONE ? null : value);
           of.blur();
         }}
         class={arc(layout.fill, props.classes?.control)}
       >
-        {(option: FieldOption) => <SelectItem>{option.label}</SelectItem>}
+        {(entry: SelectEntry) =>
+          entry.options === undefined ? (
+            <SelectItem detail={entry.hint}>{entry.label}</SelectItem>
+          ) : (
+            <SelectGroup title={entry.label} />
+          )
+        }
       </Select>
     </Frame>
   );
@@ -693,6 +772,9 @@ const arcFieldComponents = {
   IdentifierField,
   SlugField,
   SuggestionField,
+  CheckboxGroupField,
+  RadioGroupField,
+  ChecklistField,
 };
 
 const arcFormComponents = { SubmitButton, FormError };
