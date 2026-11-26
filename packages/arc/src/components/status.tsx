@@ -14,6 +14,7 @@ import {
   motionTokens,
   rounded,
   space,
+  square,
   tone as tones,
   type,
 } from "../style/index.ts";
@@ -37,10 +38,8 @@ const pill = arc(rounded.xl, type.xs, { paddingInline: space.x2, paddingBlock: s
 export const statusVariants = variants({
   slots: {
     root: arc(layout.inlineRow, gap[1.5], type.label, fg.tone, { whiteSpace: "nowrap" }),
-    dot: arc(layout.relative, layout.noShrink, rounded.full, bg.toneSolid, {
+    dot: arc(layout.relative, layout.noShrink, rounded.full, bg.toneSolid, square.x2, {
       display: "inline-block",
-      width: space.x2,
-      height: space.x2,
       "[data-variant=solid] > &": { backgroundColor: "currentColor" },
       "&[data-pulse]::after": {
         content: '""',

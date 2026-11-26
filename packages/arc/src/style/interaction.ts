@@ -22,6 +22,12 @@ export const interaction = arc.create({
     "@media (hover: hover)": { ":hover": { color: tokens.foreground } },
   },
   pressable: { cursor: "pointer" },
+  /** A stronger edge under a resting pointer, for a card the whole of which opens something. */
+  hoverEdge: {
+    "@media (hover: hover)": {
+      ":hover": { borderColor: "var(--border-strong, var(--ring))" },
+    },
+  },
   /** A part a pointer or a finger drags: the grab cursor, and no scrolling or zooming under the finger. */
   draggable: { cursor: "grab", touchAction: "none" },
   /** A column's edge a pointer or a finger drags to resize it, and no scrolling under the finger. */

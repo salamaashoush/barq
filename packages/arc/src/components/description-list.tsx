@@ -20,11 +20,9 @@ export interface DescriptionItem {
 export const descriptionListStyles = variants({
   slots: {
     root: arc(layout.container, layout.flush, layout.track),
-    row: arc(layout.minZero, {
+    row: arc(layout.minZero, gap.line, {
       display: "grid",
       gridTemplateColumns: "minmax(0, 1fr) auto",
-      columnGap: space.x4,
-      rowGap: space.x1,
       alignItems: "baseline",
       paddingBlock: space.x3,
     }),

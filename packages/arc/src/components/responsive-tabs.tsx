@@ -45,10 +45,8 @@ export const responsiveTabsStyles = variants({
   slots: {
     root: arc(layout.minZero),
     bar: arc(layout.row, layout.minZero, gap[1], { width: "100%" }),
-    viewport: arc(layout.grow, layout.minZero, {
-      overflowX: "auto",
+    viewport: arc(layout.grow, layout.minZero, layout.scrollInline, {
       overflowY: "hidden",
-      scrollbarWidth: "none",
       overscrollBehaviorInline: "contain",
       scrollSnapType: "x proximity",
       "::-webkit-scrollbar": { display: "none" },

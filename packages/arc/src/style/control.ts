@@ -1,4 +1,5 @@
 import { when } from "@barqjs/ui/shared-when";
+import { tokens } from "@barqjs/ui/theme/tokens";
 
 import { arcLayer as arc } from "../layer.ts";
 import { bg, fg } from "./colour.ts";
@@ -86,4 +87,20 @@ export const control = {
   }),
   /** ui's select trigger as a boxed button: its own height and shadow given up to the box's. */
   boxedTrigger: arc(boxedButton, { height: "auto", boxShadow: "none" }),
+  /**
+   * A link or a button whose hit area and focus ring cover its positioned
+   * ancestor: a card whose title opens it, so a screen reader hears one name
+   * while the card's other controls stay controls of their own.
+   */
+  stretched: arc(bare, focus.none, place.afterLayer, {
+    textDecorationLine: "none",
+    textAlign: "start",
+    "::after": { inset: "0", borderRadius: "inherit" },
+    "[data-focus-visible]::after": {
+      outlineWidth: "2px",
+      outlineStyle: "solid",
+      outlineColor: tokens.ring,
+      outlineOffset: "-2px",
+    },
+  }),
 };

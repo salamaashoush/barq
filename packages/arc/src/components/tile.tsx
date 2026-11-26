@@ -15,11 +15,10 @@ import {
   bg,
   control,
   fg,
-  focus,
   gap,
+  interaction,
   layout,
   motion,
-  place,
   space,
   surface,
   type,
@@ -50,17 +49,7 @@ export const tileStyles = variants({
     heading: arc(layout.column, layout.minZero, layout.grow, gap[1]),
     eyebrow: arc(type.meta),
     title: arc(type.label, layout.flush, fg.default),
-    target: arc(control.bare, focus.none, place.afterLayer, {
-      textDecorationLine: "none",
-      textAlign: "start",
-      "::after": { inset: "0", borderRadius: "inherit" },
-      "[data-focus-visible]::after": {
-        outlineWidth: "2px",
-        outlineStyle: "solid",
-        outlineColor: tokens.ring,
-        outlineOffset: "-2px",
-      },
-    }),
+    target: control.stretched,
     description: arc(type.sm, fg.muted, layout.flush),
     footer: arc(layout.row, layout.wrap, gap[2], {
       marginBlockStart: "auto",
@@ -79,11 +68,7 @@ export const tileStyles = variants({
     },
     interactive: {
       true: {
-        root: arc({
-          "@media (hover: hover)": {
-            ":hover": { borderColor: "var(--border-strong, var(--ring))" },
-          },
-        }),
+        root: interaction.hoverEdge,
       },
       false: {},
     },

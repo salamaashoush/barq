@@ -15,4 +15,6 @@ export const gap = arc.create({
   8: { gap: space.x8 },
   10: { gap: space.x10 },
   12: { gap: space.x12 },
+  /** Wide between things along a line and close between the lines it wraps to: a legend, a label and its reading. */
+  line: { columnGap: space.x4, rowGap: space.x1 },
 });

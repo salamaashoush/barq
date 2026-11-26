@@ -48,6 +48,8 @@ export const layout = {
   container: arc({ containerType: "inline-size" }),
   /** Scrolls by itself along the block axis, the page not scrolled past it. */
   scrollBlock: arc({ overflowY: "auto", overscrollBehavior: "contain" }),
+  /** Scrolls sideways by itself with no bar drawn: a strip of tabs or stages wider than its box. */
+  scrollInline: arc({ overflowX: "auto", scrollbarWidth: "none" }),
   relative: arc({ position: "relative" }),
   /** Held at the top of its scroller, over what scrolls under it. */
   sticky: arc({ position: "sticky", zIndex: zIndex.sticky }),
@@ -69,6 +71,7 @@ export const glyph = arc.create({
  * a star, a thumb, an icon button that is not one of ui's.
  */
 export const square = arc.create({
+  x2: { width: space.x2, height: space.x2 },
   x4: { width: space.x4, height: space.x4 },
   x5: { width: space.x5, height: space.x5 },
   x6: { width: space.x6, height: space.x6 },
