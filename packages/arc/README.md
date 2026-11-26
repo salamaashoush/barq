@@ -908,9 +908,34 @@ with `value`, `defaultValue` and `onChange` outside one.
   them. A `presence` (`online`, `away`, `busy`, `offline`) is a dot in a tone
   and in words, and the people past `max` are one "+3" read as "3 more".
 - `Timeline`: what happened to something, in order, as an ordered list down a
-  rail: each event's `title`, `description`, `actor`, and a marker that is its
-  `icon` or a dot in its `tone`. Its `time` is a `RelativeTime` measured from
-  `now` (or a `FormattedDate` with `timeFormat="absolute"`).
+  rail: each event's `title`, `description`, `actor`, an `action` after the
+  title, and a marker that is its `icon` or a dot in its `tone`. Its `time` is
+  a `RelativeTime` measured from `now` (or a `FormattedDate` with
+  `timeFormat="absolute"`). `kinds` describes each kind of event once (its
+  label, icon, tone and `verb`, `quiet` to fold the detail into the verb,
+  `comment` to draw it as a card), and an unknown kind reads as its own name.
+  `groupByDay` puts the events under a heading per day in `timeZone`,
+  `filterable` adds a toggle per kind present (`kindFilter` to hold it),
+  `onKeyChange` gives each event a star that marks it as a key event, and
+  `onLoadMore` adds Show more for a history read a page at a time.
+- `ChangeLog` and `FieldChanges`: who changed what, and when. Each entry is
+  its actor (a person's avatar, a robot for the system), what they did and to
+  what, why, and the fields it moved, each old value struck through to its
+  new one, every value a `<bdi>` so a value in another script keeps its own
+  direction (`ltr` for a phone number). Entries group by day, and a
+  `DataToolbar` over them filters by Who and When, here or, with
+  `manualFiltering`, on the server; `params` keeps both in the address and
+  `matchesChangeLogFilter` is the test it applies.
+- `PropertyList`: a record's properties edited where they are read, drawn
+  from a schema of fields: `text` through `InlineEdit`, `choice` through
+  `InlineSelect` with each option's icon or a dot in its tone, `people`
+  through `EntityPicker`, `date` on a calendar in a popover, and `value` read
+  only. Each saves on its own through `onSave(id, value)`, holds while the
+  save is out and says why one failed.
+- `OutlineView`: a hierarchy to read rather than browse, as nested lists
+  indented on the start edge: `look="pills"` draws each line as a chip,
+  `guides` rules down each level, and `flow="inline"` lays a sequence in a
+  row joined by an arrow that turns with the reading direction.
 - `DescriptionList`: a record's facts as terms and values in a `<dl>`, each
   pair in a `<div>`, with an `action` beside a value. The term sits beside its
   value from the container's `sm` step and above it below that (`layout`
@@ -950,7 +975,21 @@ with `value`, `defaultValue` and `onChange` outside one.
   `onLoadMore` asks for more as the end comes into view, with a loading row
   while `isLoadingMore`, and `empty` is what an empty list shows.
   `selectionBehavior="replace"` makes selection follow focus, and
-  `disallowEmptySelection` keeps one row chosen.
+  `disallowEmptySelection` keeps one row chosen. With `onReorder` each row
+  gets a drag handle: a pointer or a finger drags from it, the list scrolling
+  near its edges, and the keyboard picks the row up with Enter on the handle;
+  `moveButtons` adds buttons that move a row up and down, quiet at the ends,
+  and `reorderItems` applies the event. `keyboardNavigationBehavior="tab"`
+  keeps every key typed into a field in a row for that field.
+- `ChecklistEditor`: a checklist edited in place, a task's subtasks: each
+  line a checkbox, its text an `InlineEdit` and a remove button, a field
+  under it adding a line on Enter, lines reordering by their handles, and how
+  many are done in words and as a bar.
+- `SearchResults`: a search across kinds, All and each kind as
+  `ResponsiveTabs` with counts. All shows each kind's first few with Show all,
+  a kind's tab all of it with Show more; each result links where it opens,
+  the query's words marked in its title and snippet, with loading, failed,
+  nothing-found and nothing-typed states.
 - `TreeView`: a hierarchy to browse and choose from, on `@barqjs/aria`'s
   tree: one Tab stop, Up and Down between rows, Right to open or go in and
   Left to close or go out in the reading direction, type-ahead, and a
@@ -1444,7 +1483,12 @@ Each is `field.*` inside `form.AppField` and holds its own value with
   before it is saved.
 - `RepeaterField`: rows of the same fields on a form array, added, removed
   and moved through the array field so errors move with them, every button
-  named after its row and focus following. `CollectionField`: a table of
+  named after its row and focus following. `StepSequenceEditor`: steps in an
+  order that matters as cards that fold, each header its number, `title` and
+  `summary` and buttons that move, duplicate and remove it, a new step
+  opening and taking focus. `OrderedMemberList`: people in an order, a
+  rotation's turns, numbered, moved by buttons or a drag, removed, and added
+  from a search that leaves out those already listed. `CollectionField`: a table of
   sub-records, cards on a phone, each added and edited in a sheet with a form
   of its own.
 - `AddressFields`: an address laid out as its country writes it, its region
