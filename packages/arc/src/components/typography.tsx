@@ -331,10 +331,12 @@ export const proseStyles = variants({
         textUnderlineOffset: "0.2em",
       },
       "& :is(strong, b)": { fontWeight: "var(--font-weight-semibold)" },
-      "& :is(ul, ol)": { paddingInlineStart: "1.5em" },
-      "& ul": { listStyleType: "disc" },
-      "& ol": { listStyleType: "decimal" },
-      "& li": { marginBlock: "0.3em" },
+      // A list a component draws carries its slot and lays itself out: a
+      // timeline, a set of cards. Only the document's own lists are styled here.
+      "& :is(ul, ol):not([data-slot])": { paddingInlineStart: "1.5em" },
+      "& ul:not([data-slot])": { listStyleType: "disc" },
+      "& ol:not([data-slot])": { listStyleType: "decimal" },
+      "& :is(ul, ol):not([data-slot]) > li": { marginBlock: "0.3em" },
       "& li > :is(ul, ol)": { marginBlock: "0.3em 0" },
       "& li::marker": { color: tokens.mutedForeground },
       "& blockquote": {
